@@ -64,7 +64,24 @@ Prints every message of one session file in time order. `--show-envelope` shows 
 mnemo index [--source S] [--rebuild] [-v]
 ```
 
-Incremental sync of local session logs. Files whose size or mtime are unchanged are skipped, and deleted files are dropped from the index. `-v` logs each file. `--rebuild` drops the index and reparses every session from scratch (also the way to adopt a new schema after upgrading Mnemo).
+Incremental sync of local session logs. Files whose size or mtime are unchanged are skipped, and deleted files are dropped from the index. `-v` logs each file. `--rebuild` drops the index and reparses every session from scratch in place; prefer `mnemo upgrade` after updating Mnemo.
+
+## mnemo upgrade
+
+```bash
+mnemo upgrade [--no-backup] [--keep 3] [--remotes] [-v]
+mnemo upgrade --list
+mnemo upgrade --restore [BACKUP]
+```
+
+The safe way to adopt a new index schema after updating Mnemo:
+
+1. Backs up the live index to `~/.mnemo/backups/index-v<schema>-<time>.db` with SQLite's online backup API, keeping the newest `--keep`.
+2. Rebuilds into a temporary file beside it, so searches keep working on the old index meanwhile.
+3. Verifies the result (schema version, no incomplete rows) and swaps it in with an atomic rename. On any failure the live index is left untouched.
+4. Lists `mnemo mcp` / `mnemo dashboard` processes started before the update. They still run the old code; restart the agent sessions that own them.
+
+`--remotes` also rsyncs the code to every registered device and runs the same upgrade there. `--restore` puts back a backup (the newest by default) after saving the current index as a `pre-restore` backup.
 
 ## mnemo status
 

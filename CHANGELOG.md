@@ -5,6 +5,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ## [Unreleased]
 
 ### Added
+- `mnemo upgrade`: one command to back up the index (SQLite online backup, newest 3 kept), rebuild it beside the live one, verify, and swap it in atomically; `--remotes` does the same on every device, `--restore` rolls back, `--list` shows backups. It also names running mnemo processes that still use the old code.
 - Project logo ("Mesh M": an M drawn as connected device nodes) in `docs/assets/`, used in the README, the dashboard sidebar and as the dashboard favicon.
 - Session view timeline rail: turn markers with clock and turn number, idle-gap chips (≥ 90 s), day dividers, tool-call durations, total session span.
 - MIT license.
@@ -29,6 +30,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - `scripts/make-demo-home.py` produces deterministic session ids.
 
 ### Fixed
+- Index writes are refused when the index was upgraded by a newer mnemo (reads keep working, searches warn), so a long-running MCP server can no longer write old-format rows into a new schema or re-stamp its version. Sync also repairs rows an older process already wrote (the v2 upgrade left 21k messages invisible to default search this way).
+- `mnemo remote add/update` no longer rsyncs `web/node_modules`, build output or caches to devices.
 - Searches from the CLI, the Pi extension and the dashboard now sync the local index first, and the MCP server syncs before every `search_sessions` instead of only at startup. Previously sessions written after the last `mnemo index` (or after the MCP server started) were invisible. Syncs within 2 s of the last one are skipped, concurrent writers wait up to 10 s, and a failed refresh falls back to the existing index with a warning. `mnemo search --no-sync` opts out.
 
 ## [0.1.0] - 2026-09-24

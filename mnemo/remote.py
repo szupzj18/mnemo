@@ -5,7 +5,7 @@ import shlex
 import sqlite3
 import subprocess
 
-from .index import Index
+from .index import Index, IndexTooNew
 from .search import search as local_search
 
 CONFIG_DIR = os.path.expanduser("~/.mnemo")
@@ -120,14 +120,22 @@ def ping(remote):
     remote_exec(remote, ["--version"], timeout=CONNECT_TIMEOUT + 4)
 
 
-def install(remote, logger=lambda m: None, timeout=600):
+# Remotes only run the Python package; never ship the web toolchain or caches.
+RSYNC_EXCLUDES = (
+    ".git", "__pycache__", "*.pyc", "index.db", ".claude",
+    "node_modules", ".next", "out", "test-results", "playwright-report", ".pnpm-store",
+)
+
+
+def install(remote, logger=lambda m: None, timeout=600, build_index=True):
+    """rsync this checkout to the remote; optionally build its index afterwards."""
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    excludes = []
+    for pattern in RSYNC_EXCLUDES:
+        excludes += ["--exclude", pattern]
     rsync = [
         "rsync", "-az", "--delete",
-        "--exclude", ".git",
-        "--exclude", "__pycache__",
-        "--exclude", "*.pyc",
-        "--exclude", "index.db",
+    ] + excludes + [
         "-e", "ssh",
         repo + "/",
         "%s:~/mnemo/" % remote["host"],
@@ -138,6 +146,10 @@ def install(remote, logger=lambda m: None, timeout=600):
         raise RemoteError("rsync to %s failed: %s" % (remote["host"], exc))
     if p.returncode != 0:
         raise RemoteError("rsync to %s failed: %s" % (remote["host"], p.stderr.strip()[:200]))
+    if not build_index:
+        logger("code synced to %s" % remote["name"])
+        ping(remote)
+        return
     logger("code synced; building index on %s" % remote["name"])
     out = remote_exec(remote, ["index"], timeout=timeout)
     logger(out.strip())
@@ -197,12 +209,15 @@ def _local_search(db_path, query, sources, kinds, cwd, since, limit,
                   sync=False, warnings=None, include_injected=False):
     idx = Index(db_path)
     try:
-        if sync:
+        if idx.too_new and warnings is not None:
+            warnings.append("local index is newer than this mnemo (restart this process to "
+                            "pick up the upgrade); searching it read-only")
+        elif sync:
             # A failed refresh must not cost the user their results: search
             # the index as it stands and say it may be stale.
             try:
                 idx.sync_if_stale()
-            except (sqlite3.Error, OSError) as exc:
+            except (sqlite3.Error, OSError, IndexTooNew) as exc:
                 if warnings is not None:
                     warnings.append("local index not refreshed (%s); results may miss recent sessions" % exc)
         return local_search(

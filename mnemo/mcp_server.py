@@ -2,7 +2,7 @@ import json
 import sys
 
 from . import __version__
-from .index import Index
+from .index import Index, IndexTooNew
 from . import remote as remote_mod
 from .remote import LOCAL, fan_out_search, remote_context, remote_session
 from .search import DEFAULT_KINDS, get_context, get_session, raw_context, raw_session, recent
@@ -197,7 +197,10 @@ def handle_call(name, args, index):
         return _text_result(rows)
     if name == "reindex":
         sources = args.get("source")
-        stats = index.sync(sources.split(",") if sources else None)
+        try:
+            stats = index.sync(sources.split(",") if sources else None)
+        except IndexTooNew as exc:
+            raise ValueError(str(exc))
         return _text_result(stats)
     raise ValueError("unknown tool: %s" % name)
 
@@ -205,7 +208,11 @@ def handle_call(name, args, index):
 def run():
     sys.stderr.write("mnemo mcp: indexing sessions...\n")
     index = Index()
-    stats = index.sync(logger=lambda m: sys.stderr.write(m + "\n"))
+    try:
+        stats = index.sync(logger=lambda m: sys.stderr.write(m + "\n"))
+    except IndexTooNew as exc:
+        # Keep serving reads; searches report the same warning per call.
+        stats = {"error": str(exc)}
     sys.stderr.write("mnemo mcp: ready (%s)\n" % json.dumps(stats))
     tools = build_tools()
 

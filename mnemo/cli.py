@@ -3,9 +3,10 @@ import datetime
 import json
 import os
 import sys
+import time
 
 from . import __version__
-from .index import DEFAULT_DB_PATH, Index
+from .index import DEFAULT_DB_PATH, SCHEMA_VERSION, Index, IndexTooNew
 from . import remote as remote_mod
 from .remote import LOCAL, RemoteError, fan_out_search, remote_context, remote_session
 from .search import DEFAULT_KINDS, get_context, get_session, raw_context, raw_session, recent
@@ -33,14 +34,90 @@ def _since(value):
     return value
 
 
+def _human_size(n):
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return "%.0f %s" % (n, unit) if unit == "B" else "%.1f %s" % (n, unit)
+        n /= 1024.0
+
+
+def cmd_upgrade(args):
+    from . import upgrade as up
+
+    if args.list:
+        backups = up.list_backups(args.db)
+        if not backups:
+            print("no backups in %s" % up.backup_dir(args.db))
+        for b in backups:
+            print("%s  %s" % (_human_size(os.path.getsize(b)).rjust(9), b))
+        return 0
+
+    if args.restore is not None:
+        try:
+            source, safety = up.restore(args.db, args.restore or None)
+        except up.UpgradeError as exc:
+            print("error: %s" % exc, file=sys.stderr)
+            return 1
+        print("restored %s" % source)
+        if safety:
+            print("the index it replaced is saved as %s" % safety)
+        return 0
+
+    log = (lambda m: print("  " + m, file=sys.stderr)) if args.verbose else (lambda m: None)
+    if not args.no_backup:
+        dest = up.backup(args.db, keep=args.keep)
+        if dest:
+            print("backup: %s (%s)" % (dest, _human_size(os.path.getsize(dest))))
+    print("rebuilding schema v%s beside the live index ..." % SCHEMA_VERSION)
+    try:
+        stats, counts = up.rebuild(args.db, logger=log)
+    except (up.UpgradeError, IndexTooNew) as exc:
+        print("error: %s\nthe live index was not modified" % exc, file=sys.stderr)
+        return 1
+    files = sum(c["files"] for c in counts.values())
+    msgs = sum(c["messages"] for c in counts.values())
+    print("verified and swapped in: %d sessions, %d messages" % (files, msgs))
+
+    rc = 0
+    sys.stdout.flush()  # keep stdout/stderr in order when piped
+    stale = up.stale_processes()
+    if stale:
+        print("warning: %d mnemo process(es) still run the previous code and may write"
+              " old-format rows until restarted (the next sync repairs them):" % len(stale), file=sys.stderr)
+        for pid, started, cmd in stale:
+            print("  pid %d  since %s  %s" % (pid, time.strftime("%m-%d %H:%M", time.localtime(started)), cmd[-60:]),
+                  file=sys.stderr)
+        print("  restart the agent sessions that own them (or: kill %s)"
+              % " ".join(str(p) for p, _, _ in stale), file=sys.stderr)
+
+    if args.remotes:
+        for r in remote_mod.load_remotes():
+            print("%s: syncing code ..." % r["name"])
+            try:
+                # Code first, index untouched: the remote `upgrade` backs it up before rebuilding.
+                remote_mod.install(r, logger=lambda m, n=r["name"]: print("  %s: %s" % (n, m)),
+                                   build_index=False)
+                out = remote_mod.remote_exec(r, ["upgrade"] + (["--no-backup"] if args.no_backup else []), timeout=1800)
+                for line in out.strip().splitlines():
+                    print("  %s: %s" % (r["name"], line))
+            except RemoteError as exc:
+                print("warning: %s: %s" % (r["name"], exc), file=sys.stderr)
+                rc = 1
+    return rc
+
+
 def cmd_index(args):
     idx = Index(args.db)
     names = args.source.split(",") if args.source else None
     log = (lambda m: print(m, file=sys.stderr)) if args.verbose else None
-    if getattr(args, "rebuild", False):
-        stats = idx.rebuild(names, logger=log)
-    else:
-        stats = idx.sync(names, logger=log)
+    try:
+        if getattr(args, "rebuild", False):
+            stats = idx.rebuild(names, logger=log)
+        else:
+            stats = idx.sync(names, logger=log)
+    except IndexTooNew as exc:
+        print("error: %s" % exc, file=sys.stderr)
+        return 1
     print(
         "indexed: +{files_new} new, {files_updated} updated, {files_removed} removed,"
         " {messages} messages".format(**stats)
@@ -328,6 +405,20 @@ def main(argv=None):
                     help="drop the index and reparse every session from scratch")
     sp.add_argument("-v", "--verbose", action="store_true")
     sp.set_defaults(func=cmd_index)
+
+    sp = sub.add_parser(
+        "upgrade",
+        help="back up the index, rebuild it beside the live one, verify, then swap it in",
+    )
+    sp.add_argument("--no-backup", action="store_true", help="skip the pre-upgrade backup")
+    sp.add_argument("--keep", type=int, default=3, help="backups to keep (default 3)")
+    sp.add_argument("--remotes", action="store_true",
+                    help="also sync code to every registered device and upgrade its index")
+    sp.add_argument("--restore", nargs="?", const="", metavar="BACKUP",
+                    help="replace the index with a backup (default: the newest)")
+    sp.add_argument("--list", action="store_true", help="list backups")
+    sp.add_argument("-v", "--verbose", action="store_true")
+    sp.set_defaults(func=cmd_upgrade)
 
     sp = sub.add_parser("search", aliases=["query"], help="full-text search")
     sp.add_argument("query", nargs="+")

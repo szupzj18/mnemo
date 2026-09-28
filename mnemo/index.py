@@ -48,6 +48,17 @@ CREATE VIRTUAL TABLE IF NOT EXISTS messages USING fts5(
 
 DEFAULT_KINDS = ("text", "summary", "tool_call", "tool_result")
 
+class IndexTooNew(RuntimeError):
+    """The index was written by a newer mnemo; this process must not write to it."""
+
+
+def _schema_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 # Searches sync first; back-to-back callers (a remote's forwarded `index` then
 # `search`, an agent firing several queries) skip the re-stat within this window.
 SYNC_MIN_INTERVAL = 2.0
@@ -63,6 +74,7 @@ class Index:
         # writer instead of failing with "database is locked".
         self.db.execute("PRAGMA busy_timeout = 10000")
         self.db.executescript(SCHEMA)
+        self.stored_version = None
         self._migration_pending = self._detect_pending()
 
     def _set_version(self):
@@ -70,6 +82,7 @@ class Index:
             "INSERT OR REPLACE INTO meta(key, value) VALUES('schema_version', ?)",
             (SCHEMA_VERSION,),
         )
+        self.stored_version = SCHEMA_VERSION
 
     def _detect_pending(self):
         """Whether stored tables predate the current schema and need a rebuild.
@@ -81,7 +94,12 @@ class Index:
         row = self.db.execute(
             "SELECT value FROM meta WHERE key='schema_version'"
         ).fetchone()
+        self.stored_version = row["value"] if row else None
         if row and row["value"] == SCHEMA_VERSION:
+            return False
+        if self.too_new:
+            # Never re-stamp or rebuild an index a newer mnemo created; reads
+            # still work, writes are refused in _check_writable().
             return False
         cols = {r["name"] for r in self.db.execute("PRAGMA table_info(files)")}
         if "title" in cols:  # SCHEMA just created the current tables empty
@@ -89,8 +107,30 @@ class Index:
             return False
         return True
 
+    @property
+    def too_new(self):
+        stored, ours = _schema_int(self.stored_version), _schema_int(SCHEMA_VERSION)
+        return stored is not None and ours is not None and stored > ours
+
+    def _check_writable(self):
+        if self.too_new:
+            raise IndexTooNew(
+                "index %s has schema v%s, newer than this mnemo (v%s); "
+                "restart this process or update mnemo before indexing"
+                % (self.db_path, self.stored_version, SCHEMA_VERSION)
+            )
+
+    def incomplete_paths(self):
+        """Files whose rows were written by an older mnemo into this schema.
+
+        Pre-v2 writers insert files rows without a title (and messages without
+        the v2 columns); v2 always writes a title, even an empty one.
+        """
+        return [r["path"] for r in self.db.execute("SELECT path FROM files WHERE title IS NULL")]
+
     def _apply_schema(self):
         """Drop and recreate tables for the current schema (full reparse next)."""
+        self._check_writable()
         self.db.execute("DROP TABLE IF EXISTS messages")
         self.db.execute("DROP TABLE IF EXISTS file_ranges")
         self.db.execute("DROP TABLE IF EXISTS files")
@@ -105,11 +145,16 @@ class Index:
 
     def sync(self, source_names=None, home=None, logger=None):
         log = logger or (lambda msg: None)
+        self._check_writable()
         if self._migration_pending:
             log("schema v%s: rebuilding index from session files ..." % SCHEMA_VERSION)
             self._apply_schema()
         sources = get_sources(source_names, home=home)
         stats = dict(files_new=0, files_updated=0, files_removed=0, messages=0)
+        # Self-heal rows an older mnemo process wrote after the upgrade.
+        stale = set(self.incomplete_paths())
+        if stale:
+            log("repairing %d file(s) written by an older mnemo" % len(stale))
 
         for source in sources:
             current = {}
@@ -128,7 +173,7 @@ class Index:
             for path, (mtime, size) in current.items():
                 if path not in known:
                     stats["files_new"] += 1
-                elif known[path] != (mtime, size):
+                elif known[path] != (mtime, size) or path in stale:
                     stats["files_updated"] += 1
                 else:
                     continue
@@ -139,6 +184,11 @@ class Index:
                 self._drop_path(path)
                 self.db.execute("DELETE FROM files WHERE path = ?", (path,))
                 stats["files_removed"] += 1
+
+        if stale:
+            # Old-shape rows outside any file range (or left by an interrupted
+            # write) are unreachable by the reindex above; drop them outright.
+            self.db.execute("DELETE FROM messages WHERE text IS NULL")
 
         if stats["files_removed"]:
             # Safety net for FTS rows left without a covering file_ranges row

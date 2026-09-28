@@ -84,6 +84,15 @@ If another process is writing the index, the search waits up to 10 s. If the syn
 
 `mnemo search --no-sync` skips the refresh, for scripts that issue many queries in a row. `mnemo index` still exists for the first full build and for forcing a sync by hand.
 
+## Upgrading
+
+```bash
+git -C ~/mnemo pull
+mnemo upgrade --remotes      # back up, rebuild, verify and swap, here and on every device
+```
+
+Then restart agent sessions that were already running, so their MCP servers load the new code. Until then they keep working: an older mnemo never writes to an index a newer one has upgraded, and rows an old process wrote before that guard existed are repaired on the next sync. If anything looks wrong, `mnemo upgrade --restore` brings back the previous index.
+
 ## Try it
 
 ```bash
