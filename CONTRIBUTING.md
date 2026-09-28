@@ -5,7 +5,7 @@ Thanks for your interest! Mnemo is small on purpose: standard-library Python, on
 ## Good first contributions
 
 - **A new agent adapter** (Gemini CLI, Cursor, OpenCode, Aider, …). Each adapter is about 100 lines. See *Adding an agent adapter* in [AGENTS.md](AGENTS.md).
-- **Tests.** There's no test suite yet. Unit tests for `search.build_match`, the adapters and `remote._rrf`, all using `unittest` (stdlib), would help a lot.
+- **Tests.** More coverage for the source adapters and remote paths (`tests/`, stdlib `unittest`) is always welcome.
 - **Docs and examples** for more MCP clients.
 - Items on the [roadmap](README.md#roadmap).
 
@@ -17,6 +17,8 @@ python3 scripts/make-demo-home.py /tmp/mnemo-demo     # synthetic sessions
 HOME=/tmp/mnemo-demo ./bin/mnemo index -v
 HOME=/tmp/mnemo-demo ./bin/mnemo dashboard
 ```
+
+Working on the web UI needs Node 20+ and pnpm; see [web/README.md](web/README.md) for the hot-reload setup and the test commands.
 
 Using a synthetic `HOME` keeps your real sessions out of bug reports, screenshots and test fixtures.
 
@@ -30,6 +32,6 @@ Using a synthetic `HOME` keeps your real sessions out of bug reports, screenshot
 
 ## Code style
 
-- Python 3.7 compatible, standard library only.
+- Python: 3.7 compatible, standard library only.
+- Web: TypeScript, shadcn/ui components, Tailwind utilities; keep pure logic in `web/src/lib` with Vitest tests.
 - Match the surrounding code: small functions, short comments that explain *why*.
-- The dashboard is one inline page in `mnemo/dashboard.py`. Keep it framework-free.

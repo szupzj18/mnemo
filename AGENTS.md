@@ -8,10 +8,12 @@ Mnemo indexes the local session logs of coding agents into SQLite FTS5 and expos
 
 ## Hard constraints
 
-- **Standard library only.** Don't add third-party Python packages, and don't add a build step for the dashboard. The code must run unchanged on Python 3.7 (stock devboxes). Avoid features newer than 3.7, such as the walrus operator in hot paths, `dict | dict`, `match` and `str.removeprefix`.
+- **Python is standard library only.** Don't add third-party Python packages. The code must run unchanged on Python 3.7 (stock devboxes). Avoid features newer than 3.7, such as the walrus operator, `dict | dict`, `match` and `str.removeprefix`.
+- **The web UI is built, then committed.** `web/` is Next.js + shadcn/ui + Tailwind; `pnpm build` exports it into `mnemo/web_dist`, which is committed so installs need no Node. Commit `mnemo/web_dist` in the same change as the `web/` sources (CI's `pnpm check:dist` fails otherwise). Never hand-edit `mnemo/web_dist`.
 - **The dashboard stays local.** It binds to `127.0.0.1`, every `/api/*` call must carry the per-launch token, and the `Host` allowlist must stay in place.
 - **Session content stays on its device.** Remote reads (`context`, `session`, raw) execute on the remote and return only the requested messages. Don't add code paths that copy remote indexes or logs.
 - **Never commit indexes or session data.** `*.db` and `*.db-*` are gitignored, so keep it that way. Don't commit screenshots of real sessions. Generate synthetic ones with `scripts/make-demo-home.py`.
+- **Tests stay hermetic.** Python tests call `DemoHome.activate()` so syncs read the demo HOME and no registered remote is contacted; e2e runs the dashboard with a temp HOME.
 - **Forwarded searches must keep `--host local`,** or meshed devices will chain queries (see `remote.search_argv`).
 
 ## Layout
@@ -23,28 +25,30 @@ mnemo/index.py               schema + incremental sync
 mnemo/search.py              FTS5 query builder, BM25, context/session/raw reads
 mnemo/remote.py              SSH exec, fan-out, RRF, rsync install
 mnemo/mcp_server.py          stdio JSON-RPC MCP server
-mnemo/dashboard.py           HTTP server + single inline PAGE (HTML/CSS/JS)
+mnemo/dashboard.py           HTTP API + static server for mnemo/web_dist
+mnemo/web_dist/              committed static export of web/ (generated)
 mnemo/sources/{claude,codex,pi}.py   per-agent log adapters
 integrations/pi/mnemo.ts     Pi extension (thin CLI wrapper)
 integrations/skills/mnemo/   agent skill (CLI-driven)
-scripts/make-demo-home.py    synthetic sessions for testing and screenshots
+scripts/make-demo-home.py    deterministic synthetic sessions for tests and screenshots
+tests/                       Python unit + dashboard server tests (unittest)
+web/                         Next.js UI: src/app pages, src/lib logic (+ Vitest), e2e/ (Playwright)
+.github/workflows/ci.yml     Python matrix, web lint/types/tests/build, Playwright UI regression
 ```
 
 ## Verify your change
 
-There is no test suite yet. At minimum, run:
-
 ```bash
-python3 -m py_compile mnemo/*.py mnemo/sources/*.py
+python3 -m unittest discover -s tests          # backend + dashboard server
 
-# end-to-end against synthetic data, never your real sessions
-python3 scripts/make-demo-home.py /tmp/mnemo-demo
-HOME=/tmp/mnemo-demo ./bin/mnemo index -v
-HOME=/tmp/mnemo-demo ./bin/mnemo search backoff --json --limit 3
-HOME=/tmp/mnemo-demo ./bin/mnemo status
+cd web
+pnpm lint && pnpm typecheck && pnpm test       # UI static checks + unit tests
+pnpm build                                     # re-export into mnemo/web_dist
+pnpm e2e                                       # Playwright over synthetic sessions
+pnpm e2e:docker                                # + pixel diffs in CI's Linux image
 ```
 
-- **Dashboard changes:** check the inline script parses (`node --check` on the extracted `<script>`), then check the UI visually in a real browser in both light and dark themes. Don't reason about layout statically.
+- **UI changes:** run `pnpm e2e`, and if the change is visual, regenerate baselines with `pnpm e2e:docker --update` and review the new PNGs before committing them.
 - **MCP changes:** send `initialize` and `tools/list` over stdio and check the schemas.
 - **Remote changes:** test against a real SSH host when you can. Unreachable hosts must degrade to a warning, never a failure.
 

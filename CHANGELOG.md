@@ -10,12 +10,12 @@ All notable changes to this project are documented here. The format follows [Kee
 - MIT license.
 - Documentation site under `docs/`, a Chinese README, `AGENTS.md`, `CONTRIBUTING.md` and `SECURITY.md`.
 - `scripts/make-demo-home.py` to generate synthetic sessions for testing and screenshots.
+- Python test suite (`tests/`, stdlib `unittest`): index sync, search, remote argv/RRF, dashboard server security and API.
+- Vitest unit tests for UI logic; Playwright end-to-end tests with light/dark screenshot baselines over synthetic sessions.
+- GitHub Actions CI: Python 3.8/3.12, web lint/typecheck/unit/build plus a stale-build check, and Playwright UI regression in the official Playwright image.
 - `mnemo recent` lists recently started sessions with their first real user prompt as the title, so recent work can be recalled without a keyword; the MCP server exposes the same as `list_recent_sessions`.
 - `mnemo search --include-injected` also matches injected boilerplate, and `mnemo context`/`session --show-envelope` render those bodies verbatim.
 - `mnemo index --rebuild` drops and reparses the whole index from scratch.
-
-### Fixed
-- Searches from the CLI, the Pi extension and the dashboard now sync the local index first, and the MCP server syncs before every `search_sessions` instead of only at startup. Previously sessions written after the last `mnemo index` (or after the MCP server started) were invisible. Syncs within 2 s of the last one are skipped, concurrent writers wait up to 10 s, and a failed refresh falls back to the existing index with a warning. `mnemo search --no-sync` opts out.
 
 ### Changed
 - Injected user-message boilerplate (workspace `AGENTS.md` instructions, plugin suggestions, ambient browser state, slash-command output, and Codex approval-review wraps) is now kept verbatim in the index but excluded from default search, snippets and session titles; this is an additive schema (v2) that migrates an existing index on its next sync, with no records dropped. Genuine user replies inside such messages remain searchable.
@@ -24,6 +24,12 @@ All notable changes to this project are documented here. The format follows [Kee
 - Search results use the official Claude, OpenAI (Codex) and pi marks.
 - Generic search placeholder text.
 - Dashboard search shows progress: busy button (also when submitted with Enter), per-device pending chips, skeleton results and a live elapsed timer; repeat submissions are ignored and network failures restore the form.
+- Dashboard rebuilt with Next.js (static export), shadcn/ui and Tailwind CSS in `web/`, served prebuilt from `mnemo/web_dist` so installs still need only Python. Search results survive navigating into a session and back; results are real links (open in new tab works).
+- `dashboard.py` shrinks to the API plus a static file server (token injection, `HEAD` for route prefetches, traversal guard, immutable caching for hashed assets).
+- `scripts/make-demo-home.py` produces deterministic session ids.
+
+### Fixed
+- Searches from the CLI, the Pi extension and the dashboard now sync the local index first, and the MCP server syncs before every `search_sessions` instead of only at startup. Previously sessions written after the last `mnemo index` (or after the MCP server started) were invisible. Syncs within 2 s of the last one are skipped, concurrent writers wait up to 10 s, and a failed refresh falls back to the existing index with a warning. `mnemo search --no-sync` opts out.
 
 ## [0.1.0] - 2026-09-24
 

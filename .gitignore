@@ -3,3 +3,4 @@ __pycache__/
 *.db
 *.db-*
 .DS_Store
+.pnpm-store/

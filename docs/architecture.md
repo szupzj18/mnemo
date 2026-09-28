@@ -25,7 +25,8 @@
 | `mnemo/search.py` | FTS5 query construction, BM25 search, context and session lookup, raw reads |
 | `mnemo/remote.py` | Remote registry, SSH execution, parallel fan-out, RRF merge, rsync install |
 | `mnemo/mcp_server.py` | Zero-dependency JSON-RPC stdio MCP server |
-| `mnemo/dashboard.py` | Stdlib `ThreadingHTTPServer` plus a single-file HTML/CSS/JS UI |
+| `mnemo/dashboard.py` | Stdlib `ThreadingHTTPServer`: JSON API plus the prebuilt UI from `mnemo/web_dist` |
+| `web/` | Next.js + shadcn/ui + Tailwind source of the dashboard UI (see `web/README.md`) |
 | `mnemo/cli.py` | argparse front end |
 
 ## Normalization
@@ -85,12 +86,15 @@ RRF was chosen over a single global index for two reasons:
 
 ## Dashboard
 
-The dashboard is a single Python module with an inline page and no build step.
+The UI in `web/` is Next.js (App Router) with shadcn/ui on Base UI and Tailwind CSS, exported as a static site into `mnemo/web_dist`. The Python server stays standard-library only and does two jobs:
 
-- It binds to `127.0.0.1`, and the port scans 7787–7796.
-- Each launch generates a `secrets.token_urlsafe(16)` token. `/api/*` requires the `X-Dashboard-Token` header and a local `Host` header.
-- Sessions longer than 240 messages are rendered in a window around the anchor hit.
+- **API** under `/api/*`, unchanged: status, remote status, ping, sync, remotes add/remove/update, search, session.
+- **Static files** for everything else. Routes map to `route/index.html`, unknown paths get `404.html`, and path traversal outside `web_dist` is refused. Each HTML response has the per-launch token substituted into `<meta name="mnemo-token">`; hashed `/_next/static` assets are cached as immutable. `HEAD` is answered for Next.js route prefetches.
+
+Security is as before: bound to `127.0.0.1` (ports 7787–7796), a `secrets.token_urlsafe(16)` token required as `X-Dashboard-Token` on `/api/*`, and a local-`Host` allowlist on every request.
+
+Client state (device probes, search results, operation log) lives in one React context in the root layout, so navigating to a session and back keeps the results. The session view renders a window of 181 messages around the hit for sessions over 240 messages; windowing, match stepping, timeline rows and body tokenizing are pure functions in `web/src/lib/transcript.ts`.
 
 ## Why Python and SQLite
 
-Everything has to run unchanged on stock devboxes, which often have only Python 3.7 or 3.8 and no package manager access. A standard-library-only implementation installs with `rsync`, and SQLite FTS5 comfortably handles millions of messages on one machine. The hot paths are SQLite queries and SSH round-trips, not Python.
+Everything that runs on a device has to work unchanged on stock devboxes, which often have only Python 3.7 or 3.8 and no package manager access. The indexer, search and server are standard-library Python and install with `rsync` (the web UI ships prebuilt), and SQLite FTS5 comfortably handles millions of messages on one machine. The hot paths are SQLite queries and SSH round-trips, not Python.
