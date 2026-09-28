@@ -17,6 +17,8 @@
 [![MCP](https://img.shields.io/badge/MCP-server-8A2BE2)](docs/agent-tools.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
+**[官网](https://szupzj18.github.io/mnemo/)** · [文档](docs/getting-started.md) · [更新日志](CHANGELOG.md)
+
 [English](README.md) · 简体中文
 
 </div>
