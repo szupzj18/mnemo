@@ -51,6 +51,7 @@ pnpm e2e:docker                                # + pixel diffs in CI's Linux ima
 - **UI changes:** run `pnpm e2e`, and if the change is visual, regenerate baselines with `pnpm e2e:docker --update` and review the new PNGs before committing them.
 - **MCP changes:** send `initialize` and `tools/list` over stdio and check the schemas.
 - **Remote changes:** test against a real SSH host when you can. Unreachable hosts must degrade to a warning, never a failure.
+- **Schema changes:** bump `SCHEMA_VERSION` in `mnemo/index.py`, keep reads working on the previous schema, and make `Index.incomplete_paths()` recognize rows an older writer would produce. Tell users to run `mnemo upgrade --remotes` (CHANGELOG + docs). Long-running MCP servers keep the old code until their agent session restarts, so never assume every writer has upgraded.
 
 ## Adding an agent adapter
 

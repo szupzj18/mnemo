@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 from . import remote as remote_mod
-from .index import DEFAULT_DB_PATH, Index
+from .index import DEFAULT_DB_PATH, Index, IndexTooNew
 from .remote import LOCAL, RemoteError
 from .search import DEFAULT_KINDS, get_session, raw_session
 from .sources import SOURCES
@@ -299,7 +299,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"ok": True, "session": value})
             else:
                 self._json({"error": "not found"}, 404)
-        except (RemoteError, ValueError, KeyError) as exc:
+        except (RemoteError, ValueError, KeyError, IndexTooNew) as exc:
             self._json({"ok": False, "error": str(exc)}, 400)
 
 
