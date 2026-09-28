@@ -35,8 +35,16 @@ def write(path, rows):
 # Each script step: (seconds_after_previous, kind, payload)
 #   kind: user | say | think | call(name, args) | result(text)
 
+# Fixed ids keep file names stable across runs (screenshot regression tests).
+DEMO_NS = uuid.UUID("6f0c1a52-3b1e-4c7e-9a55-0d6e2b7c1f00")
+
+
+def sid_for(kind, project, start):
+    return str(uuid.uuid5(DEMO_NS, "%s:%s:%s" % (kind, project, start.isoformat())))
+
+
 def claude(project, start, steps):
-    sid = str(uuid.uuid4())
+    sid = sid_for("claude", project, start)
     cwd = USER_HOME + "/" + project
     t = start
     rows = []
@@ -58,7 +66,7 @@ def claude(project, start, steps):
 
 
 def codex(project, start, steps):
-    sid = str(uuid.uuid4())
+    sid = sid_for("codex", project, start)
     cwd = USER_HOME + "/" + project
     t = start
     rows = [{"type": "session_meta", "timestamp": iso(t), "payload": {"id": sid, "cwd": cwd}}]
@@ -81,7 +89,7 @@ def codex(project, start, steps):
 
 
 def pi(project, start, steps):
-    sid = str(uuid.uuid4())
+    sid = sid_for("pi", project, start)
     cwd = USER_HOME + "/" + project
     t = start
     rows = [{"type": "session", "id": sid, "cwd": cwd, "timestamp": iso(t)}]
