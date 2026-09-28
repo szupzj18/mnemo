@@ -144,8 +144,8 @@ class InstallScriptTest(unittest.TestCase):
         src = os.path.join(root, "source")
         git = lambda *a: subprocess.run(["git", "-C", src] + list(a), check=True, capture_output=True)
         subprocess.run(["git", "init", "-q", src], check=True)
-        git("fetch", "-q", REPO, "HEAD")
-        git("checkout", "-q", "-b", "main", "FETCH_HEAD")
+        git("fetch", "-q", "--depth", "1", REPO, "HEAD")  # CI checkouts are shallow
+        git("checkout", "-q", "-B", "main", "FETCH_HEAD")  # init may already name the unborn branch main
         return src
 
     def test_install_then_upgrade(self):
