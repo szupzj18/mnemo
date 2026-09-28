@@ -1,0 +1,66 @@
+# AGENTS.md
+
+Guidance for coding agents (Claude Code, Codex, Pi, …) working in this repository. Human contributors should read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+
+## Project in one paragraph
+
+Mnemo indexes the local session logs of coding agents into SQLite FTS5 and exposes search, context and full-session reads through a CLI, an MCP server, a Pi extension and a local web dashboard. Remote devices are searched by SSH fan-out, and the results are merged with Reciprocal Rank Fusion. See [docs/architecture.md](docs/architecture.md).
+
+## Hard constraints
+
+- **Standard library only.** Don't add third-party Python packages, and don't add a build step for the dashboard. The code must run unchanged on Python 3.7 (stock devboxes). Avoid features newer than 3.7, such as the walrus operator in hot paths, `dict | dict`, `match` and `str.removeprefix`.
+- **The dashboard stays local.** It binds to `127.0.0.1`, every `/api/*` call must carry the per-launch token, and the `Host` allowlist must stay in place.
+- **Session content stays on its device.** Remote reads (`context`, `session`, raw) execute on the remote and return only the requested messages. Don't add code paths that copy remote indexes or logs.
+- **Never commit indexes or session data.** `*.db` and `*.db-*` are gitignored, so keep it that way. Don't commit screenshots of real sessions. Generate synthetic ones with `scripts/make-demo-home.py`.
+- **Forwarded searches must keep `--host local`,** or meshed devices will chain queries (see `remote.search_argv`).
+
+## Layout
+
+```text
+bin/mnemo                    launcher (resolves its own symlink)
+mnemo/cli.py                 argparse front end
+mnemo/index.py               schema + incremental sync
+mnemo/search.py              FTS5 query builder, BM25, context/session/raw reads
+mnemo/remote.py              SSH exec, fan-out, RRF, rsync install
+mnemo/mcp_server.py          stdio JSON-RPC MCP server
+mnemo/dashboard.py           HTTP server + single inline PAGE (HTML/CSS/JS)
+mnemo/sources/{claude,codex,pi}.py   per-agent log adapters
+integrations/pi/mnemo.ts     Pi extension (thin CLI wrapper)
+integrations/skills/mnemo/   agent skill (CLI-driven)
+scripts/make-demo-home.py    synthetic sessions for testing and screenshots
+```
+
+## Verify your change
+
+There is no test suite yet. At minimum, run:
+
+```bash
+python3 -m py_compile mnemo/*.py mnemo/sources/*.py
+
+# end-to-end against synthetic data, never your real sessions
+python3 scripts/make-demo-home.py /tmp/mnemo-demo
+HOME=/tmp/mnemo-demo ./bin/mnemo index -v
+HOME=/tmp/mnemo-demo ./bin/mnemo search backoff --json --limit 3
+HOME=/tmp/mnemo-demo ./bin/mnemo status
+```
+
+- **Dashboard changes:** check the inline script parses (`node --check` on the extracted `<script>`), then check the UI visually in a real browser in both light and dark themes. Don't reason about layout statically.
+- **MCP changes:** send `initialize` and `tools/list` over stdio and check the schemas.
+- **Remote changes:** test against a real SSH host when you can. Unreachable hosts must degrade to a warning, never a failure.
+
+## Adding an agent adapter
+
+1. Create `mnemo/sources/<agent>.py` with a `Source` subclass that implements `files()` and `parse(path, clip_text=True)`. `parse` returns `(session_id, cwd, [(lineno, Msg), …])`.
+2. Map the agent's records onto `role` ∈ {user, assistant, tool} and `kind` ∈ {text, summary, reasoning, tool_call, tool_result}. Drop injected boilerplate.
+3. Register it in `mnemo/sources/__init__.py`.
+4. Add the source to the `source` descriptions in `mcp_server.py`, `integrations/pi/mnemo.ts` and the skill.
+5. Extend `scripts/make-demo-home.py` with a sample session, and update the docs (README tables, `docs/getting-started.md` log locations).
+
+## Docs
+
+When you change user-visible behavior, update in the same PR:
+
+- `README.md` and `README.zh-CN.md`, which should stay in sync
+- the relevant page under `docs/`
+- `integrations/skills/mnemo/SKILL.md`, if agents should use a tool differently
+- `CHANGELOG.md`, under *Unreleased*

@@ -29,7 +29,7 @@ mnemo search "关键词" --json
 - Filters (all optional):
   - `--source claude,codex,pi` — restrict to agents
   - `--host local,devbox-109` — restrict to devices
-  - `--cwd <substring>` — restrict to working directory, e.g. `--cwd toutiao-dev`
+  - `--cwd <substring>` — restrict to working directory, e.g. `--cwd my-service`
   - `--since YYYY-MM-DD`
   - `--limit N` (default 20)
   - `--kind text,summary,tool_call,tool_result,reasoning` (default excludes reasoning; pass `--all-kinds` to include it)
@@ -59,7 +59,7 @@ Indexed message bodies are capped at 20k characters each (long tool outputs are 
 
 ## Keeping the index fresh
 
-The local index updates incrementally on MCP server / Pi tool startup; remote devices sync automatically right before each search (sub-second when idle). If the CLI reports nothing or the user just had a conversation that should be searchable:
+The MCP server syncs the local index incrementally on startup; the CLI and Pi tools do not, so run `mnemo index` first when recent sessions matter. Remote devices sync automatically right before each search (sub-second when idle). If the CLI reports nothing or the user just had a conversation that should be searchable:
 
 ```bash
 mnemo index      # local incremental, usually under a second when idle

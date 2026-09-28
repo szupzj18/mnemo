@@ -18,7 +18,7 @@ class RemoteError(Exception):
     pass
 
 
-# Machines provisioned with a stock MIT krb5.conf (missing the Byted realm)
+# Machines provisioned with a stock MIT krb5.conf (missing the corporate realm)
 # keep a user-level override at ~/.krb5.conf; point ssh/GSSAPI at it when the
 # launcher itself was started without KRB5_CONFIG in its environment.
 _USER_KRB5_CONF = os.path.join(os.path.expanduser("~"), ".krb5.conf")
