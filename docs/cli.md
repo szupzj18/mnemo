@@ -66,6 +66,22 @@ mnemo index [--source S] [--rebuild] [-v]
 
 Incremental sync of local session logs. Files whose size or mtime are unchanged are skipped, and deleted files are dropped from the index. `-v` logs each file. `--rebuild` drops the index and reparses every session from scratch in place; prefer `mnemo upgrade` after updating Mnemo.
 
+## mnemo setup
+
+```bash
+mnemo setup [--agent claude,codex,pi] [--dry-run]
+```
+
+Connects every coding agent found on this machine and reports each step as added, fixed, ok, skipped or failed:
+
+| Agent | What it does |
+|---|---|
+| Claude Code | `claude mcp add --scope user mnemo -- <mnemo> mcp`, and links the skill into `~/.claude/skills/mnemo` |
+| Codex | appends `[mcp_servers.mnemo]` to `~/.codex/config.toml` (backed up first) |
+| Pi | links the extension into `~/.pi/agent/extensions/mnemo.ts` |
+
+Idempotent: already-configured agents are left alone, stale symlinks are repaired, real files are never replaced. Restart running agent sessions afterwards.
+
 ## mnemo upgrade
 
 ```bash

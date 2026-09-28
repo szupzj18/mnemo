@@ -15,13 +15,23 @@ python3 -c "import sqlite3; sqlite3.connect(':memory:').execute('create virtual 
 ## Install
 
 ```bash
+curl -fsSL https://szupzj18.github.io/mnemo/install.sh | sh
+```
+
+The script checks Python 3.7+ and SQLite FTS5, clones to `~/mnemo` (`MNEMO_DIR`), links `mnemo` into `~/.local/bin` (`MNEMO_BIN_DIR`), builds the index and runs `mnemo setup` (skip with `MNEMO_NO_SETUP=1`). Re-running it upgrades: `git pull`, then `mnemo upgrade`. It refuses to touch a checkout with local changes or a directory that is not a mnemo checkout.
+
+Alternatively `uv tool install git+https://github.com/szupzj18/mnemo` or `pipx install git+https://github.com/szupzj18/mnemo`, then `mnemo index && mnemo setup`.
+
+By hand:
+
+```bash
 git clone https://github.com/szupzj18/mnemo.git ~/mnemo
 ln -s ~/mnemo/bin/mnemo ~/.local/bin/mnemo
 mnemo index -v
-mnemo status
+mnemo setup
 ```
 
-`bin/mnemo` resolves the package through its own symlink, so a symlink on `PATH` is all you need. To update, run `git pull` in the clone.
+`bin/mnemo` resolves the package through its own symlink, so a symlink on `PATH` is all you need.
 
 The first `mnemo index` parses every session file. Expect about 30 s for a few thousand sessions. Later runs only re-read files whose size or mtime changed.
 
@@ -42,6 +52,8 @@ Mnemo keeps its own state in `~/.mnemo/`:
 | `ssh-<name>` | SSH ControlMaster sockets |
 
 ## Connect your agents
+
+`mnemo setup` does all of the below for every agent it detects (a CLI on `PATH` or its config directory): it registers the MCP server with `claude mcp add`, appends `[mcp_servers.mnemo]` to `~/.codex/config.toml` after backing it up, and links the Claude skill and the Pi extension. Stale symlinks from an older checkout are repaired; real files are never replaced. `--dry-run` previews, `--agent codex` limits it. The manual steps:
 
 ### Claude Code
 

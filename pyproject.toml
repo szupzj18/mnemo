@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mnemo"
+dynamic = ["version"]
+description = "One memory for all your coding agents: search Claude Code, Codex and Pi sessions across machines"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.7"
+dependencies = []
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Environment :: Console",
+  "Topic :: Software Development",
+]
+
+[project.urls]
+Homepage = "https://szupzj18.github.io/mnemo/"
+Repository = "https://github.com/szupzj18/mnemo"
+Changelog = "https://github.com/szupzj18/mnemo/blob/main/CHANGELOG.md"
+
+[project.scripts]
+mnemo = "mnemo.cli:main"
+
+[tool.setuptools]
+packages = ["mnemo", "mnemo.sources"]
+
+[tool.setuptools.dynamic]
+version = { attr = "mnemo.__version__" }
+
+[tool.setuptools.package-data]
+# The prebuilt dashboard and the agent integrations `mnemo setup` links.
+mnemo = ["web_dist/**/*", "integrations/**/*"]

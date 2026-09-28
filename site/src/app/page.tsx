@@ -4,7 +4,7 @@ import { CopyCommand } from "@/components/copy-command"
 import { InstallTabs } from "@/components/install-tabs"
 import { GitHubMark, Logo } from "@/components/logo"
 import { Mesh } from "@/components/mesh"
-import { DOCS, INSTALL, REPO, asset } from "@/lib/site"
+import { DOCS, INSTALL, REPO, UV_INSTALL, asset } from "@/lib/site"
 
 const FEATURES = [
   { icon: Boxes, title: "Every agent, one index", body: "Claude Code, Codex and Pi logs, normalized into one SQLite FTS5 index." },
@@ -192,14 +192,24 @@ export default function Home() {
         </Section>
 
         {/* install */}
-        <Section id="install" eyebrow="Get started" title="Two minutes to install." lead="Clone, index, then connect the agents you use.">
-          <div className="grid gap-6 lg:grid-cols-2">
-            <div className="space-y-3">
-              <CopyCommand command="git clone https://github.com/szupzj18/mnemo ~/mnemo" />
-              <CopyCommand command="ln -s ~/mnemo/bin/mnemo ~/.local/bin/mnemo" />
-              <CopyCommand command="mnemo index" />
+        <Section id="install" eyebrow="Get started" title="One command." lead="Installs mnemo, builds the index and connects every agent it finds. Run it again to upgrade.">
+          <div className="grid gap-10 lg:grid-cols-2">
+            <div className="space-y-6">
+              <CopyCommand command={INSTALL} />
+              <ul className="space-y-2 text-sm text-neutral-600 dark:text-neutral-400">
+                <li>Checks Python 3.7+ and SQLite FTS5, clones to <code className="font-mono text-[13px]">~/mnemo</code>, links <code className="font-mono text-[13px]">mnemo</code> into <code className="font-mono text-[13px]">~/.local/bin</code>.</li>
+                <li>Runs <code className="font-mono text-[13px]">mnemo setup</code>: registers the MCP server for Claude Code and Codex, links the skill and the Pi extension. Anything already configured is left alone.</li>
+                <li>On re-run: pulls, then <code className="font-mono text-[13px]">mnemo upgrade</code> backs up and rebuilds the index.</li>
+              </ul>
+              <div>
+                <div className="mb-2 text-sm text-neutral-500">Prefer a Python tool manager?</div>
+                <CopyCommand command={UV_INSTALL} />
+              </div>
             </div>
-            <InstallTabs />
+            <div>
+              <div className="mb-3 text-sm text-neutral-500">Or connect agents by hand</div>
+              <InstallTabs />
+            </div>
           </div>
         </Section>
       </main>

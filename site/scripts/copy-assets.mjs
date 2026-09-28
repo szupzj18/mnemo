@@ -8,6 +8,8 @@ const site = join(dirname(fileURLToPath(import.meta.url)), "..")
 const src = join(site, "..", "docs", "assets")
 const dest = join(site, "public", "img")
 mkdirSync(dest, { recursive: true })
+// The installer is served from the site root: /install.sh
+cpSync(join(site, "..", "scripts", "install.sh"), join(site, "public", "install.sh"))
 for (const f of ["logo.svg", "logo-dark.svg", "logo-small.svg", "search.png", "search-dark.png", "session.png", "session-dark.png"]) {
   cpSync(join(src, f), join(dest, f))
 }
