@@ -253,7 +253,6 @@ See [SECURITY.md](SECURITY.md) to report a vulnerability.
 - [ ] Hybrid semantic search (`sqlite-vec` + local embeddings) alongside keyword search
 - [ ] Length caps on `tool_result` in `context` responses to bound per-call token cost
 - [ ] External-content FTS table with compressed bodies (~30–40% smaller index)
-- [ ] Auto-sync the local index before CLI / Pi searches
 
 ## Contributing
 

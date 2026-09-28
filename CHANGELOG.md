@@ -11,6 +11,9 @@ All notable changes to this project are documented here. The format follows [Kee
 - Documentation site under `docs/`, a Chinese README, `AGENTS.md`, `CONTRIBUTING.md` and `SECURITY.md`.
 - `scripts/make-demo-home.py` to generate synthetic sessions for testing and screenshots.
 
+### Fixed
+- Searches from the CLI, the Pi extension and the dashboard now sync the local index first, and the MCP server syncs before every `search_sessions` instead of only at startup. Previously sessions written after the last `mnemo index` (or after the MCP server started) were invisible. Syncs within 2 s of the last one are skipped, concurrent writers wait up to 10 s, and a failed refresh falls back to the existing index with a warning. `mnemo search --no-sync` opts out.
+
 ### Changed
 - Dashboard restyled with flat, hairline-bordered surfaces and matching light and dark themes.
 - Dashboard device status: avatar cards with a live status dot, host tag, status line, per-agent counts and relative sync time; remotes are probed automatically on load.

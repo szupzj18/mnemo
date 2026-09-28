@@ -42,6 +42,10 @@ CREATE VIRTUAL TABLE IF NOT EXISTS messages USING fts5(
 
 DEFAULT_KINDS = ("text", "summary", "tool_call", "tool_result")
 
+# Searches sync first; back-to-back callers (a remote's forwarded `index` then
+# `search`, an agent firing several queries) skip the re-stat within this window.
+SYNC_MIN_INTERVAL = 2.0
+
 
 class Index:
     def __init__(self, db_path=None):
@@ -49,6 +53,9 @@ class Index:
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self.db = sqlite3.connect(self.db_path, isolation_level=None)
         self.db.row_factory = sqlite3.Row
+        # MCP server, CLI and dashboard may sync concurrently; wait for the
+        # writer instead of failing with "database is locked".
+        self.db.execute("PRAGMA busy_timeout = 10000")
         self.db.executescript(SCHEMA)
 
     def close(self):
@@ -104,6 +111,16 @@ class Index:
             (str(time.time()),),
         )
         return stats
+
+    def sync_if_stale(self, min_interval=SYNC_MIN_INTERVAL, logger=None):
+        """Incremental sync unless one finished within min_interval seconds.
+
+        Returns the sync stats, or None when skipped.
+        """
+        last = self.last_sync()
+        if last is not None and 0 <= time.time() - last < min_interval:
+            return None
+        return self.sync(logger=logger)
 
     def _reindex_file(self, source, path, mtime, size, stats, log):
         try:

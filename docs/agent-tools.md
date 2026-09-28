@@ -91,7 +91,7 @@ Returns every indexed message of the session file, ordered by time, along with s
 
 ## reindex
 
-Incrementally re-scans local session files. It costs about 0.1 s when nothing changed, and it accepts an optional `source` filter. The MCP server already runs it at startup. Call it when the user says something they just did should be findable.
+Incrementally re-scans local session files. It costs about 0.1 s when nothing changed, and it accepts an optional `source` filter. `search_sessions` already syncs before every search, so agents rarely need this; it is kept for forcing a sync explicitly.
 
 ## Message schema
 

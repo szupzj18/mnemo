@@ -2,6 +2,7 @@ import concurrent.futures
 import json
 import os
 import shlex
+import sqlite3
 import subprocess
 
 from .index import Index
@@ -188,9 +189,17 @@ def _rrf(per_host, limit):
     return [payload[k] for k in keys[:limit]]
 
 
-def _local_search(db_path, query, sources, kinds, cwd, since, limit):
+def _local_search(db_path, query, sources, kinds, cwd, since, limit, sync=False, warnings=None):
     idx = Index(db_path)
     try:
+        if sync:
+            # A failed refresh must not cost the user their results: search
+            # the index as it stands and say it may be stale.
+            try:
+                idx.sync_if_stale()
+            except (sqlite3.Error, OSError) as exc:
+                if warnings is not None:
+                    warnings.append("local index not refreshed (%s); results may miss recent sessions" % exc)
         return local_search(
             idx, query, sources=sources, kinds=kinds,
             cwd=cwd, since=since, limit=limit,
@@ -209,9 +218,13 @@ def fan_out_search(
     limit=20,
     hosts=None,
     sync_remotes=True,
+    sync_local=True,
 ):
     """Search local index plus registered remotes in parallel.
 
+    Every device's index is synced incrementally before it is searched
+    (sync_local / sync_remotes), so sessions written since the last
+    `mnemo index` are found.
     hosts: optional subset (names); None means local + every remote.
     Returns (hits, warnings).
     """
@@ -232,6 +245,7 @@ def fan_out_search(
         if include_local:
             jobs[pool.submit(
                 _local_search, index.db_path, query, sources, kinds, cwd, since, limit,
+                sync_local, warnings,
             )] = LOCAL
         for r in selected:
             jobs[pool.submit(

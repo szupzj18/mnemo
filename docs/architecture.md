@@ -53,7 +53,7 @@ CREATE TABLE file_ranges (path, lo, hi);   -- contiguous rowid range per file
 CREATE TABLE meta        (key PRIMARY KEY, value);
 ```
 
-**Incremental sync.** Mnemo stats every session file and compares its `(mtime, size)` with `files`. When a file changed, its rowid range is deleted and the file is re-inserted as one contiguous block, which is simple and correct for append-only JSONL. Deleted files are dropped.
+**Incremental sync.** Mnemo stats every session file and compares its `(mtime, size)` with `files`. When a file changed, its rowid range is deleted and the file is re-inserted as one contiguous block, which is simple and correct for append-only JSONL. Deleted files are dropped. Searches call `sync_if_stale()`, which runs this sync unless one finished in the last 2 s; `busy_timeout` makes concurrent writers wait instead of failing.
 
 **Context in O(1) of file size.** `file_ranges` maps a file to `[lo, hi]` rowids. A context window is a rowid range query, so it doesn't need to re-parse the file. On the largest session (44k lines), a lookup takes 7 ms compared with 316 ms for re-parsing.
 
@@ -72,7 +72,7 @@ retry 退避  →  (body : "retry"*) AND (body : "退避"* OR grams : ("退避")
 
 ## Federation
 
-`fan_out_search` runs the local search and one SSH call per remote in a `ThreadPoolExecutor`. Each remote runs `mnemo index` and then `mnemo search … --json --host local`, and its hits are tagged with the device name. Results are merged by Reciprocal Rank Fusion keyed on `(host, path, lineno)`:
+`fan_out_search` runs the local search (sync, then query) and one SSH call per remote in a `ThreadPoolExecutor`. Each remote runs `mnemo index` and then `mnemo search … --json --host local`, and its hits are tagged with the device name. Results are merged by Reciprocal Rank Fusion keyed on `(host, path, lineno)`:
 
 ```text
 score(hit) = Σ 1 / (60 + rank_on_device)

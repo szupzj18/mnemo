@@ -26,9 +26,10 @@ Alias: `mnemo query`.
 | `--since` | — | Only messages on or after this date |
 | `--host` | local + all remotes | Comma-separated device names; `local` means this machine |
 | `--limit` | 20 | Max hits after merging |
+| `--no-sync` | off | Skip the local incremental sync (remotes still sync) |
 | `--json` | off | JSON array of hits |
 
-Warnings about unreachable devices go to stderr and don't fail the command. Remote devices re-index incrementally before each search. The local index doesn't, so run `mnemo index` first if you need the latest sessions.
+Every device, local and remote, syncs its index incrementally before it is searched, so sessions from a minute ago are found. Warnings about unreachable devices, or a local index that couldn't be refreshed, go to stderr and don't fail the command.
 
 ## mnemo context
 
@@ -83,7 +84,7 @@ mnemo remote remove <name>                        # unregister; leaves files on 
 
 ## mnemo mcp
 
-Runs the stdio MCP server (JSON-RPC, zero dependencies). It syncs the local index at startup and then serves `search_sessions`, `get_context`, `get_session` and `reindex`.
+Runs the stdio MCP server (JSON-RPC, zero dependencies). It syncs the local index at startup, then serves `search_sessions` (which syncs again before each search), `get_context`, `get_session` and `reindex`.
 
 ## mnemo dashboard
 

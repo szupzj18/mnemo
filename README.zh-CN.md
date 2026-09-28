@@ -246,7 +246,6 @@ flowchart LR
 - [ ] 语义检索（`sqlite-vec` + 本地 embedding）与关键词检索混合
 - [ ] `context` 返回的 `tool_result` 加长度上限，控制单次 token 上界
 - [ ] external-content FTS 表 + 正文压缩（索引预计小 30–40%）
-- [ ] CLI / Pi 搜索前自动同步本机索引
 
 ## 参与贡献
 

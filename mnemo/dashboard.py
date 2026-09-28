@@ -76,7 +76,8 @@ def diagnose_search(query, hosts, limit):
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(selected) + 1) as pool:
         if include_local:
             jobs[pool.submit(_time, lambda: remote_mod._local_search(
-                DEFAULT_DB_PATH, query, None, list(DEFAULT_KINDS), None, None, limit))] = LOCAL
+                DEFAULT_DB_PATH, query, None, list(DEFAULT_KINDS), None, None, limit,
+                True, warnings))] = LOCAL
         for r in selected:
             def run_remote(r=r):
                 return remote_mod._remote_search(

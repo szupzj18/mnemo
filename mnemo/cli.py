@@ -63,6 +63,7 @@ def cmd_search(args):
             since=_since(args.since),
             limit=args.limit,
             hosts=hosts,
+            sync_local=not args.no_sync,
         )
     except RemoteError as exc:
         print("error: %s" % exc, file=sys.stderr)
@@ -73,7 +74,7 @@ def cmd_search(args):
         print(json.dumps(hits, ensure_ascii=False, indent=2))
         return 0
     if not hits:
-        print("no matches (try `mnemo index` first)")
+        print("no matches")
         return 1
     color = sys.stdout.isatty()
     for i, h in enumerate(hits, 1):
@@ -294,6 +295,8 @@ def main(argv=None):
     sp.add_argument("--since", help="YYYY-MM-DD")
     sp.add_argument("--limit", type=int, default=20)
     sp.add_argument("--host", help="comma-separated devices (default: local + all remotes)")
+    sp.add_argument("--no-sync", action="store_true",
+                    help="skip the incremental local index sync before searching")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_search)
 

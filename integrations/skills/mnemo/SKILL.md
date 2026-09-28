@@ -59,7 +59,7 @@ Indexed message bodies are capped at 20k characters each (long tool outputs are 
 
 ## Keeping the index fresh
 
-The MCP server syncs the local index incrementally on startup; the CLI and Pi tools do not, so run `mnemo index` first when recent sessions matter. Remote devices sync automatically right before each search (sub-second when idle). If the CLI reports nothing or the user just had a conversation that should be searchable:
+Every search syncs each device's index incrementally first (sub-second when idle), so sessions from moments ago, in any agent on any device, are searchable without extra steps. To force a sync or inspect the index:
 
 ```bash
 mnemo index      # local incremental, usually under a second when idle

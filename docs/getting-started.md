@@ -62,7 +62,7 @@ args = ["mcp"]
 startup_timeout_sec = 120
 ```
 
-Use an absolute path, because MCP servers don't always inherit your shell's `PATH`. The generous `startup_timeout_sec` covers the incremental sync the server runs at startup.
+Use an absolute path, because MCP servers don't always inherit your shell's `PATH`. The generous `startup_timeout_sec` covers the first full index if the server is the first thing to build it.
 
 ### Pi
 
@@ -78,18 +78,11 @@ The extension shells out to the CLI. It resolves the binary as `$MNEMO_BIN`, the
 
 ## Keeping the index fresh
 
-| Entry point | When the local index syncs |
-|---|---|
-| MCP server | On server startup, plus on demand through the `reindex` tool |
-| CLI / Pi extension | Only when you run `mnemo index` |
-| Remote devices | Automatically, right before each federated search |
+Nothing to schedule. Every search, whether from MCP, Pi, the CLI or the dashboard, first runs an incremental sync of the local index, and every remote syncs its own index before answering. A sync with nothing to do takes about 0.1 s. Searches that arrive within 2 s of the last sync skip it, so a burst of queries only pays once.
 
-A sync with nothing to do takes about 0.1 s. To keep CLI and Pi searches current, run it on a schedule:
+If another process is writing the index, the search waits up to 10 s. If the sync still can't run, the search goes ahead on the index as it stands and warns that recent sessions may be missing.
 
-```bash
-# crontab -e
-*/10 * * * * $HOME/.local/bin/mnemo index >/dev/null 2>&1
-```
+`mnemo search --no-sync` skips the refresh, for scripts that issue many queries in a row. `mnemo index` still exists for the first full build and for forcing a sync by hand.
 
 ## Try it
 
@@ -105,7 +98,7 @@ mnemo dashboard                             # browser UI
 
 | Symptom | Fix |
 |---|---|
-| `no matches (try mnemo index first)` | The index is empty or stale. Run `mnemo index -v`. |
+| `no matches` for something you know exists | Check `mnemo status` for the source and session counts. A session in a directory Mnemo doesn't scan (see *Where Mnemo looks*) is never indexed. |
 | `no such module: fts5` | Your Python's SQLite lacks FTS5. Use the system Python on macOS or a distribution Python ≥ 3.7. |
 | Agent doesn't use Mnemo on its own | Install the skill as well as the MCP server, then start a new session. |
 | A remote is missing from results | Check stderr for `unreachable` warnings, then run `mnemo remote list` and the dashboard's connectivity test. See [Multi-device](multi-device.md). |
