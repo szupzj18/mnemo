@@ -12,6 +12,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 - Dashboard restyled with flat, hairline-bordered surfaces and matching light and dark themes.
+- Dashboard device status: avatar cards with a live status dot, host tag, status line, per-agent counts and relative sync time; remotes are probed automatically on load.
+- Search results use the official Claude, OpenAI (Codex) and pi marks.
+- Generic search placeholder text.
 
 ## [0.1.0] - 2026-09-24
 

@@ -377,6 +377,39 @@ code,.mono { font-family:"SF Mono",ui-monospace,SFMono-Regular,Menlo,monospace; 
 .dev .meta { color:var(--text-2); font-size:12px; display:grid; gap:3px; }
 .dev .meta b { color:var(--text); font-weight:500; }
 .dev .acts { display:flex; gap:7px; flex-wrap:wrap; margin-top:2px; }
+/* device status cards (dashboard) */
+.card h2 .h2sub { font-weight:400; font-size:12.5px; color:var(--text-3); margin-left:4px; }
+.dstat { position:relative; background:var(--surface-2); border:1px solid var(--border); border-radius:16px;
+  padding:18px 20px 16px; display:flex; flex-direction:column; gap:14px; min-height:176px;
+  transition:border-color .15s, box-shadow .15s; }
+.dstat:hover { border-color:var(--border-strong); box-shadow:var(--shadow); }
+.dstat .top { display:flex; align-items:center; gap:14px; min-width:0; }
+.dstat .av { position:relative; flex:none; width:52px; height:52px; border-radius:50%; display:grid; place-items:center;
+  background:hsl(var(--h) 70% 92%); color:hsl(var(--h) 45% 38%); }
+.dstat .av svg { width:24px; height:24px; }
+.dstat .av .dot { position:absolute; right:0; bottom:1px; width:13px; height:13px; border-radius:50%;
+  background:var(--text-3); box-shadow:0 0 0 3px var(--surface-2); }
+.dstat .av .dot.ok { background:var(--ok); } .dstat .av .dot.bad { background:var(--err); }
+.dstat .av .dot.checking { background:var(--warn); animation:pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity:.35; } }
+.dstat .who { min-width:0; display:flex; flex-direction:column; align-items:flex-start; gap:6px; }
+.dstat .nm { font-size:16px; font-weight:700; letter-spacing:-.01em; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dstat .tag { max-width:100%; padding:2px 10px; border-radius:999px; border:1px solid var(--border-strong);
+  background:var(--surface-soft); color:var(--text-2); font-size:12px; font-weight:500;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dstat .desc { color:var(--text-2); font-size:13.5px; line-height:1.55; }
+.dstat .desc .err { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; word-break:break-all; }
+.dstat .desc .srcs { display:block; margin-top:3px; color:var(--text-3); font-size:12px; }
+.dstat .foot { margin-top:auto; display:flex; align-items:center; gap:8px; }
+.dstat .badge { padding:3px 11px; border-radius:8px; font-size:12.5px; font-weight:600; }
+.dstat .badge.ok { background:var(--ok-soft); color:var(--ok); } .dstat .badge.bad { background:var(--err-soft); color:var(--err); }
+.dstat .badge.checking { background:var(--warn-soft); color:var(--warn); } .dstat .badge.unknown { background:var(--surface-soft); color:var(--text-3); }
+.dstat .ago { margin-left:auto; color:var(--text-3); font-size:12.5px; font-variant-numeric:tabular-nums; }
+.dstat .act { width:28px; height:28px; padding:0; display:grid; place-items:center; border-radius:8px; opacity:0; transition:opacity .15s; }
+.dstat:hover .act, .dstat .act:focus-visible, .dstat .act:disabled { opacity:1; }
+.dstat .act svg { width:14px; height:14px; }
+.dstat .act:disabled svg { animation:rot .8s linear infinite; }
+@media (hover:none) { .dstat .act { opacity:1; } }
 .spin { display:inline-block; width:12px; height:12px; border:2px solid currentColor; border-top-color:transparent; border-radius:50%; animation:rot .7s linear infinite; vertical-align:-2px; }
 @keyframes rot { to { transform:rotate(360deg); } }
 
@@ -416,11 +449,16 @@ tbody tr:hover { background:var(--surface-soft); }
   cursor:pointer; transition:background .15s, border-color .15s; }
 .hit:hover { background:var(--surface-soft); }
 .hit-rank { color:var(--text-3); font-size:12px; padding-top:8px; text-align:center; font-variant-numeric:tabular-nums; }
-.hit-ico { width:36px; height:36px; border-radius:10px; display:grid; place-items:center; color:#fff; flex:none; }
-.hit-ico.claude { background:#d97757; }
-.hit-ico.codex { background:#52525b; }
-.hit-ico.pi { background:#7c3aed; }
-.hit-ico svg { width:17px; height:17px; }
+.hit-ico { width:36px; height:36px; border-radius:10px; display:grid; place-items:center; color:#fff; flex:none;
+  background:var(--surface-soft); box-shadow:inset 0 0 0 1px var(--border); }
+.hit-ico svg { width:19px; height:19px; }
+.hit-ico.claude { background:#d97757; box-shadow:none; }
+.hit-ico.claude svg { width:21px; height:21px; }
+.hit-ico.codex { background:#0f1115; }
+[data-theme="dark"] .hit-ico.codex { background:#000; box-shadow:inset 0 0 0 1px var(--border-strong); }
+.hit-ico.pi { background:#fff; box-shadow:inset 0 0 0 1px var(--border-strong); }
+[data-theme="dark"] .hit-ico.pi { background:var(--surface-soft); }
+.hit-ico.pi svg { width:18px; height:18px; }
 .hit-main { min-width:0; }
 .hit-meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px; color:var(--text-2); margin-bottom:4px; }
 .hit-snip { color:var(--text-2); font-size:13px; line-height:1.6; display:-webkit-box; -webkit-line-clamp:2;
@@ -633,7 +671,7 @@ mark { background:rgba(250,204,21,.38); color:inherit; border-radius:3px; paddin
     <div class="grid g4" id="statRow" style="margin-bottom:18px"></div>
 
     <div class="card">
-      <h2>设备健康状态<span class="spacer"></span>
+      <h2>设备状态<span class="h2sub">每台设备的实时连接与索引</span><span class="spacer"></span>
         <button onclick="go('devices')">管理设备 →</button></h2>
       <div class="grid g3" id="healthGrid"></div>
     </div>
@@ -644,7 +682,7 @@ mark { background:rgba(250,204,21,.38); color:inherit; border-radius:3px; paddin
     <div class="card">
       <h2>添加远程设备</h2>
       <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
-        <input type="text" id="addName" placeholder="名称，如 devbox-109" style="min-width:170px">
+        <input type="text" id="addName" placeholder="名称，如 devbox-1" style="min-width:170px">
         <input type="text" id="addHost" placeholder="SSH host（默认同名称）" style="min-width:170px">
         <input type="text" id="addBin" placeholder="远端启动器路径（可选）" style="min-width:240px; flex:1">
         <button class="primary" id="addBtn" onclick="addRemote()">rsync 安装并建索引</button>
@@ -665,7 +703,7 @@ mark { background:rgba(250,204,21,.38); color:inherit; border-radius:3px; paddin
     <div class="card">
       <h2>会话搜索</h2>
       <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
-        <input type="text" id="q" placeholder="查询词，如：实验 重开" style="min-width:260px; flex:1">
+        <input type="text" id="q" placeholder="搜索历史会话，多个关键词用空格分隔，如：部署 报错" style="min-width:260px; flex:1">
         <input type="number" id="lim" value="20" min="1" max="50" style="width:74px" title="每设备取数">
         <label class="chk"><input type="checkbox" id="allHosts" checked onchange="renderHostPickers()"> 全部设备</label>
         <span id="hostPickers" style="display:flex;gap:12px"></span>
@@ -808,25 +846,75 @@ function srcLine(sources) {
   return Object.entries(sources).map(([k,v]) =>
     '<span class="pill idle" style="margin:1px 4px 1px 0">' + esc(k) + ' ' + v.files + '/' + v.messages.toLocaleString() + '</span>').join('');
 }
+function fmtAgo(ts) {
+  if (!ts) return '从未同步';
+  const d = Math.max(0, Date.now() / 1000 - ts);
+  if (d < 60) return '刚刚同步';
+  if (d < 3600) return Math.floor(d / 60) + 'm前同步';
+  if (d < 86400) return Math.floor(d / 3600) + 'h前同步';
+  return Math.floor(d / 86400) + 'd前同步';
+}
+function hueOf(name) { let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
+function iconLaptop() { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg>'; }
+function iconServer() { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>'; }
+function iconSync() { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/></svg>'; }
+function srcSummary(sources) {
+  return Object.entries(sources || {}).map(([k, v]) => esc(k) + ' ' + v.files).join(' · ');
+}
+const STATE_LABEL = { ok:'就绪', bad:'离线', checking:'检测中', unknown:'未检测' };
+function statusCard(o) {
+  // o: { name, tag, icon, state, desc, srcs, ts, action }
+  return '<div class="dstat" style="--h:' + hueOf(o.name) + '">' +
+    '<div class="top"><div class="av">' + o.icon + '<span class="dot ' + o.state + '"></span></div>' +
+    '<div class="who"><span class="nm" title="' + esc(o.name) + '">' + esc(o.name) + '</span>' +
+    '<span class="tag" title="' + esc(o.tag) + '">' + esc(o.tag) + '</span></div></div>' +
+    '<div class="desc">' + o.desc + (o.srcs ? '<span class="srcs">' + o.srcs + '</span>' : '') + '</div>' +
+    '<div class="foot"><span class="badge ' + o.state + '">' + STATE_LABEL[o.state] + '</span>' +
+    '<span class="ago">' + (o.ts === undefined ? '' : fmtAgo(o.ts)) + '</span>' +
+    '<button class="act" title="增量同步" onclick="' + o.action + '">' + iconSync() + '</button></div></div>';
+}
 function renderHealth() {
-  const cards = ['<div class="dev"><div class="head"><span class="name">local（本机）</span>' +
-    '<span class="health ok" style="margin-left:auto">' + healthIcon('ok') + '</span></div>' +
-    '<div class="meta"><div>' + srcLine(STATUS.sources) + '</div><div>last sync: <b>' + fmtTs(STATUS.last_sync) + '</b></div></div>' +
-    '<div class="acts"><button onclick="syncLocal()">同步</button></div></div>'];
+  const t = totals(STATUS.sources);
+  const cards = [statusCard({
+    name: 'local', tag: '本机', icon: iconLaptop(), state: 'ok',
+    desc: '运行中，已索引 ' + t.files + ' 个会话、' + t.msgs.toLocaleString() + ' 条消息',
+    srcs: srcSummary(STATUS.sources), ts: STATUS.last_sync, action: 'syncLocal()',
+  })];
   cards.push(...STATUS.remotes.map(r => {
-    const p = PING[r.name]; const s = RSTAT[r.name];
-    const state = !p ? 'unknown' : p.ok ? 'ok' : 'bad';
-    return '<div class="dev"><div class="head"><span class="name">' + esc(r.name) + '</span>' +
-      '<span class="health ' + state + '">' + healthIcon(state) + '</span></div>' +
-      '<div class="meta"><div>' + esc(r.host) + (p ? (p.ok ? ' · <b style="color:var(--ok)">' + p.ms + ' ms</b>' : ' · <b style="color:var(--err)">不可达</b>') : ' · 未测试') + '</div>' +
-      (s ? '<div>' + srcLine(s.sources) + '</div><div>last sync: <b>' + fmtTs(s.last_sync) + '</b></div>' : '') + '</div>' +
-      '<div class="acts"><button onclick="pingOne(\'' + esc(r.name) + '\')">测试</button>' +
-      '<button onclick="remoteStatus(\'' + esc(r.name) + '\')">索引状态</button>' +
-      '<button onclick="syncOne(\'' + esc(r.name) + '\')">同步</button></div></div>';
+    const p = PING[r.name], s = RSTAT[r.name];
+    const state = CHECKING.has(r.name) ? 'checking' : !p ? 'unknown' : p.ok ? 'ok' : 'bad';
+    let desc;
+    if (state === 'checking') desc = '正在连接…';
+    else if (state === 'bad') {
+      const e = String(p.error || '未知错误').split('\n')[0];
+      desc = '<span class="err" title="' + esc(e) + '">无法连接：' + esc(e) + '</span>';
+    }
+    else if (state === 'unknown') desc = '尚未检测连接';
+    else desc = '在线，延迟 ' + p.ms + ' ms' + (s ? '，已索引 ' + totals(s.sources).files + ' 个会话' : '');
+    return statusCard({
+      name: r.name, tag: r.host, icon: iconServer(), state, desc,
+      srcs: s && state === 'ok' ? srcSummary(s.sources) : '',
+      ts: s ? s.last_sync : undefined, action: "syncOne('" + esc(r.name) + "')",
+    });
   }));
-  document.getElementById('healthGrid').innerHTML = cards.join('');
-  if (!STATUS.remotes.length) document.getElementById('healthGrid').innerHTML +=
+  const grid = document.getElementById('healthGrid');
+  grid.innerHTML = cards.join('');
+  if (!STATUS.remotes.length) grid.innerHTML +=
     '<div class="empty" style="grid-column:1/-1">还没有远程设备，到「设备管理」添加。</div>';
+}
+// Probe every remote once on load so the cards show live state instead of "未检测".
+const CHECKING = new Set();
+async function probeRemotes() {
+  if (!STATUS || !STATUS.remotes) return;
+  await Promise.all(STATUS.remotes.map(async r => {
+    CHECKING.add(r.name); renderHealth();
+    const x = await api('/api/remote-status?name=' + encodeURIComponent(r.name));
+    CHECKING.delete(r.name);
+    if (x.ok) { RSTAT[r.name] = x.status; PING[r.name] = { name:r.name, ok:true, ms:x.status.ms }; }
+    else PING[r.name] = { name:r.name, ok:false, error:x.error };
+    renderHealth(); renderDevices();
+  }));
+  refresh(true);   // stat row's online count depends on the probe results
 }
 
 /* ---------- devices page ---------- */
@@ -1283,18 +1371,21 @@ function iconDb() { return '<svg viewBox="0 0 24 24" fill="none" stroke="current
 function iconMsg() { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'; }
 function iconDev() { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="7" rx="2"/><rect x="2" y="13" width="20" height="7" rx="2"/><path d="M6 7.5h.01M6 16.5h.01"/></svg>'; }
 function iconClock() { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'; }
+// Official marks: Claude and OpenAI glyphs from simple-icons (CC0), pi logo from pi.dev.
 function srcIcon(s) {
   if (s === 'claude')
-    return '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5c.5 3.9 2.1 6.1 5.2 7.1-3.1 1-4.7 3.2-5.2 7.1-.5-3.9-2.1-6.1-5.2-7.1C9.9 8.6 11.5 6.4 12 2.5Z"/><path d="M18.5 14.5c.3 2 1.1 3.1 2.7 3.6-1.6.5-2.4 1.6-2.7 3.6-.3-2-1.1-3.1-2.7-3.6 1.6-.5 2.4-1.6 2.7-3.6Z" opacity=".85"/></svg>';
+    return '<svg viewBox="0 0 24 24" fill="currentColor" role="img" aria-label="Claude Code"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg>';
   if (s === 'codex')
-    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 8-4 4 4 4M16 8l4 4-4 4M13 5l-2 14"/></svg>';
-  return '<span style="font-family:Georgia,serif;font-size:16px;font-weight:700;line-height:1">π</span>';
+    return '<svg viewBox="0 0 24 24" fill="currentColor" role="img" aria-label="Codex"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>';
+  if (s === 'pi')
+    return '<svg role="img" aria-label="Pi" viewBox="165 165 470 470"><path fill="#F09082" d="M165.29 165.29H517.36V400H400V282.65H165.29Z"/><path fill="#4D9ABF" d="M165.29 282.65H282.65V400H400V517.36H282.65V634.72H165.29Z"/><path fill="#F1BE58" d="M517.36 400H634.72V634.72H517.36Z"/></svg>';
+  return '<span style="font-weight:700">' + esc(String(s || '?').charAt(0).toUpperCase()) + '</span>';
 }
 function iconChevron() {
   return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>';
 }
 
-refresh(true);
+refresh(true).then(probeRemotes);
 if (location.hash === '#devices' || location.hash === '#search' || location.hash === '#logs') go(location.hash.slice(1));
 else if (location.hash.startsWith('#session')) openSessionFromHash();
 </script>
