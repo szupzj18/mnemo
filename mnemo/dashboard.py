@@ -443,7 +443,8 @@ mark { background:rgba(250,204,21,.38); color:inherit; border-radius:3px; paddin
 .sess-bar .mini { min-width:48px; text-align:center; font-size:11.5px; padding:6px 9px; }
 #sessMeta { font-size:12px; color:var(--text-2); display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-width:0; }
 #sessMeta .muted { overflow:hidden; text-overflow:ellipsis; }
-.trans { max-width:748px; margin:0 auto; display:flex; flex-direction:column; gap:16px; padding-bottom:60px; }
+.trans { max-width:748px; margin:0 auto; display:flex; flex-direction:column; gap:16px;
+  padding:0 0 60px 84px; position:relative; }
 .loadbar { display:flex; justify-content:center; }
 .loadbar button { border:none; border-radius:14px; padding:4px 14px; font-size:12px;
   color:var(--text-2); background:var(--surface-soft); cursor:pointer; }
@@ -453,8 +454,27 @@ mark { background:rgba(250,204,21,.38); color:inherit; border-radius:3px; paddin
 .daysep { display:flex; align-items:center; gap:12px; color:var(--text-3); font-size:12px; }
 .daysep::before, .daysep::after { content:""; flex:1; height:1px; background:var(--border); }
 
+/* timeline rail: per-row segments overlap across the 16px flex gap */
+.rail { position:absolute; left:-18px; top:-16px; bottom:-16px; width:2px;
+  background:var(--border); pointer-events:none; }
+.rail.start { top:9px; }
+.rail.start::before { content:""; position:absolute; top:-5px; left:-4px; width:10px; height:10px;
+  border-radius:50%; background:var(--accent); border:2px solid var(--bg); box-sizing:border-box; }
+.rail.end { bottom:0; }
+.tmark { position:absolute; left:-84px; top:0; width:58px; text-align:right;
+  font-size:10.5px; line-height:18px; color:var(--text-3);
+  font-variant-numeric:tabular-nums; white-space:nowrap; pointer-events:none; }
+.tmark em { font-style:normal; color:var(--accent); margin-left:4px; }
+.tgap { position:relative; height:20px; margin:-8px 0; display:flex; align-items:center;
+  justify-content:flex-start; }
+.tgap .rail { left:-18px; top:0; bottom:0; }
+.tgap .glab { position:absolute; left:-17px; top:50%; transform:translate(-50%,-50%);
+  font-size:10.5px; color:var(--text-3); background:var(--bg); padding:0 8px;
+  font-variant-numeric:tabular-nums; white-space:nowrap; }
+.disc .dur { color:var(--accent); font-variant-numeric:tabular-nums; }
+
 /* flow rows (DeepSeekHarness-style transcript) */
-.msg { min-width:0; animation:fade .2s ease; }
+.msg { min-width:0; position:relative; animation:fade .2s ease; }
 .msg.user { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
 .bubble { max-width:72%; background:#EDF3FE; color:#0F1115; border-radius:22px;
   padding:10px 16px; font-size:14px; line-height:22px; white-space:pre-wrap; word-break:break-word; }
@@ -556,6 +576,12 @@ mark { background:rgba(250,204,21,.38); color:inherit; border-radius:3px; paddin
   .sess-bar .st .t1, .sess-bar .st .t2 { max-width:52vw; }
   .sess-bar button:disabled { cursor:default; }
   .bubble { max-width:88%; }
+  .trans { padding-left:52px; }
+  .rail { left:-12px; }
+  .tmark { left:-52px; width:34px; }
+  .tmark em, .tmark .ss { display:none; }
+  .tgap .rail { left:-12px; }
+  .tgap .glab { left:-11px; }
 }
 </style></head>
 <body>
@@ -1079,19 +1105,51 @@ function metaHtml(m, hit) {
   return '<span class="meta">' + fmtMsgTs(m.ts) + ' · L' + m.lineno +
     (hit ? '<span class="hittag">命中</span>' : '') + '</span>';
 }
-function renderMsg(m, i, hit, terms) {
+function fmtClock(ts) {
+  const d = new Date(ts);
+  if (isNaN(d)) return esc(String(ts || '').slice(11, 19));
+  const p = n => String(n).padStart(2, '0');
+  return p(d.getHours()) + ':' + p(d.getMinutes()) + '<span class="ss">:' + p(d.getSeconds()) + '</span>';
+}
+function fmtDur(sec) {
+  if (sec == null || !isFinite(sec) || sec < 0) return '';
+  if (sec < 1) return Math.round(sec * 1000) + 'ms';
+  if (sec < 60) return (sec < 10 ? sec.toFixed(1) : String(Math.round(sec))) + 's';
+  const m = Math.floor(sec / 60), ss = Math.floor(sec % 60);
+  if (m < 60) return m + '分' + (ss ? ss + '秒' : '');
+  const h = Math.floor(m / 60);
+  return h + '小时' + (m % 60 ? (m % 60) + '分' : '');
+}
+function fmtGap(sec) {
+  if (sec < 3600) return Math.round(sec / 60) + '分钟';
+  if (sec < 86400) {
+    const h = Math.floor(sec / 3600), mm = Math.floor(sec / 60) % 60;
+    return h + '小时' + (mm ? mm + '分' : '');
+  }
+  return Math.floor(sec / 86400) + '天';
+}
+function railHtml(ctx, m) {
+  return '<span class="rail' + (ctx.turnStart ? ' start' : '') + (ctx.turnEnd ? ' end' : '') + '"></span>' +
+    (ctx.turnStart
+      ? '<span class="tmark" title="' + esc(m.ts || '') + '">' + fmtClock(m.ts) +
+        (ctx.turnNo ? '<em>#' + ctx.turnNo + '</em>' : '') + '</span>'
+      : '');
+}
+function renderMsg(m, i, hit, terms, ctx) {
+  ctx = ctx || {};
+  const rail = railHtml(ctx, m);
   const text = m.text || '';
   const long = text.length > 1200 || text.split('\n').length > 24;
   const clamp = long && !EXPANDED.has(i);
   const expandBtn = clamp
     ? '<button class="mexpand" onclick="expandMsg(' + i + ')">展开全部 ↓</button>' : '';
   if (m.kind === 'text' && m.role === 'user') {
-    return '<div class="msg user' + (hit ? ' mhit' : '') + '" data-i="' + i + '">' +
+    return '<div class="msg user' + (hit ? ' mhit' : '') + '" data-i="' + i + '">' + rail +
       '<div class="bubble"><div class="mbody' + (clamp ? ' clamp' : '') + '">' +
       renderBody(text, terms) + '</div></div>' + expandBtn + metaHtml(m, hit) + '</div>';
   }
   if ((m.kind === 'text' || m.kind == null) && (m.role === 'assistant' || m.role == null)) {
-    return '<div class="msg assistant' + (hit ? ' mhit' : '') + '" data-i="' + i + '">' +
+    return '<div class="msg assistant' + (hit ? ' mhit' : '') + '" data-i="' + i + '">' + rail +
       '<div class="mbody' + (clamp ? ' clamp' : '') + '">' + renderBody(text, terms) + '</div>' +
       expandBtn +
       '<div class="ameta">' + fmtMsgTs(m.ts) + ' · L' + m.lineno +
@@ -1101,15 +1159,17 @@ function renderMsg(m, i, hit, terms) {
   if (m.kind === 'reasoning') discClass += ' think';
   else if (m.kind === 'tool_call' || m.kind === 'tool_result') discClass += ' tool';
   else if (m.kind === 'summary') discClass += ' summarydisc';
-  else return '<div class="msg other' + (hit ? ' mhit' : '') + '" data-i="' + i + '">' +
+  else return '<div class="msg other' + (hit ? ' mhit' : '') + '" data-i="' + i + '">' + rail +
       '<div class="ameta">' + esc(ROLE_LABEL[m.role] || m.role || '') + ' · ' +
       esc(KIND_LABEL[m.kind] || m.kind || '') + ' · ' + fmtMsgTs(m.ts) + ' · L' + m.lineno +
       (hit ? '<span class="hittag">命中</span>' : '') + '</div>' +
       '<div class="mbody">' + renderBody(text, terms) + '</div></div>';
-  return '<div class="msg' + (hit ? ' mhit' : '') + '" data-i="' + i + '">' +
+  const durTag = ctx.dur != null && ctx.dur >= 0.05 ? '<span class="dln dur">' + fmtDur(ctx.dur) + '</span>' : '';
+  return '<div class="msg' + (hit ? ' mhit' : '') + '" data-i="' + i + '">' + rail +
     '<details class="' + discClass + '"' + (hit || DISC_OPEN.has(i) ? ' open' : '') + '>' +
     '<summary onclick="discToggle(this)">' + chevIcon() + '<span class="dt">' + esc(title) + '</span>' +
     '<span class="ddot"></span><span class="dsum">' + esc(oneLine(text, 140)) + '</span>' +
+    durTag +
     (hit ? '<span class="hittag">命中 L' + m.lineno + '</span>' : '<span class="dln muted">L' + m.lineno + '</span>') +
     '</summary>' +
     '<div class="dbody' + (clamp ? ' clamp' : '') + '">' + renderBody(text, terms) + '</div>' +
@@ -1122,22 +1182,52 @@ function renderSession(mode) {
   const rawBtn = document.getElementById('sessRaw');
   rawBtn.textContent = SESS.raw ? '返回索引版' : '读取全文';
   rawBtn.classList.toggle('primary', !SESS.raw);
+  const elapsed = s.started_at && s.ended_at
+    ? (Date.parse(s.ended_at) - Date.parse(s.started_at)) / 1000 : null;
   document.getElementById('sessMeta').innerHTML =
     '<span class="hosttag ' + (SESS.host === 'local' ? 'local' : '') + '">' + esc(SESS.host) + '</span>' +
     '<span class="srcbadge">' + esc(s.source || '') + '</span>' +
     '<span>' + s.count + ' 条消息 · ' +
-    esc((s.started_at || '').slice(0, 16).replace('T', ' ')) + ' → ' + esc((s.ended_at || '').slice(11, 19)) + '</span>' +
+    esc((s.started_at || '').slice(0, 16).replace('T', ' ')) + ' → ' + esc((s.ended_at || '').slice(11, 19)) +
+    (isFinite(elapsed) && elapsed >= 60 ? ' · 共 ' + fmtDur(elapsed) : '') + '</span>' +
     (SESS.raw ? '<span class="pill warn">原始全文</span>' : '<span class="pill idle">索引版 · 单条≤20k</span>') +
     (s.cwd ? '<span class="muted mono">' + esc(s.cwd) + '</span>' : '');
+  const isUserTurn0 = mm => mm.kind === 'text' && mm.role === 'user';
+  const turnOf = new Array(s.count);
+  let tn = 0;
+  s.messages.forEach((mm, ii) => {
+    if (ii === 0 || isUserTurn0(mm)) tn++;
+    turnOf[ii] = tn;
+  });
   const rows = [];
   if (SESS.lo > 0)
     rows.push('<div class="loadbar"><button onclick="expandOlder()">↑ 加载更早 ' + Math.min(120, SESS.lo) + ' 条</button></div>');
   s.messages.slice(SESS.lo, SESS.hi).forEach((m, off) => {
     const i = SESS.lo + off;
     const day = (m.ts || '').slice(0, 10);
-    const prevDay = i > 0 ? (s.messages[i - 1].ts || '').slice(0, 10) : '';
-    if (day && day !== prevDay) { rows.push('<div class="daysep">' + esc(day) + '</div>'); }
-    rows.push(renderMsg(m, i, m.lineno === SESS.anchor, SESS.terms));
+    const prev = i > 0 ? s.messages[i - 1] : null;
+    const next = i < s.count - 1 ? s.messages[i + 1] : null;
+    const prevDay = prev ? (prev.ts || '').slice(0, 10) : '';
+    const dayChg = !!(day && day !== prevDay);
+    if (dayChg) { rows.push('<div class="daysep">' + esc(day) + '</div>'); }
+    if (prev && !dayChg && i > SESS.lo) {
+      const gap = (Date.parse(m.ts) - Date.parse(prev.ts)) / 1000;
+      if (isFinite(gap) && gap >= 90)
+        rows.push('<div class="tgap"><span class="rail"></span><span class="glab">空闲 ' + fmtGap(gap) + '</span></div>');
+    }
+    let dur = null;
+    if (m.kind === 'tool_call' && next && next.kind === 'tool_result') {
+      const d = (Date.parse(next.ts) - Date.parse(m.ts)) / 1000;
+      if (isFinite(d) && d >= 0) dur = d;
+    }
+    const ctx = {
+      turnStart: i === 0 || isUserTurn0(m) || dayChg,
+      turnEnd: !next || isUserTurn0(next) ||
+        (m.ts || '').slice(0, 10) !== (next.ts || '').slice(0, 10),
+      turnNo: isUserTurn0(m) ? turnOf[i] : null,
+      dur
+    };
+    rows.push(renderMsg(m, i, m.lineno === SESS.anchor, SESS.terms, ctx));
   });
   if (SESS.hi < s.count)
     rows.push('<div class="loadbar"><button onclick="expandNewer()">加载更晚 ' + Math.min(120, s.count - SESS.hi) + ' 条 ↓</button></div>');
