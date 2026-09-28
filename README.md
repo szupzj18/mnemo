@@ -117,13 +117,25 @@ and say which session (agent, device, date) you are drawing on.
 ## Install
 
 ```bash
+curl -fsSL https://szupzj18.github.io/mnemo/install.sh | sh
+```
+
+One command: it checks Python 3.7+ and SQLite FTS5, clones to `~/mnemo`, links `mnemo` into `~/.local/bin`, builds the index, and runs `mnemo setup`, which connects every agent it finds (Claude Code MCP + skill, Codex MCP, Pi extension; anything already configured is left alone). Run it again to upgrade. Prefer a Python tool manager? `uv tool install git+https://github.com/szupzj18/mnemo && mnemo setup` (or `pipx install`).
+
+Then try `mnemo search "retry budget"`, or ask an agent about something only an old session would know.
+
+<details>
+<summary><b>Manual install</b></summary>
+
+```bash
 git clone https://github.com/szupzj18/mnemo.git ~/mnemo
 ln -s ~/mnemo/bin/mnemo ~/.local/bin/mnemo    # any directory on PATH
 mnemo index                                   # first full index; later runs are incremental
-mnemo search "retry budget"
+mnemo setup                                   # connect agents (or configure them by hand below)
 ```
+</details>
 
-Then connect your agents:
+To connect agents by hand:
 
 <details open>
 <summary><b>Claude Code</b></summary>
@@ -167,8 +179,6 @@ The extension calls the `mnemo` CLI. It looks for `~/mnemo/bin/mnemo` first, the
 
 Register the stdio command `mnemo mcp`. For agents that support skills but not MCP, symlink `integrations/skills/mnemo/` into their skills directory. The skill uses the CLI.
 </details>
-
-After installing, start a new agent session and ask it something only an old session would know.
 
 See [Getting started](docs/getting-started.md) for keeping the index fresh and troubleshooting.
 

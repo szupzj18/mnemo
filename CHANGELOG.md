@@ -5,6 +5,9 @@ All notable changes to this project are documented here. The format follows [Kee
 ## [Unreleased]
 
 ### Added
+- One-line install: `curl -fsSL https://szupzj18.github.io/mnemo/install.sh | sh` checks prerequisites, clones, links `mnemo` onto PATH, indexes and connects agents; re-running upgrades (`git pull` + `mnemo upgrade`).
+- `mnemo setup` connects every detected agent: Claude Code MCP + skill, Codex MCP (config backed up), Pi extension. Idempotent, `--dry-run`, `--agent`.
+- `pyproject.toml`: `uv tool install` / `pipx install git+https://github.com/szupzj18/mnemo` (the dashboard build and integrations ship as package data; `integrations/` moved into the package, with a root symlink for existing paths).
 - `mnemo upgrade`: one command to back up the index (SQLite online backup, newest 3 kept), rebuild it beside the live one, verify, and swap it in atomically; `--remotes` does the same on every device, `--restore` rolls back, `--list` shows backups. It also names running mnemo processes that still use the old code.
 - Project logo ("Mesh M": an M drawn as connected device nodes) in `docs/assets/`, used in the README, the dashboard sidebar and as the dashboard favicon.
 - Session view timeline rail: turn markers with clock and turn number, idle-gap chips (≥ 90 s), day dividers, tool-call durations, total session span.

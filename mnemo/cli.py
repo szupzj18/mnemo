@@ -106,6 +106,27 @@ def cmd_upgrade(args):
     return rc
 
 
+def cmd_setup(args):
+    from . import setup as st
+
+    agents = [a.strip() for a in args.agent.split(",")] if args.agent else None
+    unknown = set(agents or []) - set(st.AGENTS)
+    if unknown:
+        print("error: unknown agent(s): %s (choose from %s)" % (", ".join(sorted(unknown)), ",".join(st.AGENTS)),
+              file=sys.stderr)
+        return 2
+    steps = st.run(agents, dry_run=args.dry_run)
+    home = os.path.expanduser("~")
+    marks = {"added": "+", "fixed": "~", "ok": "=", "skipped": "-", "failed": "!"}
+    for step in steps:
+        verb = step.status + (" (dry run)" if args.dry_run and step.status in ("added", "fixed") else "")
+        print("%s %-7s %-11s %-18s %s" % (marks[step.status], step.agent, step.action, verb,
+                                          step.detail.replace(home, "~")))
+    if any(s.status == "added" for s in steps) and not args.dry_run:
+        print("restart running agent sessions to load mnemo")
+    return 1 if any(s.status == "failed" for s in steps) else 0
+
+
 def cmd_index(args):
     idx = Index(args.db)
     names = args.source.split(",") if args.source else None
@@ -405,6 +426,11 @@ def main(argv=None):
                     help="drop the index and reparse every session from scratch")
     sp.add_argument("-v", "--verbose", action="store_true")
     sp.set_defaults(func=cmd_index)
+
+    sp = sub.add_parser("setup", help="connect Claude Code, Codex and Pi to mnemo (safe to re-run)")
+    sp.add_argument("--agent", help="comma-separated subset of claude,codex,pi (default: every one detected)")
+    sp.add_argument("--dry-run", action="store_true", help="show what would change without changing anything")
+    sp.set_defaults(func=cmd_setup)
 
     sp = sub.add_parser(
         "upgrade",

@@ -42,3 +42,4 @@ next-env.d.ts
 
 # copied from docs/assets by scripts/copy-assets.mjs
 /public/img/
+/public/install.sh

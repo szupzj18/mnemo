@@ -28,8 +28,11 @@ mnemo/mcp_server.py          stdio JSON-RPC MCP server
 mnemo/dashboard.py           HTTP API + static server for mnemo/web_dist
 mnemo/web_dist/              committed static export of web/ (generated)
 mnemo/sources/{claude,codex,pi}.py   per-agent log adapters
-integrations/pi/mnemo.ts     Pi extension (thin CLI wrapper)
-integrations/skills/mnemo/   agent skill (CLI-driven)
+mnemo/setup.py               `mnemo setup`: wires Claude Code, Codex, Pi (idempotent)
+mnemo/upgrade.py             `mnemo upgrade`: backup, rebuild beside, verify, swap
+mnemo/integrations/          Pi extension + agent skill (package data; `integrations/` is a symlink)
+scripts/install.sh           curl | sh installer, served at szupzj18.github.io/mnemo/install.sh
+pyproject.toml               packaging for `uv tool install` / `pipx`
 scripts/make-demo-home.py    deterministic synthetic sessions for tests and screenshots
 tests/                       Python unit + dashboard server tests (unittest)
 web/                         Next.js UI: src/app pages, src/lib logic (+ Vitest), e2e/ (Playwright)

@@ -115,13 +115,25 @@ search_sessions ──▶ get_context ──▶ get_session
 ## 安装
 
 ```bash
+curl -fsSL https://szupzj18.github.io/mnemo/install.sh | sh
+```
+
+一条命令完成：检查 Python 3.7+ 和 SQLite FTS5，克隆到 `~/mnemo`，把 `mnemo` 链进 `~/.local/bin`，建索引，再运行 `mnemo setup` 自动接好本机检测到的 Agent（Claude Code 的 MCP 和技能、Codex 的 MCP、Pi 扩展；已配置的不会重复改动）。再运行一次即升级。习惯用 Python 工具管理器的话：`uv tool install git+https://github.com/szupzj18/mnemo && mnemo setup`（`pipx install` 同理）。
+
+装好后试试 `mnemo search "retry budget"`，或者问 Agent 一个只有旧会话才知道答案的问题。
+
+<details>
+<summary><b>手动安装</b></summary>
+
+```bash
 git clone https://github.com/szupzj18/mnemo.git ~/mnemo
 ln -s ~/mnemo/bin/mnemo ~/.local/bin/mnemo    # 任意 PATH 目录
 mnemo index                                   # 首次全量，之后增量
-mnemo search "retry budget"
+mnemo setup                                   # 接入 Agent（也可以按下面的方式手动配置）
 ```
+</details>
 
-接入 Agent：
+手动接入 Agent：
 
 <details open>
 <summary><b>Claude Code</b></summary>
@@ -160,8 +172,6 @@ ln -s ~/mnemo/integrations/pi/mnemo.ts ~/.pi/agent/extensions/mnemo.ts
 
 注册 stdio 命令 `mnemo mcp` 即可。只支持技能、不支持 MCP 的 Agent，把 `integrations/skills/mnemo/` 软链进它的技能目录。
 </details>
-
-装好后新开一个 Agent 会话，问一个只有旧会话才知道答案的问题试试。
 
 保持索引新鲜、排障等内容见 [Getting started](docs/getting-started.md)。
 
