@@ -30,14 +30,17 @@ def _cjk_match(token):
     return " AND ".join(parts)
 
 
-def build_match(query):
+def build_match(query, include_injected=False):
     groups = []
     for tok in query.split():
-        alts = ["body : %s*" % _phrase(tok)]
+        alts = ["text : %s*" % _phrase(tok)]
         if has_cjk(tok):
             grams_q = _cjk_match(tok)
             if grams_q:
                 alts.append("grams : (%s)" % grams_q)
+        if include_injected:
+            # Also match the verbatim bodies, including stripped boilerplate.
+            alts.append("body : %s*" % _phrase(tok))
         groups.append("(" + " OR ".join(alts) + ")")
     return " AND ".join(groups)
 
@@ -50,9 +53,10 @@ def search(
     cwd=None,
     since=None,
     limit=20,
+    include_injected=False,
 ):
     where = ["messages MATCH ?"]
-    params = [build_match(query)]
+    params = [build_match(query, include_injected=include_injected)]
     if sources:
         where.append("source IN (%s)" % ",".join("?" * len(sources)))
         params.extend(sources)
@@ -71,9 +75,53 @@ def search(
 
     sql = (
         "SELECT path, lineno, source, session_id, cwd, ts, role, kind, "
-        "snippet(messages, 0, '[[', ']]', ' … ', 18) AS snippet, "
+        "CAST(envelope AS INTEGER) AS envelope, "
+        "snippet(messages, 1, '[[', ']]', ' … ', 18) AS snippet, "
         "bm25(messages) AS rank "
         "FROM messages WHERE " + " AND ".join(where) + " ORDER BY rank LIMIT ?"
+    )
+    return [dict(r) for r in index.db.execute(sql, params).fetchall()]
+
+
+def _view_row(r, hit=None):
+    """Normalized message: cleaned text by default, verbatim body kept aside."""
+    clean = r["text"] or ""
+    body = r["body"] or ""
+    out = {
+        "lineno": r["lineno"],
+        "ts": r["ts"],
+        "role": r["role"],
+        "kind": r["kind"],
+        "text": clean or body,  # pure-envelope rows still render their body
+        "envelope": int(r["envelope"] or 0),
+    }
+    if out["envelope"] and body and clean:
+        out["body"] = body  # mixed message: original available on request
+    if hit is not None:
+        out["hit"] = hit
+    return out
+
+
+def recent(index, sources=None, cwd=None, since=None, limit=25):
+    """Most recently started sessions with their first human task as title."""
+    where = ["f.title IS NOT NULL AND f.title <> ''"]
+    params = []
+    if sources:
+        where.append("f.source IN (%s)" % ",".join("?" * len(sources)))
+        params.extend(sources)
+    if cwd:
+        where.append("f.cwd LIKE ?")
+        params.append("%" + cwd.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%")
+    if since:
+        where.append("f.started_ts >= ?")
+        params.append(since)
+    params.append(limit)
+    sql = (
+        "SELECT f.source, f.cwd, f.started_ts, f.title, f.session_id, f.path, "
+        "(fr.hi - fr.lo + 1) AS messages "
+        "FROM files f LEFT JOIN file_ranges fr ON fr.path = f.path "
+        "WHERE " + " AND ".join(where) +
+        " ORDER BY f.started_ts DESC LIMIT ?"
     )
     return [dict(r) for r in index.db.execute(sql, params).fetchall()]
 
@@ -96,15 +144,9 @@ def get_session(index, path):
     ).fetchone()
 
     messages = [
-        {
-            "lineno": r["lineno"],
-            "ts": r["ts"],
-            "role": r["role"],
-            "kind": r["kind"],
-            "text": r["body"],
-        }
+        _view_row(r)
         for r in index.db.execute(
-            "SELECT lineno, ts, role, kind, body FROM messages"
+            "SELECT lineno, ts, role, kind, body, text, envelope FROM messages"
             " WHERE rowid BETWEEN ? AND ? ORDER BY rowid",
             (lo, hi),
         ).fetchall()
@@ -138,7 +180,14 @@ def raw_session(index, path):
         return None
     sid, cwd, parsed = source.parse(path, clip_text=False)
     messages = [
-        {"lineno": lineno, "ts": m.ts, "role": m.role, "kind": m.kind, "text": m.text}
+        {
+            "lineno": lineno,
+            "ts": m.ts,
+            "role": m.role,
+            "kind": m.kind,
+            "text": m.stored,
+            "envelope": int(m.envelope),
+        }
         for lineno, m in parsed
     ]
     return {
@@ -204,18 +253,10 @@ def get_context(index, path, line, before=4, after=8, home=None):
 
     out = []
     for r in index.db.execute(
-        "SELECT rowid AS rid, lineno, ts, role, kind, body FROM messages"
+        "SELECT rowid AS rid, lineno, ts, role, kind, body, text, envelope"
+        " FROM messages"
         " WHERE rowid BETWEEN ? AND ? ORDER BY rowid",
         (win_lo, win_hi),
     ).fetchall():
-        out.append(
-            {
-                "lineno": r["lineno"],
-                "ts": r["ts"],
-                "role": r["role"],
-                "kind": r["kind"],
-                "text": r["body"],
-                "hit": first_hit <= r["rid"] <= last_hit,
-            }
-        )
+        out.append(_view_row(r, hit=first_hit <= r["rid"] <= last_hit))
     return out

@@ -13,8 +13,12 @@ All notable changes to this project are documented here. The format follows [Kee
 - Python test suite (`tests/`, stdlib `unittest`): index sync, search, remote argv/RRF, dashboard server security and API.
 - Vitest unit tests for UI logic; Playwright end-to-end tests with light/dark screenshot baselines over synthetic sessions.
 - GitHub Actions CI: Python 3.8/3.12, web lint/typecheck/unit/build plus a stale-build check, and Playwright UI regression in the official Playwright image.
+- `mnemo recent` lists recently started sessions with their first real user prompt as the title, so recent work can be recalled without a keyword; the MCP server exposes the same as `list_recent_sessions`.
+- `mnemo search --include-injected` also matches injected boilerplate, and `mnemo context`/`session --show-envelope` render those bodies verbatim.
+- `mnemo index --rebuild` drops and reparses the whole index from scratch.
 
 ### Changed
+- Injected user-message boilerplate (workspace `AGENTS.md` instructions, plugin suggestions, ambient browser state, slash-command output, and Codex approval-review wraps) is now kept verbatim in the index but excluded from default search, snippets and session titles; this is an additive schema (v2) that migrates an existing index on its next sync, with no records dropped. Genuine user replies inside such messages remain searchable.
 - Dashboard restyled with flat, hairline-bordered surfaces and matching light and dark themes.
 - Dashboard device status: avatar cards with a live status dot, host tag, status line, per-agent counts and relative sync time; remotes are probed automatically on load.
 - Search results use the official Claude, OpenAI (Codex) and pi marks.

@@ -8,7 +8,7 @@ from . import __version__
 from .index import DEFAULT_DB_PATH, Index
 from . import remote as remote_mod
 from .remote import LOCAL, RemoteError, fan_out_search, remote_context, remote_session
-from .search import DEFAULT_KINDS, get_context, get_session, raw_context, raw_session
+from .search import DEFAULT_KINDS, get_context, get_session, raw_context, raw_session, recent
 from .sources import SOURCES
 
 BOLD = "\033[1m"
@@ -36,7 +36,11 @@ def _since(value):
 def cmd_index(args):
     idx = Index(args.db)
     names = args.source.split(",") if args.source else None
-    stats = idx.sync(names, logger=(lambda m: print(m, file=sys.stderr)) if args.verbose else None)
+    log = (lambda m: print(m, file=sys.stderr)) if args.verbose else None
+    if getattr(args, "rebuild", False):
+        stats = idx.rebuild(names, logger=log)
+    else:
+        stats = idx.sync(names, logger=log)
     print(
         "indexed: +{files_new} new, {files_updated} updated, {files_removed} removed,"
         " {messages} messages".format(**stats)
@@ -64,6 +68,7 @@ def cmd_search(args):
             limit=args.limit,
             hosts=hosts,
             sync_local=not args.no_sync,
+            include_injected=args.include_injected,
         )
     except RemoteError as exc:
         print("error: %s" % exc, file=sys.stderr)
@@ -101,10 +106,15 @@ def _slice(messages, head, tail):
     return messages
 
 
-def _print_messages(path, rows, full_text=False):
+def _print_messages(path, rows, full_text=False, show_envelope=False):
     for r in rows:
-        print("%s%s:%d%s  %s%s/%s%s" % (BOLD, path, r["lineno"], RESET, DIM, r["role"], r["kind"], RESET))
-        text = r["text"]
+        env = " env" if r.get("envelope") else ""
+        print("%s%s:%d%s  %s%s/%s%s%s" % (
+            BOLD, path, r["lineno"], RESET, DIM, r["role"], r["kind"], env, RESET))
+        if show_envelope and r.get("body"):
+            text = r["body"]
+        else:
+            text = r["text"]
         if not full_text and len(text) > 2000:
             text = text[:2000] + " …[truncated]"
         for ln in text.splitlines():
@@ -141,7 +151,8 @@ def cmd_session(args):
         DIM, (sess["started_at"] or "")[:16].replace("T", " "),
         (sess["ended_at"] or "")[:16].replace("T", " "),
         sess["count"], len(sess["messages"]), RESET))
-    _print_messages(args.path, sess["messages"], full_text=args.raw)
+    _print_messages(args.path, sess["messages"], full_text=args.raw,
+                    show_envelope=args.show_envelope)
     return 0
 
 
@@ -177,8 +188,11 @@ def cmd_context(args):
             r["path"] if False else "",
             "",
         )
-        print("%s%s:%d%s  %s%s/%s%s" % (BOLD if r["hit"] else DIM, args.path, r["lineno"], RESET, DIM, r["role"], r["kind"], RESET))
-        text = r["text"]
+        env = " env" if r.get("envelope") else ""
+        print("%s%s:%d%s  %s%s/%s%s%s" % (
+            BOLD if r["hit"] else DIM, args.path, r["lineno"], RESET,
+            DIM, r["role"], r["kind"], env, RESET))
+        text = (r.get("body") or r["text"]) if args.show_envelope else r["text"]
         if len(text) > 2000:
             text = text[:2000] + " …[truncated]"
         for ln in text.splitlines():
@@ -210,6 +224,33 @@ def cmd_status(args):
     print("db:       %s" % args.db)
     for r in remotes:
         print("remote:   %s → %s (%s)" % (r["name"], r["host"], r["bin"]))
+    return 0
+
+
+def cmd_recent(args):
+    idx = Index(args.db)
+    if not args.no_sync:
+        try:
+            idx.sync_if_stale()
+        except Exception as exc:
+            print("warning: index not refreshed (%s)" % exc, file=sys.stderr)
+    sources = args.source.split(",") if args.source else None
+    rows = recent(
+        idx, sources=sources, cwd=args.cwd,
+        since=_since(args.since), limit=args.limit,
+    )
+    if args.json:
+        print(json.dumps(rows, ensure_ascii=False, indent=2))
+        return 0
+    if not rows:
+        print("no sessions")
+        return 0
+    for r in rows:
+        ts = (r["started_ts"] or "")[:16].replace("T", " ")
+        print("%s%s%s  %s[%s]%s  %s%s%s" % (
+            BOLD, ts, RESET, BOLD, r["source"], RESET, DIM, r["cwd"] or "", RESET))
+        print("   " + r["title"])
+        print("   %s%d msgs -> %s%s" % (DIM, r["messages"] or 0, r["path"], RESET))
     return 0
 
 
@@ -283,6 +324,8 @@ def main(argv=None):
 
     sp = sub.add_parser("index", help="incrementally index local sessions")
     sp.add_argument("--source", help="comma-separated: %s" % ",".join(SOURCES))
+    sp.add_argument("--rebuild", action="store_true",
+                    help="drop the index and reparse every session from scratch")
     sp.add_argument("-v", "--verbose", action="store_true")
     sp.set_defaults(func=cmd_index)
 
@@ -297,6 +340,8 @@ def main(argv=None):
     sp.add_argument("--host", help="comma-separated devices (default: local + all remotes)")
     sp.add_argument("--no-sync", action="store_true",
                     help="skip the incremental local index sync before searching")
+    sp.add_argument("--include-injected", action="store_true",
+                    help="also match boilerplate/envelope bodies that are hidden by default")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_search)
 
@@ -307,6 +352,8 @@ def main(argv=None):
     sp.add_argument("--after", type=int, default=8)
     sp.add_argument("--host", help="device holding the hit (default: local)")
     sp.add_argument("--raw", action="store_true", help="read full bodies from the original session file (no 20k cap)")
+    sp.add_argument("--show-envelope", action="store_true",
+                    help="show verbatim bodies including stripped boilerplate instead of cleaned text")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_context)
 
@@ -316,12 +363,23 @@ def main(argv=None):
     sp.add_argument("--head", type=int, default=0, help="only first N messages")
     sp.add_argument("--tail", type=int, default=0, help="only last N messages")
     sp.add_argument("--raw", action="store_true", help="read full bodies from the original session file (no 20k cap)")
+    sp.add_argument("--show-envelope", action="store_true",
+                    help="show verbatim bodies including stripped boilerplate instead of cleaned text")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_session)
 
     sp = sub.add_parser("status", help="index stats")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_status)
+
+    sp = sub.add_parser("recent", help="most recently started sessions with their first task")
+    sp.add_argument("--source", help="comma-separated subset of: %s" % ",".join(SOURCES))
+    sp.add_argument("--cwd", help="substring match on working directory")
+    sp.add_argument("--since", help="YYYY-MM-DD")
+    sp.add_argument("--limit", type=int, default=25)
+    sp.add_argument("--no-sync", action="store_true", help="skip the incremental sync first")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_recent)
 
     sp = sub.add_parser("remote", help="manage remote devices")
     rsub = sp.add_subparsers(dest="remote_cmd", required=True)

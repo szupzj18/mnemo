@@ -5,7 +5,7 @@ from . import __version__
 from .index import Index
 from . import remote as remote_mod
 from .remote import LOCAL, fan_out_search, remote_context, remote_session
-from .search import DEFAULT_KINDS, get_context, get_session, raw_context, raw_session
+from .search import DEFAULT_KINDS, get_context, get_session, raw_context, raw_session, recent
 
 
 def build_tools():
@@ -34,6 +34,10 @@ def build_tools():
                     "since": {"type": "string", "description": "YYYY-MM-DD"},
                     "host": {"type": "string", "description": host_desc},
                     "limit": {"type": "integer", "description": "max hits (default 20)"},
+                    "include_injected": {
+                        "type": "boolean",
+                        "description": "also match injected boilerplate/envelope bodies (AGENTS.md, plugin suggestions, approval-review wraps) hidden from search by default",
+                    },
                 },
                 "required": ["query"],
             },
@@ -75,6 +79,23 @@ def build_tools():
                     "raw": {"type": "boolean", "description": "read full untruncated bodies straight from the original session JSONL"},
                 },
                 "required": ["path"],
+            },
+        },
+        {
+            "name": "list_recent_sessions",
+            "description": (
+                "List coding-agent sessions most recently started, newest first, each with its first"
+                " human task as the title, source, cwd, start time and message count. Use this to answer"
+                " 'what have I been working on lately' or to find a session without knowing a keyword."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "source": {"type": "string", "description": "comma-separated subset of: claude,codex,pi"},
+                    "cwd": {"type": "string", "description": "only sessions whose working directory contains this substring"},
+                    "since": {"type": "string", "description": "YYYY-MM-DD"},
+                    "limit": {"type": "integer", "description": "max sessions (default 25)"},
+                },
             },
         },
         {
@@ -121,6 +142,7 @@ def handle_call(name, args, index):
             since=_since(args.get("since")),
             limit=min(int(args.get("limit", 20)), 100),
             hosts=hosts,
+            include_injected=bool(args.get("include_injected")),
         )
         text = json.dumps(hits, ensure_ascii=False, indent=2)
         if warnings:
@@ -163,6 +185,16 @@ def handle_call(name, args, index):
         if host == LOCAL and (head or tail):
             sess["messages"] = sess["messages"][:head] if head else sess["messages"][-tail:]
         return _text_result(sess)
+    if name == "list_recent_sessions":
+        sources = args.get("source")
+        rows = recent(
+            index,
+            sources=sources.split(",") if sources else None,
+            cwd=args.get("cwd"),
+            since=_since(args.get("since")),
+            limit=min(int(args.get("limit", 25)), 100),
+        )
+        return _text_result(rows)
     if name == "reindex":
         sources = args.get("source")
         stats = index.sync(sources.split(",") if sources else None)

@@ -55,7 +55,7 @@ pnpm e2e:docker                                # + pixel diffs in CI's Linux ima
 ## Adding an agent adapter
 
 1. Create `mnemo/sources/<agent>.py` with a `Source` subclass that implements `files()` and `parse(path, clip_text=True)`. `parse` returns `(session_id, cwd, [(lineno, Msg), …])`.
-2. Map the agent's records onto `role` ∈ {user, assistant, tool} and `kind` ∈ {text, summary, reasoning, tool_call, tool_result}. Drop injected boilerplate.
+2. Map the agent's records onto `role` ∈ {user, assistant, tool} and `kind` ∈ {text, summary, reasoning, tool_call, tool_result}. Keep injected boilerplate verbatim in `raw` but strip it from searchable `text` (flag `envelope=1`); see `model.strip_envelopes`. Free-form user replies are not boilerplate.
 3. Register it in `mnemo/sources/__init__.py`.
 4. Add the source to the `source` descriptions in `mcp_server.py`, `integrations/pi/mnemo.ts` and the skill.
 5. Extend `scripts/make-demo-home.py` with a sample session, and update the docs (README tables, `docs/getting-started.md` log locations).

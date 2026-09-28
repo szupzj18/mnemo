@@ -87,6 +87,7 @@ Snippets are deliberately short. The skill tells the agent to call `get_context`
 | `search_sessions` | `search_sessions` | `mnemo search … --json` | Ranked keyword search across all agents and devices |
 | `get_context` | `get_session_context` | `mnemo context <path> <line>` | Messages around a hit |
 | `get_session` | `get_full_session` | `mnemo session <path>` | The whole session, optionally head/tail/raw |
+| `list_recent_sessions` | — | `mnemo recent` | Recently started sessions with their first task as title |
 | `reindex` | — | `mnemo index` | Incremental sync of local logs |
 
 Parameters, output shapes and token costs: [Agent tools](docs/agent-tools.md).
