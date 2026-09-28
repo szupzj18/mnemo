@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-brand: #4176e6;
+}
+
+:root {
+  color-scheme: light dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-white text-neutral-950 antialiased dark:bg-neutral-950 dark:text-neutral-50;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-brand) 30%, transparent);
+}
+
+/* Faint dot grid behind the hero, fading out toward the edges. */
+.hero-grid {
+  background-image: radial-gradient(circle, rgb(0 0 0 / 0.09) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, black 40%, transparent 100%);
+}
+@media (prefers-color-scheme: dark) {
+  .hero-grid {
+    background-image: radial-gradient(circle, rgb(255 255 255 / 0.08) 1px, transparent 1px);
+  }
+}
+
+@keyframes flow {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+.flow {
+  stroke-dasharray: 3 9;
+  animation: flow 1.2s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flow {
+    animation: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}
