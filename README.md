@@ -4,7 +4,7 @@
 
 **One memory for all your coding agents.**
 
-Search every Claude Code, Codex, and Pi session you've ever run, on this machine and your remote devboxes, from inside any of them.
+Your agents can recall every Claude Code, Codex and Pi session you've ever run, on this machine and your devboxes, just by asking.
 
 [![Python 3.7+](https://img.shields.io/badge/python-3.7%2B-3776AB?logo=python&logoColor=white)](#install)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-0-2ea44f)](#install)
@@ -14,12 +14,26 @@ Search every Claude Code, Codex, and Pi session you've ever run, on this machine
 
 English · [简体中文](README.zh-CN.md)
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/search-dark.png">
-  <img alt="Mnemo dashboard: one search across Claude Code, Codex and Pi sessions" src="docs/assets/search.png" width="880">
-</picture>
-
 </div>
+
+```text
+you ▸ test_backoff_is_bounded is failing again. Didn't we fix this before?
+
+claude ▸ search_sessions(query="backoff flaky")
+         1 hit · codex · devbox-126 · 2026-09-26 · /home/alex/relay
+           "CI is red on main: test_[[backoff]]_is_bounded is [[flaky]]. Investigate."
+
+       ▸ get_context(path=…/rollout-2026-09-26….jsonl, line=2, host="devbox-126")
+           tool  1 failed, 199 passed … assert 30.000000000000004 <= 30.0
+           codex A floating-point edge case … I'll clamp explicitly in backoff()
+           codex apply_patch: return min(cap, random.uniform(0, base * 2 ** attempt))
+
+claude ▸ Yes. Codex fixed this on devbox-126 on Sep 26: the jittered delay could
+         exceed the 30s cap by float error, so the clamp moved after the jitter.
+         That fix isn't on this branch. Want me to apply the same patch?
+```
+
+<sub>Illustrative session with trimmed output. See <a href="#the-recall-loop">the recall loop</a> for what each call returns.</sub>
 
 ## Why Mnemo
 
@@ -29,26 +43,70 @@ Every coding agent already writes its full working memory to disk: prompts, reas
 - The agent on your laptop can't see last week's session on the devbox.
 - Handoff notes and shared `MEMORY.md` files only help if every agent keeps them up to date, and they don't.
 
-Mnemo indexes the logs your agents **already produce** and gives every agent the same three tools to search and read them. Your agents don't have to change how they work, and you don't write any notes.
+Mnemo indexes the logs your agents **already produce** and gives every agent the same tools to search and read them. Your agents don't have to change how they work, and you don't write any notes.
+
+## How agents use Mnemo
+
+### Just ask
+
+With the MCP server and the skill installed, you don't have to name the tool. Questions like these send the agent to its history:
+
+| You say | The agent |
+|---|---|
+| "How did we fix the OOM on the GPU box last week?" | Searches all devices, then reads the fix in context |
+| "Did Codex ever try sqlite-vec for this?" | Searches `source=codex`, then summarizes what was tried and why it was dropped |
+| "Pick up where the devbox session left off yesterday." | Finds the session and reads its tail with `get_session(tail=…)` |
+| "What was the exact command we used to rebuild the index?" | Searches `kind=tool_call` and quotes the command verbatim |
+| "上次那个 Kerberos 报错是怎么解决的？" | Chinese matches by substring, so `Kerberos 报错` works too |
+
+### The recall loop
+
+Every lookup follows the same three steps, and each step reads more than the one before it. The agent stops as soon as it has what it needs, so it pays only for that:
 
 ```text
-you ▸ how did we fix the flaky backoff test last week?
+search_sessions ──▶ get_context ──▶ get_session
+ ~1.6k–3.3k tokens   a few k tokens     only when the whole arc matters
+ "where is it?"      "what happened?"   "walk me through it"
+```
 
-agent ▸ search_sessions("backoff flaky")
-        → [codex · devbox-126 · 09-26] FAILED test_backoff_is_bounded - assert 30.000000000000004 <= 30.0
-      ▸ get_context(hit, host="devbox-126")
-        → The bound was a float rounding issue; fixed by clamping min(cap, …) after the jitter …
+1. **`search_sessions`** returns ranked hits. Each hit carries `host`, `source`, `cwd`, `ts`, `role`, `kind`, a snippet with the matched terms marked, and `path` + `lineno`. Keywords are ANDed, and filters narrow by agent, device, directory, date or message kind.
+2. **`get_context`** reads the messages around a hit: the prompt that led up to it, the tool calls and results, and the conclusion. The agent passes back the hit's `host`, and the read runs on that device.
+3. **`get_session`** reads the whole session. `head`/`tail` skim a long one, and `raw: true` reads the original JSONL when an indexed body was truncated at 20k characters.
+
+Snippets are deliberately short. The skill tells the agent to call `get_context` before quoting or reusing anything from a hit.
+
+### Tools
+
+| MCP | Pi | CLI | Purpose |
+|---|---|---|---|
+| `search_sessions` | `search_sessions` | `mnemo search … --json` | Ranked keyword search across all agents and devices |
+| `get_context` | `get_session_context` | `mnemo context <path> <line>` | Messages around a hit |
+| `get_session` | `get_full_session` | `mnemo session <path>` | The whole session, optionally head/tail/raw |
+| `reindex` | — | `mnemo index` | Incremental sync of local logs |
+
+Parameters, output shapes and token costs: [Agent tools](docs/agent-tools.md).
+
+### Make it a habit
+
+The skill covers "look it up when the user asks." To have agents check history *before* they start work, add a rule to your `AGENTS.md` or `CLAUDE.md`:
+
+```markdown
+## Past sessions
+Before non-trivial work, and whenever I refer to earlier work ("last time", "like before",
+"did we ever…"), search past agent sessions with mnemo (`search_sessions`, or
+`mnemo search … --json`). Read promising hits with `get_context` before relying on them,
+and say which session (agent, device, date) you are drawing on.
 ```
 
 ## Highlights
 
 - **Cross-agent.** A single index covers Claude Code, Codex (including archived sessions) and Pi, all normalized to one message schema.
 - **Cross-device.** Queries fan out over SSH to your devboxes and merge by rank. Session bodies never leave the machine that produced them.
-- **Built for agents.** The three agent tools are search → context → full session, available over MCP, as a Pi extension, and through a CLI with `--json`.
+- **Cheap for agents.** A search returns ranked snippets, not raw logs: ~1.6k tokens for 10 hits. In a controlled test, agents used 23% fewer tokens and 52% fewer tool calls than with grep ([benchmarks](#benchmarks)).
 - **Good at CJK.** English uses prefix matching and Chinese uses substring matching (unigram + bigram), all ranked with BM25.
 - **Fast and small.** Searches take about 50–100 ms, an idle incremental sync about 0.1 s, and the index is ~22% of raw log size.
 - **Zero dependencies.** Mnemo needs only the Python 3.7+ standard library and SQLite FTS5. It installs with `git clone` and needs no daemon.
-- **Local dashboard.** A browser UI for search, reading sessions on a timeline, and managing devices. It binds to `127.0.0.1` and is token-gated.
+- **A dashboard for humans.** A local browser UI to search, read sessions on a timeline and manage devices.
 
 ## Install
 
@@ -104,26 +162,20 @@ The extension calls the `mnemo` CLI. It looks for `~/mnemo/bin/mnemo` first, the
 Register the stdio command `mnemo mcp`. For agents that support skills but not MCP, symlink `integrations/skills/mnemo/` into their skills directory. The skill uses the CLI.
 </details>
 
+After installing, start a new agent session and ask it something only an old session would know.
+
 See [Getting started](docs/getting-started.md) for keeping the index fresh and troubleshooting.
-
-## What your agent gets
-
-| Tool (MCP) | Pi | CLI | Purpose |
-|---|---|---|---|
-| `search_sessions` | `search_sessions` | `mnemo search` | Keyword search (AND) across all agents and devices; filter by agent, device, directory, date, message kind |
-| `get_context` | `get_session_context` | `mnemo context` | Messages around a hit, to see what led up to it and what followed |
-| `get_session` | `get_full_session` | `mnemo session` | The whole session, with `head`/`tail` for skimming and `raw` for untruncated bodies |
-| `reindex` | — | `mnemo index` | Incremental sync of local logs |
-
-Every hit carries `host`, `source`, `cwd`, `ts`, `role`, `kind`, `snippet`, `path` and `lineno`. Pass the hit's `host` back to `get_context` and `get_session`, and Mnemo runs the read on the device that holds the data. Full reference: [Agent tools](docs/agent-tools.md) · [CLI](docs/cli.md).
 
 ## Dashboard
 
-```bash
-mnemo dashboard
-```
+For you rather than your agents: `mnemo dashboard` opens a local web UI (`127.0.0.1`, token-gated) with the same search, across every device.
 
-Click any search hit to open the full session as a chat thread. Matches are highlighted and you can jump between them. Tool calls fold away. A timeline rail marks each turn, idle gaps, day changes and how long each tool call took.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/search-dark.png">
+  <img alt="Mnemo dashboard: one search across Claude Code, Codex and Pi sessions" src="docs/assets/search.png" width="880">
+</picture>
+
+Click a hit to open the full session as a chat thread. Matches are highlighted and you can jump between them. Tool calls fold away. A timeline rail marks each turn, idle gaps, day changes and how long each tool call took.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/session-dark.png">

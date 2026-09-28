@@ -4,7 +4,7 @@
 
 **所有编程 Agent 共用的一份记忆。**
 
-在任意一个 Agent 里，搜索你在本机和远程开发机上跑过的全部 Claude Code、Codex、Pi 会话。
+让 Agent 直接回忆你在本机和 devbox 上跑过的每一个 Claude Code、Codex、Pi 会话，开口问就行。
 
 [![Python 3.7+](https://img.shields.io/badge/python-3.7%2B-3776AB?logo=python&logoColor=white)](#安装)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-0-2ea44f)](#安装)
@@ -14,12 +14,25 @@
 
 [English](README.md) · 简体中文
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/search-dark.png">
-  <img alt="Mnemo 面板：一次搜索覆盖 Claude Code、Codex、Pi 的会话" src="docs/assets/search.png" width="880">
-</picture>
-
 </div>
+
+```text
+你     ▸ test_backoff_is_bounded 又挂了，之前是不是修过？
+
+claude ▸ search_sessions(query="backoff flaky")
+         1 条命中 · codex · devbox-126 · 2026-09-26 · /home/alex/relay
+           "CI is red on main: test_[[backoff]]_is_bounded is [[flaky]]. Investigate."
+
+       ▸ get_context(path=…/rollout-2026-09-26….jsonl, line=2, host="devbox-126")
+           tool  1 failed, 199 passed … assert 30.000000000000004 <= 30.0
+           codex A floating-point edge case … I'll clamp explicitly in backoff()
+           codex apply_patch: return min(cap, random.uniform(0, base * 2 ** attempt))
+
+claude ▸ 修过。9 月 26 日 Codex 在 devbox-126 上处理过：加了 jitter 的延迟会因浮点误差
+         略超 30s 上限，修法是把截断挪到 jitter 之后。这个修复不在当前分支上，要我照着打一遍吗？
+```
+
+<sub>示意会话，输出有删节。每一步返回什么，见下文「回忆链路」。</sub>
 
 ## 为什么需要 Mnemo
 
@@ -29,26 +42,69 @@
 - 笔记本上的 Agent 看不到上周在 devbox 上的会话。
 - handoff 文档和共享 `MEMORY.md` 要靠每个 Agent 持续写入才有用，实际很难坚持。
 
-Mnemo 直接索引 Agent **已经在写**的日志，并给每个 Agent 提供同一套三个工具来搜索和阅读这些会话。Agent 的使用方式不需要任何改变，你也不需要写笔记。
+Mnemo 直接索引 Agent **已经在写**的日志，并给每个 Agent 提供同一套工具来搜索和阅读这些会话。Agent 的使用方式不需要任何改变，你也不需要写笔记。
+
+## Agent 怎么用 Mnemo
+
+### 直接问
+
+装好 MCP 服务和技能之后，不用点名工具。下面这类问题会让 Agent 自己去翻历史：
+
+| 你说 | Agent 会 |
+|---|---|
+| "上周 GPU 机器上那个 OOM 是怎么解决的？" | 搜索所有设备，再读修复前后的上下文 |
+| "Codex 有没有试过用 sqlite-vec 做这个？" | 按 `source=codex` 搜索，总结试过什么、为什么放弃 |
+| "接着 devbox 上昨天那个会话继续做。" | 找到会话，用 `get_session(tail=…)` 读结尾 |
+| "上次重建索引用的完整命令是什么？" | 按 `kind=tool_call` 搜索，原样引用命令 |
+| "上次那个 Kerberos 报错是怎么解决的？" | 中文按子串匹配，`Kerberos 报错` 直接能搜到 |
+
+### 回忆链路
+
+每次回忆都是同样的三步，一步比一步读得多。Agent 拿到需要的信息就停下，只为用到的部分付 token：
 
 ```text
-你   ▸ 上周那个 backoff 测试不稳定是怎么修的？
+search_sessions ──▶ get_context ──▶ get_session
+ 约 1.6k–3.3k token   几 k token        需要完整来龙去脉时才用
+ "在哪？"             "发生了什么？"     "从头讲一遍"
+```
 
-Agent ▸ search_sessions("backoff flaky")
-        → [codex · devbox-126 · 09-26] FAILED test_backoff_is_bounded - assert 30.000000000000004 <= 30.0
-      ▸ get_context(hit, host="devbox-126")
-        → 浮点边界问题；在 jitter 之后再做 min(cap, …) 截断修复 …
+1. **`search_sessions`**：返回排序后的命中。每条带 `host`、`source`、`cwd`、`ts`、`role`、`kind`、标出命中词的片段，以及 `path` + `lineno`。多个关键词按 AND 组合，可以按 Agent、设备、目录、日期、消息类型过滤。
+2. **`get_context`**：读命中点前后的消息：引出它的提问、中间的工具调用和结果、最后的结论。Agent 把命中的 `host` 传回来，读取就在那台设备上执行。
+3. **`get_session`**：读整段会话。长会话先用 `head`/`tail` 浏览；索引里的正文超过 20k 字符会被截断，这时用 `raw: true` 读原始 JSONL。
+
+片段刻意做得很短。技能要求 Agent 在引用或复用命中内容之前，先调用 `get_context` 读上下文。
+
+### 工具
+
+| MCP | Pi | CLI | 作用 |
+|---|---|---|---|
+| `search_sessions` | `search_sessions` | `mnemo search … --json` | 跨所有 Agent 和设备的关键词排序检索 |
+| `get_context` | `get_session_context` | `mnemo context <path> <line>` | 命中点前后的消息 |
+| `get_session` | `get_full_session` | `mnemo session <path>` | 整段会话，可选 head/tail/raw |
+| `reindex` | — | `mnemo index` | 增量同步本机日志 |
+
+参数、返回结构和 token 开销见 [Agent tools](docs/agent-tools.md)。
+
+### 养成习惯
+
+技能负责"用户问起时去查"。如果想让 Agent 在**动手之前**就先查历史，可以在 `AGENTS.md` 或 `CLAUDE.md` 里加一条：
+
+```markdown
+## 历史会话
+开始较大的任务前，以及我提到以前的工作时（"上次""像之前那样""有没有试过"），
+先用 mnemo 搜历史会话（`search_sessions`，或 `mnemo search … --json`）。
+依赖某条命中之前先用 `get_context` 读上下文，并说明参考的是哪个会话（Agent、设备、日期）。
 ```
 
 ## 特性
 
 - **跨 Agent**：Claude Code、Codex（含归档会话）、Pi 统一进一个索引，归一成同一套消息结构。
 - **跨设备**：查询经 SSH 并行扇出到各台 devbox，按排名融合；会话正文不离开产生它的机器。
-- **为 Agent 设计**：三个工具构成"搜索 → 上下文 → 全文"链路，提供 MCP、Pi 扩展和带 `--json` 的 CLI 三种入口。
+- **对 Agent 省 token**：搜索返回的是排序后的片段而不是原始日志，10 条命中约 1.6k token。对照实验中，Agent 比用 grep 少用 23% 的 token、少调用 52% 的工具（见[评测](#评测)）。
 - **中英文都能搜**：英文前缀匹配，中文子串匹配（unigram + bigram），BM25 排序。
 - **快且小**：搜索约 50–100 ms，空闲增量同步约 0.1 s，索引约为原始日志的 22%。
 - **零依赖**：只需要 Python 3.7+ 标准库和 SQLite FTS5，`git clone` 即可用，不需要常驻进程。
-- **本地面板**：在浏览器里搜索、按时间轴读会话、管理设备；只监听 `127.0.0.1`，请求需要 token。
+- **给人用的面板**：本地浏览器界面，可以搜索、按时间轴读会话、管理设备。
 
 ## 安装
 
@@ -99,24 +155,18 @@ ln -s ~/mnemo/integrations/pi/mnemo.ts ~/.pi/agent/extensions/mnemo.ts
 注册 stdio 命令 `mnemo mcp` 即可。只支持技能、不支持 MCP 的 Agent，把 `integrations/skills/mnemo/` 软链进它的技能目录。
 </details>
 
+装好后新开一个 Agent 会话，问一个只有旧会话才知道答案的问题试试。
+
 保持索引新鲜、排障等内容见 [Getting started](docs/getting-started.md)。
-
-## Agent 拿到的工具
-
-| MCP | Pi | CLI | 作用 |
-|---|---|---|---|
-| `search_sessions` | `search_sessions` | `mnemo search` | 多关键词 AND 检索所有 Agent、所有设备，可按 Agent、设备、目录、日期、消息类型过滤 |
-| `get_context` | `get_session_context` | `mnemo context` | 读命中点前后的消息，还原当时的经过 |
-| `get_session` | `get_full_session` | `mnemo session` | 读整段会话；`head`/`tail` 用来快速浏览，`raw` 读取不截断的原文 |
-| `reindex` | — | `mnemo index` | 增量同步本机日志 |
-
-每条命中都带 `host`、`source`、`cwd`、`ts`、`role`、`kind`、`snippet`、`path`、`lineno`。把命中的 `host` 传回 `get_context` 或 `get_session`，读取就会在持有数据的设备上执行。完整参考见 [Agent tools](docs/agent-tools.md) 和 [CLI](docs/cli.md)。
 
 ## 面板
 
-```bash
-mnemo dashboard
-```
+面板是给人用的：`mnemo dashboard` 打开本地 Web 界面（只监听 `127.0.0.1`，需要 token），在浏览器里做同样的跨设备搜索。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/search-dark.png">
+  <img alt="Mnemo 面板：一次搜索覆盖 Claude Code、Codex、Pi 的会话" src="docs/assets/search.png" width="880">
+</picture>
 
 点开任意命中，会按聊天线程渲染整段会话：命中词高亮，可以在命中之间逐条跳转，工具块可以折叠。左侧时间轨标出每一轮对话、空闲间隔、跨天分隔和每次工具调用的耗时。
 
