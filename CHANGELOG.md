@@ -15,6 +15,15 @@ All notable changes to this project are documented here. The format follows [Kee
 - Searches from the CLI, the Pi extension and the dashboard now sync the local index first, and the MCP server syncs before every `search_sessions` instead of only at startup. Previously sessions written after the last `mnemo index` (or after the MCP server started) were invisible. Syncs within 2 s of the last one are skipped, concurrent writers wait up to 10 s, and a failed refresh falls back to the existing index with a warning. `mnemo search --no-sync` opts out.
 
 ### Changed
+- Dashboard rebuilt with Next.js (static export), shadcn/ui and Tailwind CSS in `web/`, served prebuilt from `mnemo/web_dist` so installs still need only Python. Search results survive navigating into a session and back; results are real links (open in new tab works).
+- `dashboard.py` shrinks to the API plus a static file server (token injection, `HEAD` for route prefetches, traversal guard, immutable caching for hashed assets).
+- `scripts/make-demo-home.py` produces deterministic session ids.
+
+### Added (testing)
+- Python test suite (`tests/`, stdlib `unittest`): index sync, search, remote argv/RRF, dashboard server security and API.
+- Vitest unit tests for UI logic; Playwright end-to-end tests with light/dark screenshot baselines over synthetic sessions.
+- GitHub Actions CI: Python 3.8/3.12, web lint/typecheck/unit/build plus a stale-build check, and Playwright UI regression in the official Playwright image.
+
 - Dashboard restyled with flat, hairline-bordered surfaces and matching light and dark themes.
 - Dashboard device status: avatar cards with a live status dot, host tag, status line, per-agent counts and relative sync time; remotes are probed automatically on load.
 - Search results use the official Claude, OpenAI (Codex) and pi marks.
