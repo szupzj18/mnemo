@@ -441,6 +441,15 @@ tbody tr:hover { background:var(--surface-soft); }
 .muted { color:var(--text-3); }
 .view { display:none; animation:fade .2s ease; }
 .view.active { display:block; }
+.pill.pending { background:var(--surface-soft); color:var(--text-2); }
+.pill .spin { width:10px; height:10px; border-width:1.6px; }
+.skel-note { color:var(--text-3); font-size:12.5px; margin:0 0 10px; display:flex; align-items:center; gap:8px; }
+.skel { height:88px; border-radius:var(--r-md); border:1px solid var(--border);
+  background:linear-gradient(90deg, var(--surface-soft) 25%, var(--surface-2) 50%, var(--surface-soft) 75%);
+  background-size:200% 100%; animation:shimmer 1.3s linear infinite; }
+.skel + .skel { margin-top:9px; }
+@keyframes shimmer { from { background-position:150% 0; } to { background-position:-50% 0; } }
+@media (prefers-reduced-motion: reduce) { .skel, .spin { animation:none; } }
 @keyframes fade { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
 
 /* search hit list */
@@ -708,7 +717,7 @@ mark { background:rgba(250,204,21,.38); color:inherit; border-radius:3px; paddin
         <input type="number" id="lim" value="20" min="1" max="50" style="width:74px" title="每设备取数">
         <label class="chk"><input type="checkbox" id="allHosts" checked onchange="renderHostPickers()"> 全部设备</label>
         <span id="hostPickers" style="display:flex;gap:12px"></span>
-        <button class="primary" onclick="runSearch(this)">查询</button>
+        <button class="primary" id="searchBtn" onclick="runSearch()">查询</button>
       </div>
       <div id="chips" style="margin-top:14px"></div>
     </div>
@@ -1036,22 +1045,53 @@ const KIND_LABEL = { text:'对话', summary:'摘要', tool_call:'工具调用', 
 let LAST_TERMS = [];
 let LAST_HITS = [];
 
-async function runSearch(btn) {
+function searchTargets() {
+  const picked = pickedHosts();
+  return picked !== null ? picked : ['local'].concat(((STATUS && STATUS.remotes) || []).map(r => r.name));
+}
+function fmtSecs(ms) { return (ms / 1000).toFixed(1) + 's'; }
+async function runSearch() {
   const query = document.getElementById('q').value.trim();
-  if (!query) return;
+  if (!query) { document.getElementById('q').focus(); return; }
+  const btn = document.getElementById('searchBtn');
+  if (btn.disabled) return;   // one search at a time; Enter repeats are ignored
   const limit = parseInt(document.getElementById('lim').value, 10) || 20;
-  if (btn) busy(btn);
-  const r = await api('/api/search', { query, limit, hosts: pickedHosts() });
-  if (btn) idle(btn);
-  if (r.error) { toast(r.error, 'err'); return; }
+  const targets = searchTargets();
+  const out = document.getElementById('searchOut'), count = document.getElementById('hitCount');
+
+  // pending state: per-device chips, skeleton results, live elapsed time
+  busy(btn, '<span class="spin"></span> 搜索中');
+  out.setAttribute('aria-busy', 'true');
+  document.getElementById('chips').innerHTML = targets.map(h =>
+    '<span class="pill pending" style="margin:2px 6px 2px 0"><span class="spin"></span>' + esc(h) + ' · 搜索中</span>').join('');
+  out.innerHTML = '<div class="skel-note"><span class="spin"></span>正在同步索引并搜索 ' +
+    (targets.length > 1 ? targets.length + ' 台设备' : esc(targets[0] || 'local')) + '…</div>' +
+    '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
+  const t0 = Date.now();
+  count.textContent = '已用 0.0s';
+  const tick = setInterval(() => { count.textContent = '已用 ' + fmtSecs(Date.now() - t0); }, 100);
+
+  let r;
+  try { r = await api('/api/search', { query, limit, hosts: pickedHosts() }); }
+  catch (e) { r = { error: String(e && e.message || e) }; }
+  finally { clearInterval(tick); idle(btn); out.removeAttribute('aria-busy'); }
+  const took = fmtSecs(Date.now() - t0);
+
+  if (r.error) {
+    toast('搜索失败', 'err', r.error);
+    document.getElementById('chips').innerHTML = '';
+    count.textContent = '';
+    out.innerHTML = '<div class="empty">搜索失败：' + esc(r.error) + '</div>';
+    return;
+  }
   document.getElementById('chips').innerHTML = r.per_host.map(h =>
     '<span class="pill ' + (h.ok ? 'ok' : 'bad') + '" style="margin:2px 6px 2px 0">' +
     esc(h.host) + ' · ' + (h.ok ? h.ms + ' ms · ' + h.hits + ' 命中' : '不可达') + '</span>').join('') +
     (r.warnings.length ? '<div class="muted" style="margin-top:6px; font-size:12px">' + r.warnings.map(esc).join('<br>') + '</div>' : '');
   LAST_TERMS = query.split(/\s+/).filter(Boolean);
   LAST_HITS = r.merged;
-  document.getElementById('hitCount').textContent = r.merged.length ? r.merged.length + ' 条 · 点击查看会话全文' : '';
-  if (!r.merged.length) { document.getElementById('searchOut').innerHTML = '<div class="empty">没有匹配结果。</div>'; return; }
+  count.textContent = r.merged.length ? r.merged.length + ' 条 · 用时 ' + took + ' · 点击查看会话全文' : '用时 ' + took;
+  if (!r.merged.length) { out.innerHTML = '<div class="empty">没有匹配结果。</div>'; return; }
   document.getElementById('searchOut').innerHTML =
     '<div class="hitlist">' + r.merged.map((h, i) => {
       const snip = esc((h.snippet || '').replace(/\s+/g, ' '))

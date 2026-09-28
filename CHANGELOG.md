@@ -19,6 +19,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Dashboard device status: avatar cards with a live status dot, host tag, status line, per-agent counts and relative sync time; remotes are probed automatically on load.
 - Search results use the official Claude, OpenAI (Codex) and pi marks.
 - Generic search placeholder text.
+- Dashboard search shows progress: busy button (also when submitted with Enter), per-device pending chips, skeleton results and a live elapsed timer; repeat submissions are ignored and network failures restore the form.
 
 ## [0.1.0] - 2026-09-24
 
