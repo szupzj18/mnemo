@@ -1,5 +1,10 @@
 <div align="center">
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+  <img alt="Mnemo logo" src="docs/assets/logo.svg" width="96">
+</picture>
+
 # Mnemo
 
 **所有编程 Agent 共用的一份记忆。**

@@ -266,6 +266,7 @@ PAGE = r"""<!doctype html>
 <html lang="zh" data-theme="light"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="token" content="__TOKEN__">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"%3E%3Crect width="64" height="64" rx="15" fill="#0f1115"/%3E%3Cpath d="M17 46V19l15 16 15-16v27" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/%3E%3Ccircle cx="17" cy="46" r="5.6" fill="#fff"/%3E%3Ccircle cx="17" cy="19" r="5.6" fill="#fff"/%3E%3Ccircle cx="47" cy="19" r="5.6" fill="#fff"/%3E%3Ccircle cx="47" cy="46" r="5.6" fill="#fff"/%3E%3Ccircle cx="32" cy="35" r="6.6" fill="#4176e6" stroke="#0f1115" stroke-width="2"/%3E%3C/svg%3E">
 <title>mnemo 管理面板</title>
 <style>
 :root {
@@ -322,8 +323,7 @@ code,.mono { font-family:"SF Mono",ui-monospace,SFMono-Regular,Menlo,monospace; 
   background:var(--sidebar-bg);
   border-right:1px solid var(--border); display:flex; flex-direction:column; gap:6px; }
 .brand { display:flex; align-items:center; gap:10px; padding:4px 10px 18px; font-weight:700; font-size:15px; }
-.brand .logo { width:28px; height:28px; border-radius:8px; background:var(--cta);
-  display:grid; place-items:center; color:var(--cta-text); flex:none; }
+.brand .logo { width:28px; height:28px; flex:none; display:grid; }
 .nav { display:flex; flex-direction:column; gap:3px; }
 .nav a { display:flex; align-items:center; gap:11px; padding:9px 12px; border-radius:var(--r-md);
   color:var(--text-2); text-decoration:none; cursor:pointer; font-weight:500; transition:background .15s; }
@@ -625,7 +625,7 @@ mark { background:rgba(250,204,21,.38); color:inherit; border-radius:3px; paddin
 <body>
 <aside class="sidebar">
   <div class="brand"><div class="logo">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+    <svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="var(--cta)"/><path d="M17 46 32 35 47 46" fill="none" stroke="#4176e6" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="0.1 5"/><path d="M17 46V19l15 16 15-16v27" fill="none" stroke="var(--cta-text)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><g fill="var(--cta-text)"><circle cx="17" cy="46" r="5"/><circle cx="17" cy="19" r="5"/><circle cx="47" cy="19" r="5"/><circle cx="47" cy="46" r="5"/></g><circle cx="32" cy="35" r="6" fill="#4176e6" stroke="var(--cta)" stroke-width="2"/></svg>
   </div><span>mnemo</span></div>
   <nav class="nav" id="nav">
     <a data-view="dashboard" class="active">
