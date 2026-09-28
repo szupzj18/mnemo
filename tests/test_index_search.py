@@ -74,9 +74,10 @@ class SearchTest(unittest.TestCase):
         cls.demo.cleanup()
 
     def test_build_match_ands_terms_and_adds_cjk_grams(self):
-        self.assertEqual(build_match("retry budget"), '(body : "retry"*) AND (body : "budget"*)')
+        # Assert the query shape, not the FTS column names (an index detail).
+        self.assertRegex(build_match("retry budget"), r'^\((\w+) : "retry"\*\) AND \(\1 : "budget"\*\)$')
         m = build_match("退避")
-        self.assertIn('body : "退避"*', m)
+        self.assertRegex(m, r'\w+ : "退避"\*')
         self.assertIn('grams : (("退避"))', m)
 
     def test_quotes_are_escaped(self):
