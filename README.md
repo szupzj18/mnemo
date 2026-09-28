@@ -17,6 +17,8 @@ Your agents can recall every Claude Code, Codex and Pi session you've ever run, 
 [![MCP](https://img.shields.io/badge/MCP-server-8A2BE2)](docs/agent-tools.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
+**[Website](https://szupzj18.github.io/mnemo/)** · [Docs](docs/getting-started.md) · [Changelog](CHANGELOG.md)
+
 English · [简体中文](README.zh-CN.md)
 
 </div>
