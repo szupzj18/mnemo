@@ -10,11 +10,15 @@ All notable changes to this project are documented here. The format follows [Kee
 - MIT license.
 - Documentation site under `docs/`, a Chinese README, `AGENTS.md`, `CONTRIBUTING.md` and `SECURITY.md`.
 - `scripts/make-demo-home.py` to generate synthetic sessions for testing and screenshots.
+- `mnemo recent` lists recently started sessions with their first real user prompt as the title, so recent work can be recalled without a keyword; the MCP server exposes the same as `list_recent_sessions`.
+- `mnemo search --include-injected` also matches injected boilerplate, and `mnemo context`/`session --show-envelope` render those bodies verbatim.
+- `mnemo index --rebuild` drops and reparses the whole index from scratch.
 
 ### Fixed
 - Searches from the CLI, the Pi extension and the dashboard now sync the local index first, and the MCP server syncs before every `search_sessions` instead of only at startup. Previously sessions written after the last `mnemo index` (or after the MCP server started) were invisible. Syncs within 2 s of the last one are skipped, concurrent writers wait up to 10 s, and a failed refresh falls back to the existing index with a warning. `mnemo search --no-sync` opts out.
 
 ### Changed
+- Injected user-message boilerplate (workspace `AGENTS.md` instructions, plugin suggestions, ambient browser state, slash-command output, and Codex approval-review wraps) is now kept verbatim in the index but excluded from default search, snippets and session titles; this is an additive schema (v2) that migrates an existing index on its next sync, with no records dropped. Genuine user replies inside such messages remain searchable.
 - Dashboard restyled with flat, hairline-bordered surfaces and matching light and dark themes.
 - Dashboard device status: avatar cards with a live status dot, host tag, status line, per-agent counts and relative sync time; remotes are probed automatically on load.
 - Search results use the official Claude, OpenAI (Codex) and pi marks.

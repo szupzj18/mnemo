@@ -1,6 +1,7 @@
 import datetime
 import re
 from dataclasses import dataclass
+from typing import Optional
 
 MAX_TEXT = 20000
 
@@ -14,7 +15,14 @@ class Msg:
     ts: str
     role: str  # user / assistant / tool
     kind: str  # text / reasoning / tool_call / tool_result / summary
-    text: str
+    text: str  # searchable text with injected envelopes stripped
+    raw: Optional[str] = None  # original text as found in the session file
+    envelope: bool = False  # raw carried an injected envelope that text drops
+
+    @property
+    def stored(self):
+        """Body column value: prefer the verbatim original when present."""
+        return self.raw if self.raw is not None else self.text
 
 
 def norm_ts(value):
@@ -53,6 +61,99 @@ def cjk_grams(text):
 
 def has_cjk(text):
     return bool(CJK_RUN.search(text))
+
+
+# ------------------------------------------------------------------- envelopes
+#
+# Agents inject boilerplate into *user* messages: workspace instructions, plugin
+# suggestions, ambient browser state, slash-command IO, approval-review wraps.
+# It is real content and stays verbatim in the `body` column, but it must not
+# pollute search or be mistaken for the session's task. Each source strips the
+# well-delimited wrappers into the searchable `text` column; free-form user
+# replies (e.g. <send_user_message_question_reply>) are never envelopes.
+
+# Paired XML tags, possibly with attributes, shared by claude and codex.
+_XML_ENVELOPE_TAGS = (
+    "environment_context",
+    "recommended_plugins",
+    "in-app-browser-context",
+    "local-command-caveat",
+    "local-command-stdout",
+    "local-command-stderr",
+    "system-reminder",
+    "turn_aborted",
+    "skill",
+    "command-name",
+    "command-message",
+    "command-args",
+    "command-stdout",
+    "command-stderr",
+)
+
+
+def _xml_envelope(tag):
+    return re.compile(r"<%s(?:\s[^>]*)?>.*?</%s>" % (tag, tag), re.S)
+
+
+_XML_RULES = tuple(_xml_envelope(t) for t in _XML_ENVELOPE_TAGS)
+
+# Source-specific, non-XML envelopes.
+CODEX_EXTRA_PATTERNS = (
+    # "# AGENTS.md instructions for <cwd>\n\n<INSTRUCTIONS>…</INSTRUCTIONS>"
+    r"#\s*AGENTS\.md\s+instructions\b.*?</INSTRUCTIONS>",
+    # Approval/assessment sub-rollouts: the whole user message is wrapped agent
+    # history, bounded by a fixed opener and a trailing APPROVAL … END marker.
+    r"The following is the Codex agent history\b.*?>>>\s*APPROVAL[A-Z ]*?END",
+)
+CODEX_EXTRA_RULES = tuple(re.compile(p, re.S) for p in CODEX_EXTRA_PATTERNS)
+
+
+def strip_envelopes(text, extra_rules=()):
+    """Return (clean, stripped_any). Does not mutate the caller's string."""
+    if not text:
+        return text, False
+    count = 0
+    for rx in _XML_RULES + tuple(extra_rules):
+        text, n = rx.subn("", text)
+        count += n
+    return text.strip(), count > 0
+
+
+# ---------------------------------------------------------------------- titles
+
+# A searchable user message that nevertheless is not a human task prompt.
+_TITLE_SKIP_PREFIXES = (
+    "the following is the codex agent history",
+    "# agents.md instructions",
+    "<recommended_plugins",
+    "<environment_context",
+    "<in-app-browser-context",
+    "<turn_aborted",
+    "<skill",
+    "<local-command-caveat",
+    "<system-reminder",
+    "fork started",
+    "set model to",
+)
+
+
+def make_title(msgs, limit=140):
+    """First substantive searchable user prompt of a session, on one line."""
+    for _, m in msgs:
+        if m.role != "user" or m.kind not in ("text", "summary"):
+            continue
+        s = m.text.strip()
+        low = s.lower()
+        if not s or any(low.startswith(p) for p in _TITLE_SKIP_PREFIXES):
+            continue
+        line = next((ln.strip() for ln in s.splitlines() if ln.strip()), "")
+        if line:
+            return re.sub(r"\s+", " ", line)[:limit]
+    return ""
+
+
+def first_ts(msgs):
+    return msgs[0][1].ts if msgs else ""
 
 
 def block_text(content):

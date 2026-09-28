@@ -1,21 +1,8 @@
 import json
 import os
-import re
 
-from ..model import Msg, block_text, clip, norm_ts
+from ..model import Msg, block_text, clip, norm_ts, strip_envelopes
 from .base import Source, decode_cwd_dir
-
-CAVEAT = re.compile(r"<local-command-caveat>.*?</local-command-caveat>", re.S)
-COMMAND_BLOCK = re.compile(
-    r"<command-(?:name|message|args|stdout|stderr)(?:\s[^>]*)?>.*?</command-(?:name|message|args|stdout|stderr)>",
-    re.S,
-)
-
-
-def clean_user_text(text):
-    text = CAVEAT.sub("", text)
-    text = COMMAND_BLOCK.sub("", text)
-    return text.strip()
 
 
 class ClaudeSource(Source):
@@ -51,10 +38,23 @@ class ClaudeSource(Source):
                     continue
                 ts = norm_ts(d.get("timestamp"))
                 for kind, text in self._content(m.get("content")):
+                    raw0 = None
+                    stripped = False
                     if role == "user" and kind == "text":
-                        text = clean_user_text(text)
-                    if text:
-                        msgs.append((lineno, Msg(ts, role, kind, clipf(text))))
+                        raw0 = text
+                        text, stripped = strip_envelopes(text)
+                    present = raw0.strip() if raw0 is not None else text
+                    if present:
+                        # Pure-envelope blocks are retained verbatim (raw0) with
+                        # empty searchable text, so injected records are not lost.
+                        msgs.append((
+                            lineno,
+                            Msg(
+                                ts, role, kind, clipf(text),
+                                raw=clipf(raw0.strip()) if stripped else None,
+                                envelope=stripped,
+                            ),
+                        ))
             elif t == "summary":
                 text = d.get("summary")
                 if text:

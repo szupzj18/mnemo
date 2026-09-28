@@ -146,7 +146,7 @@ def install(remote, logger=lambda m: None, timeout=600):
 
 # ----------------------------------------------------------------- search io
 
-def search_argv(query, sources, kinds, cwd, since, limit):
+def search_argv(query, sources, kinds, cwd, since, limit, include_injected=False):
     argv = ["search", query, "--json", "--limit", str(limit), "--host", LOCAL]
     # --host local pins the remote to its own index. Without it the remote
     # would fan out to its own registered devices, chaining the federation,
@@ -162,14 +162,18 @@ def search_argv(query, sources, kinds, cwd, since, limit):
         argv += ["--cwd", cwd]
     if since:
         argv += ["--since", since]
+    if include_injected:
+        argv.append("--include-injected")
     return argv
 
 
-def _remote_search(remote, query, sources, kinds, cwd, since, limit, sync):
+def _remote_search(remote, query, sources, kinds, cwd, since, limit, sync, include_injected):
     if sync:
         remote_exec(remote, ["index"], timeout=120)
     out = remote_exec(
-        remote, search_argv(query, sources, kinds, cwd, since, limit), timeout=30
+        remote,
+        search_argv(query, sources, kinds, cwd, since, limit, include_injected),
+        timeout=30,
     )
     rows = json.loads(out)
     for h in rows:
@@ -189,7 +193,8 @@ def _rrf(per_host, limit):
     return [payload[k] for k in keys[:limit]]
 
 
-def _local_search(db_path, query, sources, kinds, cwd, since, limit, sync=False, warnings=None):
+def _local_search(db_path, query, sources, kinds, cwd, since, limit,
+                  sync=False, warnings=None, include_injected=False):
     idx = Index(db_path)
     try:
         if sync:
@@ -203,6 +208,7 @@ def _local_search(db_path, query, sources, kinds, cwd, since, limit, sync=False,
         return local_search(
             idx, query, sources=sources, kinds=kinds,
             cwd=cwd, since=since, limit=limit,
+            include_injected=include_injected,
         )
     finally:
         idx.close()
@@ -219,6 +225,7 @@ def fan_out_search(
     hosts=None,
     sync_remotes=True,
     sync_local=True,
+    include_injected=False,
 ):
     """Search local index plus registered remotes in parallel.
 
@@ -245,11 +252,12 @@ def fan_out_search(
         if include_local:
             jobs[pool.submit(
                 _local_search, index.db_path, query, sources, kinds, cwd, since, limit,
-                sync_local, warnings,
+                sync_local, warnings, include_injected,
             )] = LOCAL
         for r in selected:
             jobs[pool.submit(
-                _remote_search, r, query, sources, kinds, cwd, since, limit, sync_remotes
+                _remote_search, r, query, sources, kinds, cwd, since, limit,
+                sync_remotes, include_injected,
             )] = r["name"]
         per_host = []
         for fut in concurrent.futures.as_completed(jobs):

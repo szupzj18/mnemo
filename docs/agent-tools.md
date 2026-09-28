@@ -14,6 +14,7 @@ The same tools are exposed over MCP (`mnemo mcp`), as a Pi extension, and as CLI
 | `search_sessions` | `search_sessions` | `mnemo search … --json` |
 | `get_context` | `get_session_context` | `mnemo context <path> <line> --json` |
 | `get_session` | `get_full_session` | `mnemo session <path> --json` |
+| `list_recent_sessions` | — | `mnemo recent --json` |
 | `reindex` | — | `mnemo index` |
 
 ## search_sessions
@@ -29,6 +30,7 @@ Full-text search over user prompts, assistant replies, summaries, tool calls and
 | `since` | string | — | `YYYY-MM-DD` |
 | `host` | string | all devices | Comma-separated. The MCP tool description lists the registered device names. |
 | `limit` | integer | 20 | Capped at 100 over MCP |
+| `include_injected` | boolean | false | Also match injected boilerplate (workspace instructions, plugin suggestions, slash-command output, Codex approval-review wraps). See [Message schema](#message-schema). |
 
 Each hit:
 
@@ -44,9 +46,12 @@ Each hit:
   "path": "/home/alex/.codex/sessions/2026/09/24/rollout-2026-09-24T15-40-00-923bbc54….jsonl",
   "lineno": 11,
   "session_id": "923bbc54-87c7-4d09-b28d-6854976be73c",
+  "envelope": 0,
   "rank": -3.747
 }
 ```
+
+`envelope` is `1` only when the matched text is injected boilerplate (possible with `include_injected`); the snippet then shows cleaned text and the verbatim body is available under `body`.
 
 Matched terms are wrapped in `[[…]]`. Results from several devices are merged by Reciprocal Rank Fusion. If a device is unreachable, the response ends with an `unreachable devices` note, and hits from the other devices are still complete.
 
@@ -69,6 +74,8 @@ Returns the indexed messages around one hit. Every message in the window has the
 ]
 ```
 
+Messages whose body contained injected boilerplate carry `"envelope": 1`. A mixed message (boilerplate plus a real reply) shows the cleaned `text` and also exposes the verbatim original under `body`; a boilerplate-only message renders its verbatim text as-is. The CLI `--show-envelope` flag prints verbatim bodies in text mode.
+
 ## get_session
 
 Returns every indexed message of the session file, ordered by time, along with session metadata.
@@ -78,7 +85,7 @@ Returns every indexed message of the session file, ordered by time, along with s
 | `path` | string | required | From the hit |
 | `host` | string | `local` | Pass the hit's `host` |
 | `head` / `tail` | integer | — | Only the first or last N messages, for skimming long sessions |
-| `raw` | boolean | false | Full bodies from the original JSONL |
+| `raw` | boolean | false | Full bodies from the original JSONL. Raw rows return the verbatim stored text (`text` plus `envelope`). |
 
 ```json
 {
@@ -88,6 +95,28 @@ Returns every indexed message of the session file, ordered by time, along with s
   "messages": [{"lineno": 2, "ts": "…", "role": "user", "kind": "text", "text": "…"}]
 }
 ```
+
+## list_recent_sessions
+
+Lists recently started sessions newest-first, titled with the first real user prompt (boilerplate stripped), so "what have I been working on" needs no keyword.
+
+| Parameter | Type | Default | Notes |
+|---|---|---|---|
+| `source` | string | all | Comma-separated subset of `claude,codex,pi` |
+| `cwd` | string | — | Substring of the working directory |
+| `since` | string | — | `YYYY-MM-DD` |
+| `limit` | integer | 25 | Capped at 100 over MCP |
+
+```json
+[
+  {"source": "codex", "cwd": "/home/alex/relay",
+   "started_ts": "2026-09-24T07:40:00Z", "title": "Fix flaky backoff test",
+   "session_id": "923bbc54-…", "messages": 10,
+   "path": "/home/alex/.codex/sessions/…/rollout-….jsonl"}
+]
+```
+
+Sessions that contain only injected boilerplate (e.g. Codex approval-review rollouts) have no title and are skipped. This tool reads the local device only; run it on the devbox itself (or over SSH) to list that machine's sessions.
 
 ## reindex
 
@@ -103,8 +132,9 @@ Every agent's log format is normalized into:
 | `kind` | `text`, `summary` (compaction summaries), `reasoning`, `tool_call` (`name(args-json)`), `tool_result` |
 | `ts` | ISO-8601 UTC |
 | `text` | Body, capped at 20,000 characters in the index (`…[truncated]`) |
+| `envelope` | `1` when the body contained agent-injected boilerplate |
 
-Injected environment context, progress events and other noise are filtered at parse time.
+Injected boilerplate (workspace instructions, plugin suggestions, ambient browser state, slash-command output, Codex approval-review wraps) is **retained verbatim**, never deleted: the original stays in `body`, the searchable `text` holds the remainder with envelopes stripped, and default search matches `text` only. Genuine user replies inside an injected message stay searchable. Pass `include_injected` (or `--include-injected`) to also match the verbatim bodies.
 
 ## Usage guidance for agents
 

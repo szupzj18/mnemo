@@ -1,13 +1,10 @@
 import json
 import os
-import re
 
-from ..model import Msg, clip, norm_ts
+from ..model import Msg, clip, norm_ts, strip_envelopes, CODEX_EXTRA_RULES
 from .base import Source
 
 SKIP_ROLES = {"developer", "system"}
-
-ENV_CONTEXT = re.compile(r"^\s*<environment_context>.*?</environment_context>", re.S)
 
 
 class CodexSource(Source):
@@ -54,10 +51,23 @@ class CodexSource(Source):
                     continue
                 if role not in ("user", "assistant"):
                     continue
-                text = self._message_text(p.get("content"))
-                text = ENV_CONTEXT.sub("", text).strip()
-                if text:
-                    msgs.append((lineno, Msg(ts, role, "text", clipf(text))))
+                raw0 = self._message_text(p.get("content"))
+                if role == "user":
+                    clean, stripped = strip_envelopes(raw0, CODEX_EXTRA_RULES)
+                else:
+                    clean, stripped = raw0.strip(), False
+                if raw0.strip():
+                    # Pure-envelope messages (clean == "") are kept verbatim so
+                    # nothing is lost; their empty searchable text just never
+                    # matches a query.
+                    msgs.append((
+                        lineno,
+                        Msg(
+                            ts, role, "text", clipf(clean),
+                            raw=clipf(raw0.strip()) if stripped else None,
+                            envelope=stripped,
+                        ),
+                    ))
             elif pt == "reasoning":
                 text = self._reasoning_text(p)
                 if text:

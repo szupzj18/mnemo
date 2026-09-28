@@ -33,9 +33,20 @@ mnemo search "关键词" --json
   - `--since YYYY-MM-DD`
   - `--limit N` (default 20)
   - `--kind text,summary,tool_call,tool_result,reasoning` (default excludes reasoning; pass `--all-kinds` to include it)
+  - `--include-injected` — also match injected boilerplate (workspace instructions, plugin suggestions, slash-command output, Codex approval-review wraps); hidden by default
 
-Each hit contains: `host`, `source`, `cwd`, `ts`, `role`, `kind`, `snippet`, `path`, `lineno`.
+Each hit contains: `host`, `source`, `cwd`, `ts`, `role`, `kind`, `snippet`, `path`, `lineno` (plus `envelope: 1` when the match is inside injected text). Injected boilerplate is kept verbatim but excluded from default search, so a keyword that only appears in the agent's `AGENTS.md` does not surface every session; genuine user replies inside such messages are still searchable.
 A warning on stderr lists devices that were unreachable; results from the others are still complete.
+
+## Recalling recent sessions
+
+For "最近有哪些任务 / what have I been working on lately" you do not need a keyword — every session's first real user prompt is stored as its title:
+
+```bash
+mnemo recent [--since 7d] [--source codex] [--cwd infra-dev] [--limit 25] --json
+```
+
+Returns newest-first `source`, `cwd`, `started_ts`, `title`, `messages`, `path`. Boilerplate-only sessions and approval-review rollouts have no title and are skipped. MCP exposes the same as `list_recent_sessions`. Use this instead of hand-querying the database to summarize recent work.
 
 ## Reading a hit in context
 
@@ -55,7 +66,7 @@ mnemo session <path> --host <hit-host> --json [--head N] [--tail N]
 
 MCP/Pi expose the same as `get_session` / `get_full_session`. A session can be long; prefer `context` for one detail and use `--head`/`--tail` to skim a long session before pulling all of it.
 
-Indexed message bodies are capped at 20k characters each (long tool outputs are clipped with a `…[truncated]` marker). To read the original full content straight from the session JSONL, add `--raw` to `context`/`session` (MCP/Pi: `raw: true`). Raw reads execute on the device that holds the file, so remote content still does not leave it except in the query response.
+Indexed message bodies are capped at 20k characters each (long tool outputs are clipped with a `…[truncated]` marker). To read the original full content straight from the session JSONL, add `--raw` to `context`/`session` (MCP/Pi: `raw: true`). Raw reads execute on the device that holds the file, so remote content still does not leave it except in the query response. Injected messages render their cleaned text by default; add `--show-envelope` to see the verbatim boilerplate (in JSON it is also returned as `body`).
 
 ## Keeping the index fresh
 

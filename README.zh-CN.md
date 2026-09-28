@@ -86,6 +86,7 @@ search_sessions ──▶ get_context ──▶ get_session
 | `search_sessions` | `search_sessions` | `mnemo search … --json` | 跨所有 Agent 和设备的关键词排序检索 |
 | `get_context` | `get_session_context` | `mnemo context <path> <line>` | 命中点前后的消息 |
 | `get_session` | `get_full_session` | `mnemo session <path>` | 整段会话，可选 head/tail/raw |
+| `list_recent_sessions` | — | `mnemo recent` | 最近开始的会话，以首个真实任务为标题 |
 | `reindex` | — | `mnemo index` | 增量同步本机日志 |
 
 参数、返回结构和 token 开销见 [Agent tools](docs/agent-tools.md)。

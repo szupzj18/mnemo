@@ -27,33 +27,44 @@ Alias: `mnemo query`.
 | `--host` | local + all remotes | Comma-separated device names; `local` means this machine |
 | `--limit` | 20 | Max hits after merging |
 | `--no-sync` | off | Skip the local incremental sync (remotes still sync) |
+| `--include-injected` | off | Also match injected boilerplate bodies (workspace instructions, plugin suggestions, approval-review wraps) that are kept but hidden from search |
 | `--json` | off | JSON array of hits |
 
 Every device, local and remote, syncs its index incrementally before it is searched, so sessions from a minute ago are found. Warnings about unreachable devices, or a local index that couldn't be refreshed, go to stderr and don't fail the command.
 
+Agents inject boilerplate into user messages — `AGENTS.md` instructions, plugin suggestions, ambient browser state, slash-command output and Codex approval-review wraps. Mnemo keeps these **verbatim** but excludes them from search, ranking and titles, so a keyword that only appears in the injected instructions does not surface every session. Pass `--include-injected` to search the verbatim bodies too. Hits from such a message carry `"envelope": 1`.
+
+## mnemo recent
+
+```bash
+mnemo recent [--source S] [--cwd SUBSTR] [--since YYYY-MM-DD] [--limit N] [--json]
+```
+
+Lists the most recently started sessions, newest first, each with its first real user prompt as the title, the working directory, start time and message count. Use it to recall recent work without a keyword, or to choose a session before `mnemo session`. Boilerplate-only and approval-review rollouts have no title and are skipped.
+
 ## mnemo context
 
 ```bash
-mnemo context <path> <line> [--before 4] [--after 8] [--host H] [--raw] [--json]
+mnemo context <path> <line> [--before 4] [--after 8] [--host H] [--raw] [--show-envelope] [--json]
 ```
 
-Prints the messages around a hit. `--host` must be the hit's `host` for remote hits. `--raw` reads the original JSONL with untruncated bodies.
+Prints the messages around a hit. `--host` must be the hit's `host` for remote hits. `--raw` reads the original JSONL with untruncated bodies. By default injected messages render their cleaned text; `--show-envelope` shows the verbatim body instead. Envelope messages are marked `env`.
 
 ## mnemo session
 
 ```bash
-mnemo session <path> [--head N] [--tail N] [--host H] [--raw] [--json]
+mnemo session <path> [--head N] [--tail N] [--host H] [--raw] [--show-envelope] [--json]
 ```
 
-Prints every message of one session file in time order.
+Prints every message of one session file in time order. `--show-envelope` shows verbatim injected bodies (otherwise the cleaned text); each envelope message is flagged and its original is available in the JSON as `body`.
 
 ## mnemo index
 
 ```bash
-mnemo index [--source S] [-v]
+mnemo index [--source S] [--rebuild] [-v]
 ```
 
-Incremental sync of local session logs. Files whose size or mtime are unchanged are skipped, and deleted files are dropped from the index. `-v` logs each file.
+Incremental sync of local session logs. Files whose size or mtime are unchanged are skipped, and deleted files are dropped from the index. `-v` logs each file. `--rebuild` drops the index and reparses every session from scratch (also the way to adopt a new schema after upgrading Mnemo).
 
 ## mnemo status
 
@@ -84,7 +95,7 @@ mnemo remote remove <name>                        # unregister; leaves files on 
 
 ## mnemo mcp
 
-Runs the stdio MCP server (JSON-RPC, zero dependencies). It syncs the local index at startup, then serves `search_sessions` (which syncs again before each search), `get_context`, `get_session` and `reindex`.
+Runs the stdio MCP server (JSON-RPC, zero dependencies). It syncs the local index at startup, then serves `search_sessions` (which syncs again before each search; pass `include_injected` to also match boilerplate), `list_recent_sessions`, `get_context`, `get_session` and `reindex`.
 
 ## mnemo dashboard
 

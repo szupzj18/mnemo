@@ -2,10 +2,12 @@ import os
 import sqlite3
 import time
 
-from .model import cjk_grams
+from .model import cjk_grams, first_ts, make_title
 from .sources import SOURCES, get_sources
 
 DEFAULT_DB_PATH = os.path.expanduser("~/.mnemo/index.db")
+
+SCHEMA_VERSION = "2"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS files (
@@ -14,7 +16,9 @@ CREATE TABLE IF NOT EXISTS files (
   session_id TEXT,
   cwd        TEXT,
   mtime      REAL NOT NULL,
-  size       INTEGER NOT NULL
+  size       INTEGER NOT NULL,
+  title      TEXT,
+  started_ts TEXT
 );
 CREATE TABLE IF NOT EXISTS file_ranges (
   path TEXT NOT NULL,
@@ -27,6 +31,7 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS messages USING fts5(
   body,
+  text,
   grams,
   source     UNINDEXED,
   session_id UNINDEXED,
@@ -36,6 +41,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS messages USING fts5(
   kind       UNINDEXED,
   path       UNINDEXED,
   lineno     UNINDEXED,
+  envelope   UNINDEXED,
   tokenize = "unicode61"
 );
 """
@@ -57,6 +63,40 @@ class Index:
         # writer instead of failing with "database is locked".
         self.db.execute("PRAGMA busy_timeout = 10000")
         self.db.executescript(SCHEMA)
+        self._migration_pending = self._detect_pending()
+
+    def _set_version(self):
+        self.db.execute(
+            "INSERT OR REPLACE INTO meta(key, value) VALUES('schema_version', ?)",
+            (SCHEMA_VERSION,),
+        )
+
+    def _detect_pending(self):
+        """Whether stored tables predate the current schema and need a rebuild.
+
+        Runs at construction without dropping anything, so a read-only command
+        like `status` keeps working on an old index until the next sync rebuilds
+        it. A freshly created (empty) v2 schema is stamped current immediately.
+        """
+        row = self.db.execute(
+            "SELECT value FROM meta WHERE key='schema_version'"
+        ).fetchone()
+        if row and row["value"] == SCHEMA_VERSION:
+            return False
+        cols = {r["name"] for r in self.db.execute("PRAGMA table_info(files)")}
+        if "title" in cols:  # SCHEMA just created the current tables empty
+            self._set_version()
+            return False
+        return True
+
+    def _apply_schema(self):
+        """Drop and recreate tables for the current schema (full reparse next)."""
+        self.db.execute("DROP TABLE IF EXISTS messages")
+        self.db.execute("DROP TABLE IF EXISTS file_ranges")
+        self.db.execute("DROP TABLE IF EXISTS files")
+        self.db.executescript(SCHEMA)
+        self._set_version()
+        self._migration_pending = False
 
     def close(self):
         self.db.close()
@@ -65,6 +105,9 @@ class Index:
 
     def sync(self, source_names=None, home=None, logger=None):
         log = logger or (lambda msg: None)
+        if self._migration_pending:
+            log("schema v%s: rebuilding index from session files ..." % SCHEMA_VERSION)
+            self._apply_schema()
         sources = get_sources(source_names, home=home)
         stats = dict(files_new=0, files_updated=0, files_removed=0, messages=0)
 
@@ -122,6 +165,12 @@ class Index:
             return None
         return self.sync(logger=logger)
 
+    def rebuild(self, source_names=None, home=None, logger=None):
+        """Drop the index and reparse every session file from scratch."""
+        log = logger or (lambda msg: None)
+        self._apply_schema()
+        return self.sync(source_names, home=home, logger=log)
+
     def _reindex_file(self, source, path, mtime, size, stats, log):
         try:
             session_id, cwd, msgs = source.parse(path)
@@ -131,34 +180,36 @@ class Index:
         self._drop_path(path)
         if not msgs:
             self.db.execute(
-                "INSERT OR REPLACE INTO files(path, source, session_id, cwd, mtime, size)"
-                " VALUES(?,?,?,?,?,?)",
-                (path, source.name, session_id, cwd, mtime, size),
+                "INSERT OR REPLACE INTO"
+                " files(path, source, session_id, cwd, mtime, size, title, started_ts)"
+                " VALUES(?,?,?,?,?,?,?,?)",
+                (path, source.name, session_id, cwd, mtime, size, "", ""),
             )
             return
         rows = []
         for lineno, msg in msgs:
-            body = msg.text
             rows.append(
                 (
-                    body,
-                    cjk_grams(body),
-                    msg.role,
-                    msg.kind,
-                    lineno,
-                    msg.ts,
+                    msg.stored,
+                    msg.text,
+                    cjk_grams(msg.text),
                     source.name,
                     session_id,
                     cwd,
+                    msg.ts,
+                    msg.role,
+                    msg.kind,
                     path,
+                    lineno,
+                    1 if msg.envelope else 0,
                 )
             )
         self.db.execute("BEGIN")
         lo = self.db.execute("SELECT COALESCE(MAX(rowid), 0) + 1 FROM messages").fetchone()[0]
         self.db.executemany(
-            "INSERT INTO messages(body, grams, role, kind, lineno, ts,"
-            " source, session_id, cwd, path)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO messages(body, text, grams, source, session_id, cwd, ts,"
+            " role, kind, path, lineno, envelope)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             rows,
         )
         hi = lo + len(rows) - 1
@@ -166,9 +217,13 @@ class Index:
             "INSERT INTO file_ranges(path, lo, hi) VALUES(?,?,?)", (path, lo, hi)
         )
         self.db.execute(
-            "INSERT OR REPLACE INTO files(path, source, session_id, cwd, mtime, size)"
-            " VALUES(?,?,?,?,?,?)",
-            (path, source.name, session_id, cwd, mtime, size),
+            "INSERT OR REPLACE INTO"
+            " files(path, source, session_id, cwd, mtime, size, title, started_ts)"
+            " VALUES(?,?,?,?,?,?,?,?)",
+            (
+                path, source.name, session_id, cwd, mtime, size,
+                make_title(msgs), first_ts(msgs),
+            ),
         )
         self.db.execute("COMMIT")
         stats["messages"] += len(rows)
