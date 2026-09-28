@@ -135,6 +135,19 @@ class SetupTest(unittest.TestCase):
 class InstallScriptTest(unittest.TestCase):
     """scripts/install.sh end to end, cloning this repository's HEAD."""
 
+    def _source_repo(self, root):
+        """HEAD of this checkout on a real branch, like the GitHub repo users clone.
+
+        CI checks out a detached merge commit; cloning that directly leaves the
+        install without an upstream to pull from.
+        """
+        src = os.path.join(root, "source")
+        git = lambda *a: subprocess.run(["git", "-C", src] + list(a), check=True, capture_output=True)
+        subprocess.run(["git", "init", "-q", src], check=True)
+        git("fetch", "-q", REPO, "HEAD")
+        git("checkout", "-q", "-b", "main", "FETCH_HEAD")
+        return src
+
     def test_install_then_upgrade(self):
         with contextlib.redirect_stdout(io.StringIO()):
             demo = DemoHome()
@@ -145,7 +158,7 @@ class InstallScriptTest(unittest.TestCase):
                     HOME=demo.home,
                     MNEMO_DIR=os.path.join(demo.root, "mnemo"),
                     MNEMO_BIN_DIR=os.path.join(demo.root, "localbin"),
-                    MNEMO_REPO=REPO,
+                    MNEMO_REPO=self._source_repo(demo.root),
                     PYTHON=sys.executable,  # the interpreter under test, not whatever is on PATH
                     PATH=h.bin + os.pathsep + "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
                 )

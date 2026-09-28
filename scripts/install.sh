@@ -35,7 +35,15 @@ if [ -d "$MNEMO_DIR/.git" ]; then
   if [ -n "$(git -C "$MNEMO_DIR" status --porcelain --untracked-files=no)" ]; then
     die "$MNEMO_DIR has local changes; commit or stash them, then re-run"
   fi
-  git -C "$MNEMO_DIR" pull --ff-only --quiet
+  git -C "$MNEMO_DIR" fetch --quiet origin
+  # Fast-forward to the tracked branch; a checkout without one follows origin/HEAD.
+  if git -C "$MNEMO_DIR" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+    target='@{u}'
+  else
+    target=origin/HEAD
+  fi
+  git -C "$MNEMO_DIR" merge --ff-only --quiet "$target" 2>/dev/null ||
+    die "cannot fast-forward $MNEMO_DIR to $target; update it with git, then re-run"
   upgrade=1
 elif [ -e "$MNEMO_DIR" ]; then
   die "$MNEMO_DIR exists and is not a mnemo checkout; set MNEMO_DIR to install elsewhere"
