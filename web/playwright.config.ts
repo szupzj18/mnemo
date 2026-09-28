@@ -15,7 +15,9 @@ export default defineConfig({
   ignoreSnapshots: process.platform !== "linux",
   snapshotPathTemplate: "{testDir}/__screenshots__/{testFileName}/{arg}{ext}",
   expect: {
-    toHaveScreenshot: { maxDiffPixelRatio: 0.01, animations: "disabled", caret: "hide" },
+    // Renders in the pinned Linux image are pixel-stable, so keep the budget tight:
+    // a 1% ratio (~13k px) let a whole new header icon through unnoticed.
+    toHaveScreenshot: { maxDiffPixels: 100, animations: "disabled", caret: "hide" },
   },
   use: {
     baseURL,

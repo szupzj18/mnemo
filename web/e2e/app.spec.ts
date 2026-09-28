@@ -168,6 +168,19 @@ test.describe("chrome", () => {
     await expect(page.locator("html")).toHaveClass(/dark/)
   })
 
+  test("header links to the GitHub source in a new tab", async ({ page }) => {
+    for (const path of ["/", "/search/", "/devices/"]) {
+      await page.goto(path)
+      const link = page.getByTestId("github-link")
+      await expect(link).toBeVisible()
+      await expect(link).toHaveAttribute("href", "https://github.com/szupzj18/mnemo")
+      await expect(link).toHaveAttribute("target", "_blank")
+      await expect(link).toHaveAttribute("rel", /noopener/)
+    }
+    await page.getByTestId("github-link").hover()
+    await expect(page.getByText("在 GitHub 查看源码")).toBeVisible()
+  })
+
   test("devices page validates the add form", async ({ page }) => {
     await page.goto("/devices/")
     await expect(page.getByText("尚未注册设备")).toBeVisible()
