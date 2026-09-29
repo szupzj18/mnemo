@@ -122,7 +122,7 @@ and say which session (agent, device, date) you are drawing on.
 curl -fsSL https://szupzj18.github.io/mnemo/install.sh | sh
 ```
 
-One command: it checks Python 3.7+ and SQLite FTS5, clones to `~/mnemo`, links `mnemo` into `~/.local/bin`, builds the index, and runs `mnemo setup`, which connects every agent it finds (Claude Code MCP + skill, Codex MCP, Pi extension; anything already configured is left alone). Run it again to upgrade. Prefer a Python tool manager? `uv tool install git+https://github.com/szupzj18/mnemo && mnemo setup` (or `pipx install`).
+One command: it checks Python 3.7+ and SQLite FTS5, clones to `~/mnemo`, links `mnemo` into `~/.local/bin`, builds the index, and runs `mnemo setup`, which connects every agent it finds (Claude Code MCP + skill, Codex MCP, Pi extension; anything already configured is left alone). Run it again to upgrade. Prefer a Python tool manager? `uv tool install mnemo-search && mnemo setup` (or `pipx install mnemo-search`; the command is `mnemo`).
 
 Then try `mnemo search "retry budget"`, or ask an agent about something only an old session would know.
 
