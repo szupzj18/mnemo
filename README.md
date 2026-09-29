@@ -64,7 +64,7 @@ With the MCP server and the skill installed, you don't have to name the tool. Qu
 | "Did Codex ever try sqlite-vec for this?" | Searches `source=codex`, then summarizes what was tried and why it was dropped |
 | "Pick up where the devbox session left off yesterday." | Finds the session and reads its tail with `get_session(tail=…)` |
 | "What was the exact command we used to rebuild the index?" | Searches `kind=tool_call` and quotes the command verbatim |
-| "上次那个 Kerberos 报错是怎么解决的？" | Chinese matches by substring, so `Kerberos 报错` works too |
+| "上次那个连接池超时是怎么解决的？" | Chinese matches by substring, so `连接池超时` works too |
 
 ### The recall loop
 
