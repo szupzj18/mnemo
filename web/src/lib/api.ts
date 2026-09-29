@@ -6,6 +6,19 @@ export interface Remote {
   name: string
   host: string
   bin: string
+  /** "link": a device that linked in to this one (mnemo link); absent for SSH remotes. */
+  transport?: string
+}
+
+export type LinkState = "off" | "connecting" | "connected" | "retrying" | "refused" | "stopped"
+
+/** This device's link to a remote, letting that remote search it back (mnemo link --install). */
+export interface LinkInfo {
+  remote: string
+  installed: boolean
+  state: LinkState
+  since: number | null
+  error: string | null
 }
 
 export interface Status {
@@ -175,6 +188,9 @@ export const api = {
   setNode: (patch: Partial<Pick<NodeInfo, "name" | "forward">>) => call<Ok<NodeInfo>>("/api/node", patch),
   setRemoteNode: (name: string, patch: { forward?: boolean; node_name?: string }) =>
     call<Ok<{ node: NodeInfo }>>("/api/node/remote", { name, ...patch }),
+  links: () => call<{ manager: string | null; links: LinkInfo[] }>("/api/links"),
+  setLink: (remote: string, on: boolean) =>
+    call<Ok<{ manager: string }>>(on ? "/api/links/install" : "/api/links/uninstall", { remote }),
   topology: () => call<Ok<TopologyResult>>("/api/topology", {}),
   upgradeDevices: (routes?: string[]) =>
     call<Ok<{ results: DeviceUpgrade[]; warnings: string[] }>>("/api/upgrade-devices", routes ? { routes } : {}),

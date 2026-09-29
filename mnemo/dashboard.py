@@ -235,6 +235,14 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/node":
             self._json(node_info())
             return
+        if parsed.path == "/api/links":
+            from . import service
+            try:
+                m = service.manager()
+            except RemoteError:
+                m = None
+            self._json({"manager": m, "links": service.status()})
+            return
         if parsed.path == "/api/remote-status":
             qs = parse_qs(parsed.query)
             try:
@@ -284,7 +292,7 @@ class Handler(BaseHTTPRequestHandler):
                 remote_mod.remove_remote((data.get("name") or "").strip())
                 self._json({"ok": True})
             elif path == "/api/remotes/update":
-                remotes = remote_mod.load_remotes()
+                remotes = remote_mod.pushable(remote_mod.load_remotes())
                 if data.get("name"):
                     remotes = [remote_mod.get_remote(data["name"])]
                 logs = []
@@ -316,6 +324,12 @@ class Handler(BaseHTTPRequestHandler):
                     raise RemoteError("routes must be device routes")
                 results, warnings = remote_mod.upgrade_devices(routes=routes)
                 self._json({"ok": True, "results": results, "warnings": warnings})
+            elif path in ("/api/links/install", "/api/links/uninstall"):
+                from . import service
+                name = (data.get("remote") or "").strip()
+                remote_mod.get_remote(name)
+                m = service.uninstall(name) if path.endswith("/uninstall") else service.install(name)
+                self._json({"ok": True, "manager": m})
             elif path == "/api/topology":
                 t, ms = _time(remote_mod.probe_topology)
                 self._json({"ok": True, "ms": ms, "topology": t, "ttl": remote_mod.DEFAULT_TTL})

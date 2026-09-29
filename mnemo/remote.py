@@ -150,6 +150,11 @@ def remove_remote(name):
     save_remotes(kept)
 
 
+def pushable(remotes):
+    """Remotes this device can push code to: not ones that linked in (they update themselves)."""
+    return [r for r in remotes if r.get("transport") != "link"]
+
+
 def get_remote(name):
     for r in load_remotes():
         if r["name"] == name:

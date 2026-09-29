@@ -139,6 +139,20 @@ for (const theme of ["light", "dark"] as const) {
   })
 }
 
+test("a neighbor can be allowed to search this device back", async ({ page }) => {
+  await page.goto("/devices/")
+  const a = card(page, "devbox-a")
+  await expect(a.getByTestId("inbound-state")).toHaveText("反向访问：关闭")
+  await a.getByTestId("inbound-toggle").click()
+  await expect(page.getByRole("alertdialog")).toContainText("允许 devbox-a 搜索本机？")
+  await page.getByRole("button", { name: "确认" }).click()
+  await expect(a.getByTestId("inbound-state")).toContainText("已连接", { timeout: 30_000 })
+  await expect(page.getByText("devbox-a 现在可以搜索本机")).toBeVisible()
+
+  await a.getByTestId("inbound-toggle").click() // switching off needs no confirmation
+  await expect(a.getByTestId("inbound-state")).toHaveText("反向访问：关闭", { timeout: 30_000 })
+})
+
 // Last: it changes the fixture (devbox-b gets the current code).
 test("an outdated device behind a relay is brought up to date", async ({ page }) => {
   await page.goto("/topology/")

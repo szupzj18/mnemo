@@ -141,10 +141,12 @@ mnemo remote remove <name>                        # unregister; leaves files on 
 ## mnemo link
 
 ```bash
-mnemo link <remote> --allow-inbound
+mnemo link <remote> --allow-inbound [--install]
+mnemo link <remote> --uninstall
+mnemo link --list [--json]
 ```
 
-Keeps an SSH session open to a registered remote so that it can search and read this device's sessions, for devices that cannot connect back here (a laptop behind NAT or VPN). The remote sees this device as a neighbor named after it (`mnemo node --name`). Over the link it may only run read-only commands, and this device's relay policy applies. Runs in the foreground and reconnects on its own; stop it to revoke. See [Multi-device](multi-device.md#links-that-only-work-one-way).
+Keeps an SSH session open to a registered remote so that it can search and read this device's sessions, for devices that cannot connect back here (a laptop behind NAT or VPN). The remote sees this device as a neighbor named after it (`mnemo node --name`). Over the link it may only run read-only commands, and this device's relay policy applies. Runs in the foreground and reconnects on its own; stop it to revoke. `--install` runs it as a launchd agent (macOS) or systemd user unit (Linux) that starts at login instead (`MNEMO_SERVICE_MANAGER=background` forces a plain background process), `--uninstall` stops and removes it, and `--list` shows each link's state: `connected`, `connecting`, `retrying` (with the reason), `refused`, `stopped` or `off`. See [Multi-device](multi-device.md#links-that-only-work-one-way).
 
 ## mnemo mcp
 
