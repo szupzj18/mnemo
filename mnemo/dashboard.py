@@ -90,7 +90,8 @@ def diagnose_search(query, hosts, limit):
     node = remote_mod.load_node()
     remotes = remote_mod.load_remotes()
     wanted = set(hosts) if hosts else None
-    selected = [r for r in remotes if wanted is None or r["name"] in wanted]
+    selected = [r for r in remotes if (wanted is None or r["name"] in wanted)
+                and (wanted is not None or remote_mod._link_up(r))]
     include_local = wanted is None or LOCAL in wanted
     covered = {node["id"]} | {r["node_id"] for r in selected if r.get("node_id")}
     kinds = list(DEFAULT_KINDS)

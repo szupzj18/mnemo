@@ -175,5 +175,5 @@ def stale_processes(since=None):
     return [
         (pid, started, args) for pid, started, args in parse_ps(out)
         if pid not in me and started < since
-        and re.search(r"\bmnemo\b.*\b(mcp|dashboard)\b", args)
+        and re.search(r"\bmnemo\b.*\b(mcp|dashboard|link)\b", args)
     ]

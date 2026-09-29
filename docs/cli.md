@@ -138,6 +138,14 @@ mnemo remote remove <name>                        # unregister; leaves files on 
 
 `remote upgrade` compares code fingerprints (`mnemo node` shows this device's) and updates only the devices that differ: every device reachable, including ones behind relays, or just the given routes, e.g. `devbox-109/devbox-126`. Each gets the code by rsync, then an incremental sync, or a backed-up rebuild if the index schema changed.
 
+## mnemo link
+
+```bash
+mnemo link <remote> --allow-inbound
+```
+
+Keeps an SSH session open to a registered remote so that it can search and read this device's sessions, for devices that cannot connect back here (a laptop behind NAT or VPN). The remote sees this device as a neighbor named after it (`mnemo node --name`). Over the link it may only run read-only commands, and this device's relay policy applies. Runs in the foreground and reconnects on its own; stop it to revoke. See [Multi-device](multi-device.md#links-that-only-work-one-way).
+
 ## mnemo mcp
 
 Runs the stdio MCP server (JSON-RPC, zero dependencies). It syncs the local index at startup, then serves `search_sessions` (which syncs again before each search; pass `include_injected` to also match boilerplate), `list_recent_sessions`, `get_context`, `get_session` and `reindex`.
