@@ -19,7 +19,7 @@ for (const theme of themes) {
       await expect(page.getByTestId("device-card")).toHaveCount(1)
       await expect(page).toHaveScreenshot(`dashboard-${theme}.png`, {
         // Only clock-dependent values: db path (temp HOME), sync times, "N前同步".
-        mask: [page.getByTestId("db-path"), page.getByTestId("last-sync"), page.getByTestId("stat").last(), page.getByTestId("device-ago")],
+        mask: [page.getByTestId("app-version"), page.getByTestId("db-path"), page.getByTestId("last-sync"), page.getByTestId("stat").last(), page.getByTestId("device-ago")],
       })
     })
 
@@ -29,7 +29,7 @@ for (const theme of themes) {
       await page.getByLabel("搜索关键词").press("Enter")
       await expect(page.getByTestId("hit")).toHaveCount(17)
       await expect(page).toHaveScreenshot(`search-${theme}.png`, {
-        mask: [page.getByTestId("host-chips"), page.getByTestId("hit-count")],
+        mask: [page.getByTestId("app-version"), page.getByTestId("host-chips"), page.getByTestId("hit-count")],
       })
     })
 
@@ -40,7 +40,7 @@ for (const theme of themes) {
       await page.locator('[data-testid="hit"][data-source="claude"]').filter({ hasText: "rg -n" }).click()
       await expect(page.locator("[data-hit]")).toBeVisible()
       await expect(page).toHaveScreenshot(`session-${theme}.png`, {
-        mask: [page.getByTitle(/\/home\//), page.locator('[title*="mnemo-e2e"]')],
+        mask: [page.getByTestId("app-version"), page.getByTitle(/\/home\//), page.locator('[title*="mnemo-e2e"]')],
       })
     })
   })

@@ -11,6 +11,7 @@ from http.server import ThreadingHTTPServer
 
 from helpers import DemoHome
 
+import mnemo
 from mnemo import dashboard
 from mnemo.index import Index
 
@@ -140,6 +141,7 @@ class DashboardServerTest(unittest.TestCase):
         self.assertEqual(res.status, 200)
         status = json.loads(body)
         self.assertEqual(sum(v["files"] for v in status["sources"].values()), 5)
+        self.assertEqual(status["version"], mnemo.__version__)
 
         res, body = self.request("POST", "/api/search", {"query": "backoff", "limit": 20}, token=TOKEN)
         self.assertEqual(res.status, 200)

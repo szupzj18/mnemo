@@ -22,6 +22,7 @@ export interface LinkInfo {
 }
 
 export interface Status {
+  version?: string
   db: string
   last_sync: number | null
   sources: SourceCounts

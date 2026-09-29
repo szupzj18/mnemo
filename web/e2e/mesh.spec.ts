@@ -135,7 +135,8 @@ for (const theme of ["light", "dark"] as const) {
     await pinLatency(page)
     await page.goto("/topology/")
     await expect(page.getByTestId("topology-node")).toHaveCount(4)
-    await expect(page).toHaveScreenshot(`topology-${theme}.png`)
+    // The version changes with every release; keep it out of the pixels.
+    await expect(page).toHaveScreenshot(`topology-${theme}.png`, { mask: [page.getByTestId("app-version")] })
   })
 }
 

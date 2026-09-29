@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-29
+
+Mnemo now spans any device topology: searches pass through relays, devices that cannot connect back can still be searched (`mnemo link`), and upgrading one machine brings every reachable device up to date. The dashboard gains a topology view, and installing takes one command.
+
 ### Added
 - Multi-hop search across devices: each device lists only its direct neighbors; a neighbor with `mnemo node --forward on` relays searches and reads to its own neighbors. Hits carry routes (`devbox-109/devbox-126`) usable as `--host`; loops stop via node ids and a 3-hop budget; a device reached twice is reported once via the shortest route. Forwarding is off by default; older neighbors are asked the old way.
 - `mnemo node`: this device's stable id, name and forwarding policy.
@@ -28,6 +32,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `mnemo index --rebuild` drops and reparses the whole index from scratch.
 
 ### Changed
+- The dashboard sidebar shows the running version (from `/api/status`) instead of a hardcoded one.
 - Injected user-message boilerplate (workspace `AGENTS.md` instructions, plugin suggestions, ambient browser state, slash-command output, and Codex approval-review wraps) is now kept verbatim in the index but excluded from default search, snippets and session titles; this is an additive schema (v2) that migrates an existing index on its next sync, with no records dropped. Genuine user replies inside such messages remain searchable.
 - Dashboard restyled with flat, hairline-bordered surfaces and matching light and dark themes.
 - Dashboard device status: avatar cards with a live status dot, host tag, status line, per-agent counts and relative sync time; remotes are probed automatically on load.
@@ -60,5 +65,6 @@ First public release, as *agentsearch* (renamed to **Mnemo** the same day).
 - Local dashboard: search with per-device diagnostics, click-through to a chat-style session transcript with match navigation, device management, and a token-gated `127.0.0.1` API.
 - Agent skill in `integrations/skills/mnemo`.
 
-[Unreleased]: https://github.com/szupzj18/mnemo/compare/4733c41...HEAD
-[0.1.0]: https://github.com/szupzj18/mnemo/commit/4733c41
+[Unreleased]: https://github.com/szupzj18/mnemo/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/szupzj18/mnemo/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/szupzj18/mnemo/releases/tag/v0.1.0
