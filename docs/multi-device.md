@@ -56,7 +56,7 @@ Full mesh still works and needs no relays: run `remote add` on each device point
 The **Topology** view maps what this device can reach: each device's route, name, relay policy and latency, with unreachable ones marked. It probes the same paths a search takes (only through relays, within the hop budget), so it never shows more than a search could reach. Relays report their neighbors' names, never their SSH targets.
 
 <p align="center">
-  <img alt="Dashboard topology view: the laptop reaches devbox-126 through devbox-109, which relays; gpu-box is offline" src="assets/topology.png" width="880">
+  <img alt="Dashboard topology view: the laptop reaches devbox-b through devbox-a, which relays; devbox-down is offline" src="assets/topology.png" width="880">
 </p>
 
 On the **Devices** page you can rename this device and switch its relay, and switch relaying on a direct neighbor over its SSH link. Turning a relay on asks for confirmation first.

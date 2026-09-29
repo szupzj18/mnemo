@@ -4,12 +4,12 @@ type N = { id: string; x: number; y: number; label: string; sub: string; relay?:
 
 const NODES: N[] = [
   { id: "laptop", x: 70, y: 165, label: "laptop", sub: "you are here", you: true },
-  { id: "d109", x: 300, y: 95, label: "devbox-109", sub: "forwards", relay: true },
+  { id: "da", x: 300, y: 95, label: "devbox-a", sub: "forwards", relay: true },
   { id: "mini", x: 300, y: 250, label: "mac-mini", sub: "direct link" },
-  { id: "gpu", x: 528, y: 40, label: "gpu-box", sub: "via devbox-109" },
-  { id: "d126", x: 528, y: 150, label: "devbox-126", sub: "via devbox-109" },
+  { id: "gpu", x: 528, y: 40, label: "gpu-box", sub: "via devbox-a" },
+  { id: "db", x: 528, y: 150, label: "devbox-b", sub: "via devbox-a" },
 ]
-const EDGES: [string, string][] = [["laptop", "d109"], ["laptop", "mini"], ["d109", "gpu"], ["d109", "d126"]]
+const EDGES: [string, string][] = [["laptop", "da"], ["laptop", "mini"], ["da", "gpu"], ["da", "db"]]
 const at = (id: string) => NODES.find((n) => n.id === id)!
 const W = 132
 const H = 52
@@ -17,7 +17,7 @@ const H = 52
 export function Topology() {
   return (
     <div className="min-w-0 rounded-2xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-950">
-      <svg viewBox="0 0 600 290" className="w-full" role="img" aria-label="A search from the laptop reaches devbox-126 and gpu-box through devbox-109">
+      <svg viewBox="0 0 600 290" className="w-full" role="img" aria-label="A search from the laptop reaches devbox-b and gpu-box through devbox-a">
         {EDGES.map(([a, b]) => {
           const p = at(a)
           const q = at(b)
@@ -53,8 +53,8 @@ export function Topology() {
       </svg>
       <div className="mt-4 space-y-1.5 border-t border-neutral-200 pt-4 font-mono text-[12px] dark:border-neutral-800">
         {[
-          ["devbox-109/devbox-126", "codex", "clamp the delay after adding jitter"],
-          ["devbox-109/gpu-box", "codex", "--mem-fraction-static 0.88 → 0.80"],
+          ["devbox-a/devbox-b", "codex", "clamp the delay after adding jitter"],
+          ["devbox-a/gpu-box", "codex", "--mem-fraction-static 0.88 → 0.80"],
           ["mac-mini", "claude", "retry budget: 5 attempts from 200 ms"],
         ].map(([route, agent, text]) => (
           <div key={route} className="flex gap-3 truncate">

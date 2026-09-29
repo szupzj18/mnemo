@@ -12,15 +12,15 @@ export function AgentTranscript() {
         <span className="text-white">sglang OOMs on the GPU box again. What did we change last time?</span>
         {"\n\n"}
         <Call n="search_sessions" args={'"sglang oom"'} />
-        <Dim>{"           3 hits · codex · devbox-109/gpu-box · Sep 22\n"}</Dim>
+        <Dim>{"           3 hits · codex · devbox-a/gpu-box · Sep 22\n"}</Dim>
         <Dim>{"                    claude · local · Sep 18\n\n"}</Dim>
-        <Call n="get_context" args={'hit 1, host="devbox-109/gpu-box"'} />
+        <Call n="get_context" args={'hit 1, host="devbox-a/gpu-box"'} />
         <Dim>{"           --mem-fraction-static 0.88 → 0.80\n"}</Dim>
         <Dim>{"           \"OOM gone at batch 64; throughput −3%\"\n\n"}</Dim>
         <span className="text-brand">claude ▸ </span>
         <span className="text-white">
           Codex lowered --mem-fraction-static to 0.80 on gpu-box on Sep 22{"\n"}
-          {"         "}(reached through devbox-109). Your launch script still says 0.88.{"\n"}
+          {"         "}(reached through devbox-a). Your launch script still says 0.88.{"\n"}
           {"         "}Want me to apply the same change?
         </span>
       </pre>

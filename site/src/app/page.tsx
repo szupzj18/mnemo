@@ -20,7 +20,7 @@ const LOOP = [
 
 const TOPOLOGY = [
   ["Direct links and relays", "Each device lists only its neighbors. Turn on forwarding on a device and searches pass through it to the devices behind it."],
-  ["Routes you can follow", "Every hit carries its route, like devbox-109/devbox-126. Pass it back and reads travel the same path."],
+  ["Routes you can follow", "Every hit carries its route, like devbox-a/devbox-b. Pass it back and reads travel the same path."],
   ["Loop-free, deduplicated", "Stable node ids and a hop budget stop cycles; a device reached twice is reported once, via the shortest route."],
   ["Nothing central", "No server, no shared store. Queries and the messages you ask for travel; indexes and raw logs stay on their device."],
   ["Kept in step", "Upgrade one machine and it brings every reachable device to the same code, relays included."],
@@ -190,7 +190,7 @@ export default function Home() {
             </dl>
           </div>
           <div className="mt-10 max-w-2xl space-y-3">
-            <CopyCommand command={"mnemo remote add devbox-109\nssh devbox-109 mnemo node --forward on"} />
+            <CopyCommand command={"mnemo remote add devbox-a\nssh devbox-a mnemo node --forward on"} />
           </div>
         </Section>
 
@@ -202,7 +202,7 @@ export default function Home() {
             </div>
             <div className="self-start overflow-hidden rounded-2xl border border-neutral-200 shadow-xl shadow-neutral-900/5 dark:border-neutral-800">
               <picture>
-                <img src={asset("/img/topology.png")} alt="Topology view: the laptop reaches devbox-126 through devbox-109" className="w-full" />
+                <img src={asset("/img/topology.png")} alt="Topology view: the laptop reaches devbox-b through devbox-a" className="w-full" />
               </picture>
             </div>
           </div>
