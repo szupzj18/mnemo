@@ -6,6 +6,7 @@ import { GrepVsMnemo } from "@/components/grep-vs-mnemo"
 import { InstallTabs } from "@/components/install-tabs"
 import { GitHubMark, Logo } from "@/components/logo"
 import { Pillars } from "@/components/pillars"
+import { PromoVideo } from "@/components/promo-video"
 import { Topology } from "@/components/topology"
 import { DOCS, INSTALL, REPO, UV_INSTALL, asset } from "@/lib/site"
 
@@ -74,6 +75,7 @@ export default function Home() {
             <Logo className="size-6" /> mnemo
           </a>
           <span className="flex-1" />
+          <NavLink href="#demo">Demo</NavLink>
           <NavLink href="#for-agents">For agents</NavLink>
           <NavLink href="#speed">Speed</NavLink>
           <NavLink href="#topology">Topology</NavLink>
@@ -123,6 +125,11 @@ export default function Home() {
         <div className="mx-auto max-w-6xl px-6">
           <Pillars order={["agent", "speed", "topology"]} />
         </div>
+
+        {/* demo */}
+        <Section id="demo" eyebrow="Demo" title="Two agents, two machines, one search." lead="An agent asks what another agent already did, on another device. The answer comes back ranked, with the agent, device and date attached.">
+          <PromoVideo />
+        </Section>
 
         {/* retrieval efficiency */}
         <Section id="speed" eyebrow="Retrieval efficiency" title="Less digging, same answers." lead="Grep hands an agent gigabytes of unranked JSON to narrow down. Mnemo hands it the few messages that matter, ranked, with the agent, device and time attached.">
