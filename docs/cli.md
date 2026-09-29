@@ -19,7 +19,7 @@ Alias: `mnemo query`.
 | Option | Default | Description |
 |---|---|---|
 | `<keywords…>` | — | All keywords must match (AND). English matches word prefixes; Chinese matches substrings. |
-| `--source` | all | `claude,codex,pi` (comma-separated) |
+| `--source` | all | `claude,codex,opencode,pi` (comma-separated) |
 | `--kind` | `text,summary,tool_call,tool_result` | Message kinds to match |
 | `--all-kinds` | off | Also match `reasoning` |
 | `--cwd` | — | Substring of the session's working directory |

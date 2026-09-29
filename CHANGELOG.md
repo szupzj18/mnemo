@@ -4,6 +4,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+- OpenCode adapter: `~/.local/share/opencode/opencode.db` is indexed as a fourth source. Each session is addressed as `<db path>::<session id>` and reports its own change key through the new `Source.records()` hook, so a new message reindexes one session instead of re-reading the database. `part.rowid` is the `lineno`, so `context`, `session` and `--raw` work as usual.
+
 ### Changed
 - Upgrades reach running agent sessions: the MCP server runs every tool call in a fresh process, so after `mnemo upgrade` (or a `git pull`) the next search in an already-open Claude Code or Codex session uses the new code, with no restart. Only a changed tool list still needs a new session. MCP servers started by older versions need one last restart.
 - The dashboard restarts itself in place when its code changes, on the same port and with the same token, so open tabs keep working.

@@ -9,7 +9,7 @@
 
 **One memory for all your coding agents.**
 
-Your agents can recall every Claude Code, Codex and Pi session you've ever run, on this machine and your devboxes, just by asking.
+Your agents can recall every Claude Code, Codex, OpenCode and Pi session you've ever run, on this machine and your devboxes, just by asking.
 
 [![Python 3.7+](https://img.shields.io/badge/python-3.7%2B-3776AB?logo=python&logoColor=white)](#install)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-0-2ea44f)](#install)
@@ -108,7 +108,7 @@ and say which session (agent, device, date) you are drawing on.
 
 ## Highlights
 
-- **Cross-agent.** A single index covers Claude Code, Codex (including archived sessions) and Pi, all normalized to one message schema.
+- **Cross-agent.** A single index covers Claude Code, Codex (including archived sessions), OpenCode and Pi, all normalized to one message schema.
 - **Cross-device.** Queries fan out over SSH to your devboxes and merge by rank. Session bodies never leave the machine that produced them.
 - **Cheap for agents.** A search returns ranked snippets, not raw logs: ~1.6k tokens for 10 hits. In a controlled test, agents used 23% fewer tokens and 52% fewer tool calls than with grep ([benchmarks](#benchmarks)).
 - **Good at CJK.** English uses prefix matching and Chinese uses substring matching (unigram + bigram), all ranked with BM25.
@@ -262,7 +262,7 @@ See [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 ## Roadmap
 
-- [ ] More agents: Gemini CLI (bodies live in protobuf SQLite blobs), Cursor, OpenCode
+- [ ] More agents: Gemini CLI (bodies live in protobuf SQLite blobs), Cursor
 - [ ] Hybrid semantic search (`sqlite-vec` + local embeddings) alongside keyword search
 - [ ] Length caps on `tool_result` in `context` responses to bound per-call token cost
 - [ ] External-content FTS table with compressed bodies (~30–40% smaller index)

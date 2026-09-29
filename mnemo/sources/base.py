@@ -14,6 +14,20 @@ class Source:
         """Yield session file paths."""
         raise NotImplementedError
 
+    def records(self):
+        """Yield (path, mtime, size) for every session.
+
+        Sources whose store holds many sessions in one file (a SQLite database,
+        for example) override this so each session can report its own change
+        key; everything else keeps the one-file-per-session default.
+        """
+        for path in self.files():
+            try:
+                st = os.stat(path)
+            except OSError:
+                continue
+            yield path, st.st_mtime, st.st_size
+
     def parse(self, path, clip_text=True):
         """Return (session_id, cwd, [(lineno, Msg), ...]).
 

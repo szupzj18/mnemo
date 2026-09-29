@@ -38,7 +38,7 @@ export default function (pi) {
     name: "search_sessions",
     label: "Search agent sessions",
     description:
-      "Full-text search across coding-agent sessions (claude, codex, pi) on this machine " +
+      "Full-text search across coding-agent sessions (claude, codex, opencode, pi) on this machine " +
       "and registered remote devboxes. " +
       "Finds user prompts, assistant replies, summaries, tool calls and tool results. " +
       "Each hit includes host, source, cwd, timestamp, snippet, and path+line for get_session_context " +
@@ -49,7 +49,7 @@ export default function (pi) {
         description: "keywords separated by whitespace; all must match",
       }),
       source: Type.Optional(
-        Type.String({ description: "comma-separated subset of: claude,codex,pi" })
+        Type.String({ description: "comma-separated subset of: claude,codex,opencode,pi" })
       ),
       cwd: Type.Optional(
         Type.String({ description: "only sessions whose working directory contains this" })

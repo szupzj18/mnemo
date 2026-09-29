@@ -4,7 +4,7 @@
 
 - Python 3.7 or newer, standard library only
 - SQLite built with FTS5 (the default on macOS and on current Linux distributions)
-- One or more of: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), [Pi](https://github.com/badlogic/pi-mono)
+- One or more of: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), [Pi](https://github.com/badlogic/pi-mono) or [OpenCode](https://github.com/sst/opencode)
 
 Check FTS5:
 
@@ -42,6 +42,7 @@ The first `mnemo index` parses every session file. Expect about 30 s for a few t
 | Claude Code | `~/.claude/projects/**/*.jsonl` |
 | Codex | `~/.codex/sessions/**` and `~/.codex/archived_sessions/**` |
 | Pi | `~/.pi/agent/sessions/**` |
+| OpenCode | `~/.local/share/opencode/opencode.db` (SQLite) |
 
 Mnemo keeps its own state in `~/.mnemo/`:
 

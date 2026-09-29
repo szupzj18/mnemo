@@ -1,11 +1,11 @@
 ---
 name: mnemo
-description: Search past conversations across all local coding agents (Claude Code, Codex, Pi) and registered remote devboxes. Use when the user wants to recall, find, or check what was previously discussed, decided, tried, or written in any agent session on any device — including sessions that ran in a different agent or on a devbox rather than this machine. 跨 agent、跨设备搜索历史会话：当用户想找以前（在本机或 devbox 上）在 claude / codex / pi（任意一家）里讨论过的内容、做过的决定、试过的方案或写过的代码时使用。
+description: Search past conversations across all local coding agents (Claude Code, Codex, OpenCode, Pi) and registered remote devboxes. Use when the user wants to recall, find, or check what was previously discussed, decided, tried, or written in any agent session on any device — including sessions that ran in a different agent or on a devbox rather than this machine. 跨 agent、跨设备搜索历史会话：当用户想找以前（在本机或 devbox 上）在 claude / codex / opencode / pi（任意一家）里讨论过的内容、做过的决定、试过的方案或写过的代码时使用。
 ---
 
 # mnemo
 
-Full-text search over the session histories of Claude Code, Codex, and Pi, across this machine and registered remote devboxes.
+Full-text search over the session histories of Claude Code, Codex, OpenCode, and Pi, across this machine and registered remote devboxes.
 All agents on every device are indexed in one view; the current agent can read the other agents' and other machines' sessions.
 
 ## When to use
@@ -27,7 +27,7 @@ mnemo search "关键词" --json
 - Multiple keywords are AND-ed; English matches word prefixes, Chinese matches substrings (bigrams), so `订阅` matches `订阅支出` and `refact` matches `refactoring`.
 - By default every reachable device is searched in parallel (local + devboxes), and results are merged by rank.
 - Filters (all optional):
-  - `--source claude,codex,pi` — restrict to agents
+  - `--source claude,codex,opencode,pi` — restrict to agents
   - `--host local,devbox-109` — restrict to devices
   - `--cwd <substring>` — restrict to working directory, e.g. `--cwd my-service`
   - `--since YYYY-MM-DD`

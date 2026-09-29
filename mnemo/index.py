@@ -158,12 +158,8 @@ class Index:
 
         for source in sources:
             current = {}
-            for path in source.files():
-                try:
-                    st = os.stat(path)
-                except OSError:
-                    continue
-                current[path] = (st.st_mtime, st.st_size)
+            for path, mtime, size in source.records():
+                current[path] = (mtime, size)
 
             rows = self.db.execute(
                 "SELECT path, mtime, size FROM files WHERE source = ?", (source.name,)
