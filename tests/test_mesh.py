@@ -183,5 +183,78 @@ class MeshTest(unittest.TestCase):
         self.assertEqual({p["host"] for p in result["per_host"] if p["ok"]}, {"local", "B"})
 
 
+    # --------------------------------------------------------------- topology
+
+    @staticmethod
+    def _neighbors(tree):
+        return {n["name"]: n for n in tree["neighbors"]}
+
+    def test_topology_maps_what_a_search_can_reach(self):
+        self.link_a(self.b, self.c)
+        self.b.link(self.c, self.d)
+        self.c.link(self.d)
+        self.b.node(forward=True)
+
+        tree = remote.probe_topology()
+        self.assertEqual(tree["id"], remote.load_node()["id"])
+        top = self._neighbors(tree)
+        self.assertTrue(top["B"]["ok"] and top["C"]["ok"])
+        self.assertEqual(top["B"]["host"], "local:B")
+        self.assertTrue(top["B"]["node"]["forward"])
+        self.assertFalse(top["C"]["node"]["forward"])
+        self.assertEqual(top["C"]["node"]["neighbors"], [], "a non-relay keeps what lies behind it to itself")
+
+        behind_b = self._neighbors(top["B"]["node"])
+        self.assertTrue(behind_b["D"]["ok"])
+        self.assertNotIn("host", behind_b["D"], "relays never reveal SSH targets")
+        # A asked C directly, so B lists the edge to C without probing it again,
+        # once the ids are learned (the probe itself learns them).
+        tree = remote.probe_topology()
+        behind_b = self._neighbors(self._neighbors(tree)["B"]["node"])
+        self.assertTrue(behind_b["C"].get("seen"))
+        self.assertIsNone(behind_b["C"]["node"])
+
+    def test_topology_respects_the_hop_budget_and_cycles(self):
+        self.link_a(self.b)
+        self.b.link(self.c)
+        self.c.link(self.b, self.d)
+        self.b.node(forward=True)
+        self.c.node(forward=True)
+        tree = remote.probe_topology(ttl=2)
+        c = self._neighbors(self._neighbors(tree)["B"]["node"])["C"]
+        self.assertTrue(c["ok"])
+        behind_c = self._neighbors(c["node"])
+        self.assertIsNone(behind_c["D"]["node"], "out of hops: listed, not probed")
+        self.assertNotIn("ok", behind_c["D"])
+        self.assertIsNone(behind_c["B"]["node"], "B is upstream: an edge, not a loop")
+
+    def test_topology_reports_unreachable_and_legacy_neighbors(self):
+        self.link_a(self.b)
+        blocker = os.path.join(self.demo.root, "blocker")
+        open(blocker, "w").close()  # a HOME under a file cannot exist, even for root
+        rows = remote.load_remotes() + [
+            {"name": "gone", "host": "x", "transport": "local", "home": os.path.join(blocker, "home")},
+            {"name": "old", "host": "y", "transport": "local", "home": self.c.home, "proto": 1},
+        ]
+        remote.save_remotes(rows)
+        top = self._neighbors(remote.probe_topology())
+        self.assertTrue(top["B"]["ok"])
+        self.assertFalse(top["gone"]["ok"])
+        self.assertTrue(top["gone"]["error"].startswith("gone: "))
+        self.assertTrue(top["old"]["ok"] and top["old"].get("legacy"))
+        self.assertIsNone(top["old"]["node"])
+
+    def test_remote_node_settings_change_over_the_link(self):
+        self.link_a(self.b)
+        info = remote.set_remote_node("B", forward=True, node_name="builder")
+        self.assertTrue(info["forward"])
+        self.assertEqual(info["name"], "builder")
+        self.assertEqual(remote.load_remotes()[0]["node_id"], info["id"])
+        self.b.link(self.c)
+        self.assertEqual(self.routes("wordC"), ["B/C"])
+        with self.assertRaises(remote.RemoteError):
+            remote.set_remote_node("nope", forward=True)
+
+
 if __name__ == "__main__":
     unittest.main()

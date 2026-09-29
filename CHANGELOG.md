@@ -7,6 +7,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Added
 - Multi-hop search across devices: each device lists only its direct neighbors; a neighbor with `mnemo node --forward on` relays searches and reads to its own neighbors. Hits carry routes (`devbox-109/devbox-126`) usable as `--host`; loops stop via node ids and a 3-hop budget; a device reached twice is reported once via the shortest route. Forwarding is off by default; older neighbors are asked the old way.
 - `mnemo node`: this device's stable id, name and forwarding policy.
+- Dashboard topology view: the devices reachable from here (through relays, within the hop budget) with route, name, relay policy, latency and offline state. The devices page can rename this device and switch relaying on it or on a direct neighbor, with a confirmation before turning a relay on.
 - One-line install: `curl -fsSL https://szupzj18.github.io/mnemo/install.sh | sh` checks prerequisites, clones, links `mnemo` onto PATH, indexes and connects agents; re-running upgrades (`git pull` + `mnemo upgrade`).
 - `mnemo setup` connects every detected agent: Claude Code MCP + skill, Codex MCP (config backed up), Pi extension. Idempotent, `--dry-run`, `--agent`.
 - `pyproject.toml`: `uv tool install` / `pipx install git+https://github.com/szupzj18/mnemo` (the dashboard build and integrations ship as package data; `integrations/` moved into the package, with a root symlink for existing paths).
@@ -35,6 +36,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `scripts/make-demo-home.py` produces deterministic session ids.
 
 ### Fixed
+- Parallel searches that learned several neighbors' ids at once could fail with `FileNotFoundError` or drop one of the updates to `remotes.json`.
 - Dashboard search with registered remotes failed with a TypeError since the injected-boilerplate change; it now uses the same routing as the CLI and is covered by a test with real remote processes.
 - Index writes are refused when the index was upgraded by a newer mnemo (reads keep working, searches warn), so a long-running MCP server can no longer write old-format rows into a new schema or re-stamp its version. Sync also repairs rows an older process already wrote (the v2 upgrade left 21k messages invisible to default search this way).
 - `mnemo remote add/update` no longer rsyncs `web/node_modules`, build output or caches to devices.

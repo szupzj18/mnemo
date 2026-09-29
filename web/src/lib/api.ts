@@ -86,6 +86,41 @@ export interface SyncStats {
   messages: number
 }
 
+/** This device's identity and relay policy (~/.mnemo/node.json). */
+export interface NodeInfo {
+  id: string
+  name: string
+  forward: boolean
+}
+
+/** One device in a topology probe, with the neighbors it reported. */
+export interface TopoNode extends NodeInfo {
+  neighbors: TopoNeighbor[]
+}
+
+/** A remotes.json entry as probed by the device that lists it. */
+export interface TopoNeighbor {
+  name: string
+  node_id: string | null
+  /** SSH target; only reported for this device's own neighbors. */
+  host?: string
+  /** Probed: reachable or not. Absent when the neighbor was listed but not probed. */
+  ok?: boolean
+  ms?: number
+  error?: string
+  /** Already covered upstream: an edge, not probed again. */
+  seen?: boolean
+  /** Runs an older mnemo that answers searches but cannot map what lies behind it. */
+  legacy?: boolean
+  node: TopoNode | null
+}
+
+export interface TopologyResult {
+  ms: number
+  ttl: number
+  topology: TopoNode
+}
+
 const TOKEN_PLACEHOLDER = "__MNEMO_TOKEN__"
 
 /** The Python server injects a per-launch token into this meta tag; `next dev` uses an env var. */
@@ -128,6 +163,11 @@ export const api = {
     call<Ok<{ logs: string[] }>>("/api/remotes/add", { name, host, bin }),
   removeRemote: (name: string) => call<Ok<object>>("/api/remotes/remove", { name }),
   updateRemotes: (name?: string) => call<Ok<{ logs: string[] }>>("/api/remotes/update", name ? { name } : {}),
+  node: () => call<NodeInfo>("/api/node"),
+  setNode: (patch: Partial<Pick<NodeInfo, "name" | "forward">>) => call<Ok<NodeInfo>>("/api/node", patch),
+  setRemoteNode: (name: string, patch: { forward?: boolean; node_name?: string }) =>
+    call<Ok<{ node: NodeInfo }>>("/api/node/remote", { name, ...patch }),
+  topology: () => call<Ok<TopologyResult>>("/api/topology", {}),
   search: (query: string, limit: number, hosts: string[] | null) =>
     call<SearchResponse>("/api/search", { query, limit, hosts }),
   session: (path: string, host: string, raw: boolean) =>

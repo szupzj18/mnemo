@@ -1,6 +1,9 @@
+import concurrent.futures
+import contextlib
+import io
 import unittest
 
-import helpers  # noqa: F401  (puts the repo on sys.path)
+from helpers import DemoHome
 
 from mnemo import remote
 
@@ -30,6 +33,25 @@ class RemoteTest(unittest.TestCase):
         # Rank 1 on each host ties; ties break by host name, so devbox's first hit leads.
         self.assertEqual([h["path"] for h in merged], ["c", "a", "a", "b"])
         self.assertEqual(len(remote._rrf(per_host, 2)), 2)
+
+
+    def test_parallel_learning_loses_no_update(self):
+        # Neighbors are searched in parallel and each thread records what it learned.
+        with contextlib.redirect_stdout(io.StringIO()):
+            demo = DemoHome()
+        demo.activate()
+        try:
+            names = ["dev-%d" % i for i in range(16)]
+            remote.save_remotes([{"name": n, "host": n} for n in names])
+            for _ in range(5):
+                with concurrent.futures.ThreadPoolExecutor(max_workers=len(names)) as pool:
+                    list(pool.map(lambda n: remote.update_remote(n, node_id="id-" + n), names))
+                learned = {r["name"]: r.get("node_id") for r in remote.load_remotes()}
+                self.assertEqual(learned, {n: "id-" + n for n in names})
+                remote.save_remotes([{"name": n, "host": n} for n in names])
+        finally:
+            demo.deactivate()
+            demo.cleanup()
 
 
 if __name__ == "__main__":

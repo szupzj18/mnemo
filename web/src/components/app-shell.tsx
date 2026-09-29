@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useTheme } from "next-themes"
-import { LayoutGrid, Moon, RefreshCw, ScrollText, Search, Server, Sun, Wifi } from "lucide-react"
+import { LayoutGrid, Moon, Network, RefreshCw, ScrollText, Search, Server, Sun, Wifi } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Logo } from "@/components/logo"
@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils"
 const NAV = [
   { href: "/", label: "仪表盘", icon: LayoutGrid },
   { href: "/devices/", label: "设备管理", icon: Server },
+  { href: "/topology/", label: "网络拓扑", icon: Network },
   { href: "/search/", label: "会话搜索", icon: Search },
   { href: "/logs/", label: "日志查看", icon: ScrollText },
 ]
@@ -20,6 +21,7 @@ const NAV = [
 const TITLES: Record<string, string> = {
   "/": "仪表盘",
   "/devices/": "设备管理",
+  "/topology/": "网络拓扑",
   "/search/": "会话搜索",
   "/session/": "会话全文",
   "/logs/": "日志查看",

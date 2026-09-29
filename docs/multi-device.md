@@ -53,12 +53,22 @@ Full mesh still works and needs no relays: run `remote add` on each device point
 
 `mnemo node` shows this device's name, id, forwarding and its neighbors; `mnemo node --name laptop` renames it.
 
+### In the dashboard
+
+The **Topology** view maps what this device can reach: each device's route, name, relay policy and latency, with unreachable ones marked. It probes the same paths a search takes (only through relays, within the hop budget), so it never shows more than a search could reach. Relays report their neighbors' names, never their SSH targets.
+
+<p align="center">
+  <img alt="Dashboard topology view: the laptop reaches devbox-126 through devbox-109, which relays; gpu-box is offline" src="assets/topology.png" width="880">
+</p>
+
+On the **Devices** page you can rename this device and switch its relay, and switch relaying on a direct neighbor over its SSH link. Turning a relay on asks for confirmation first.
+
 ## Freshness and failure
 
 - Before each federated search, every remote runs an incremental `mnemo index`. This takes well under a second when idle.
 - SSH connections are multiplexed with `ControlMaster` (sockets in `~/.mnemo/ssh-<name>`, persisting 10 minutes), so only the first query pays the handshake.
 - `ConnectTimeout` is 8 s and `BatchMode` is on. An unreachable or password-prompting device is skipped with a warning, and results from the other devices come back complete.
-- The dashboard's device page shows per-device latency, index stats and a connectivity test.
+- The dashboard's device page shows per-device latency, index stats and a connectivity test; the topology view shows the whole reachable network.
 
 ## Kerberos notes
 

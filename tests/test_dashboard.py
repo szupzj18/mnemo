@@ -156,6 +156,24 @@ class DashboardServerTest(unittest.TestCase):
         self.assertEqual(session["count"], len(session["messages"]))
         self.assertIn(hit["lineno"], [m["lineno"] for m in session["messages"]])
 
+    def test_node_settings(self):
+        _, body = self.request("GET", "/api/node", token=TOKEN)
+        node = json.loads(body)
+        self.assertFalse(node["forward"])
+        res, body = self.request("POST", "/api/node", {"name": " laptop ", "forward": True}, token=TOKEN)
+        self.assertEqual(res.status, 200)
+        self.assertEqual(json.loads(body)["name"], "laptop")
+        _, body = self.request("GET", "/api/node", token=TOKEN)
+        self.assertEqual(json.loads(body), dict(node, name="laptop", forward=True))
+        res, _ = self.request("POST", "/api/node", {"name": "  "}, token=TOKEN)
+        self.assertEqual(res.status, 400)
+        self.request("POST", "/api/node", {"forward": False}, token=TOKEN)
+        res, body = self.request("POST", "/api/topology", {}, token=TOKEN)
+        topo = json.loads(body)["topology"]
+        self.assertEqual((topo["id"], topo["neighbors"]), (node["id"], []))
+        res, _ = self.request("POST", "/api/node/remote", {"name": "nope", "forward": True}, token=TOKEN)
+        self.assertEqual(res.status, 400)
+
     def test_bad_requests_are_400(self):
         res, _ = self.request("POST", "/api/search", {"query": "  "}, token=TOKEN)
         self.assertEqual(res.status, 400)

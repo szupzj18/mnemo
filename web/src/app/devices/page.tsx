@@ -8,9 +8,43 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ConfirmButton } from "@/components/confirm-button"
 import { DeviceCard, remoteState } from "@/components/device-card"
+import { ForwardDialog } from "@/components/forward-dialog"
+import { NodeSettings } from "@/components/node-settings"
 import { RemoteDescription } from "@/components/remote-description"
 import { srcSummary } from "@/lib/format"
 import { useStore } from "@/lib/store"
+import { neighborForward } from "@/lib/topology"
+
+/** A neighbor's relay switch; its state comes from the topology probe. */
+function RemoteForward({ name, forward }: { name: string; forward: boolean | null | undefined }) {
+  const { setRemoteForward } = useStore()
+  const [confirming, setConfirming] = React.useState(false)
+  const [busy, setBusy] = React.useState(false)
+  if (forward === undefined || forward === null) return null
+  async function set(on: boolean) {
+    setBusy(true)
+    await setRemoteForward(name, on)
+    setBusy(false)
+  }
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={busy}
+        data-testid="remote-forward"
+        onClick={() => (forward ? void set(false) : setConfirming(true))}
+      >
+        {busy ? <Loader2 className="animate-spin" /> : null}
+        {forward ? "关闭中转" : "开启中转"}
+      </Button>
+      <ForwardDialog device={name} open={confirming} onOpenChange={setConfirming} onConfirm={() => void set(true)} />
+    </>
+  )
+}
+
+const forwardText = (f: boolean | null | undefined) =>
+  f === undefined ? "未探测" : f === null ? "未知（设备离线或版本过旧）" : f ? "已开启" : "已关闭"
 
 function AddRemoteForm() {
   const { addRemote } = useStore()
@@ -54,12 +88,34 @@ function AddRemoteForm() {
 }
 
 export default function DevicesPage() {
-  const { status, ping, rstat, checking, pingAll, pingOne, remoteStatus, syncOne, syncAll, removeRemote, updateRemotes } =
-    useStore()
+  const {
+    status,
+    ping,
+    rstat,
+    checking,
+    pingAll,
+    pingOne,
+    remoteStatus,
+    syncOne,
+    syncAll,
+    removeRemote,
+    updateRemotes,
+    topology,
+    topologyLoading,
+    probeTopology,
+  } = useStore()
   const remotes = status?.remotes ?? []
+  const forwards = neighborForward(topology?.topology)
+
+  React.useEffect(() => {
+    if (!topology && !topologyLoading && remotes.length) void probeTopology()
+    // Probe once per visit when there is something to probe; refresh is manual.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remotes.length])
 
   return (
     <div className="flex flex-col gap-4.5">
+      <NodeSettings />
       <AddRemoteForm />
       <Card className="gap-4 px-6 py-5">
         <div className="flex flex-wrap items-center gap-2">
@@ -92,6 +148,9 @@ export default function DevicesPage() {
                 description={
                   <>
                     <RemoteDescription state={state} ping={ping[r.name]} stat={stat} />
+                    <span className="mt-1 block text-xs text-faint" data-testid="remote-forward-state">
+                      中转：{topologyLoading && !topology ? "探测中…" : forwardText(topology ? (forwards[r.name] ?? null) : undefined)}
+                    </span>
                     <span className="mt-1 block font-mono text-xs text-faint">bin: {r.bin}</span>
                   </>
                 }
@@ -108,6 +167,7 @@ export default function DevicesPage() {
                     <Button variant="outline" size="sm" onClick={() => void syncOne(r.name)}>
                       同步
                     </Button>
+                    <RemoteForward name={r.name} forward={topology ? forwards[r.name] : undefined} />
                     <ConfirmButton
                       title={`更新 ${r.name} 的代码`}
                       description="将重新 rsync 代码并在该设备上增量建索引。"

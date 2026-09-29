@@ -2,7 +2,16 @@
 
 import * as React from "react"
 import { toast } from "sonner"
-import { api, type Hit, type HostResult, type Ping, type RemoteStatus, type Status } from "./api"
+import {
+  api,
+  type Hit,
+  type HostResult,
+  type NodeInfo,
+  type Ping,
+  type RemoteStatus,
+  type Status,
+  type TopologyResult,
+} from "./api"
 import { fmtSecs, totals } from "./format"
 
 export interface LogLine {
@@ -36,6 +45,12 @@ interface Store {
   checking: Set<string>
   logs: LogLine[]
   search: SearchState
+  node: NodeInfo | null
+  topology: TopologyResult | null
+  topologyLoading: boolean
+  probeTopology: () => Promise<void>
+  saveNode: (patch: Partial<Pick<NodeInfo, "name" | "forward">>) => Promise<boolean>
+  setRemoteForward: (name: string, forward: boolean) => Promise<void>
   refresh: () => Promise<void>
   probeRemotes: () => Promise<void>
   pingAll: (quiet?: boolean) => Promise<void>
@@ -93,6 +108,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [checking, setChecking] = React.useState<Set<string>>(new Set())
   const [logs, setLogs] = React.useState<LogLine[]>([])
   const [search, setSearchState] = React.useState<SearchState>(initialSearch)
+  const [node, setNode] = React.useState<NodeInfo | null>(null)
+  const [topology, setTopology] = React.useState<TopologyResult | null>(null)
+  const [topologyLoading, setTopologyLoading] = React.useState(false)
   const logId = React.useRef(0)
   const statusRef = React.useRef<Status | null>(null)
   const searchRef = React.useRef(search)
@@ -291,6 +309,53 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [notify],
   )
 
+  const probeTopology = React.useCallback(async () => {
+    setTopologyLoading(true)
+    try {
+      const r = await api.topology()
+      if (!r.ok) throw new Error(r.error)
+      setTopology({ ms: r.ms, ttl: r.ttl, topology: r.topology })
+      const t = r.topology
+      setNode({ id: t.id, name: t.name, forward: t.forward })
+    } catch (e) {
+      notify("拓扑探测失败", "err", errText(e))
+    } finally {
+      setTopologyLoading(false)
+    }
+  }, [notify])
+
+  const saveNode = React.useCallback(
+    async (patch: Partial<Pick<NodeInfo, "name" | "forward">>) => {
+      try {
+        const r = await api.setNode(patch)
+        if (!r.ok) throw new Error(r.error)
+        setNode({ id: r.id, name: r.name, forward: r.forward })
+        setTopology((t) => (t ? { ...t, topology: { ...t.topology, name: r.name, forward: r.forward } } : t))
+        if ("forward" in patch) notify(r.forward ? "本机已开启中转" : "本机已关闭中转", "ok")
+        else notify(`本机已更名为 ${r.name}`, "ok")
+        return true
+      } catch (e) {
+        notify("保存失败", "err", errText(e))
+        return false
+      }
+    },
+    [notify],
+  )
+
+  const setRemoteForward = React.useCallback(
+    async (name: string, forward: boolean) => {
+      try {
+        const r = await api.setRemoteNode(name, { forward })
+        if (!r.ok) throw new Error(r.error)
+        notify(`${name} 已${r.node.forward ? "开启" : "关闭"}中转`, "ok")
+        await probeTopology()
+      } catch (e) {
+        notify(`${name} 中转设置失败`, "err", errText(e))
+      }
+    },
+    [notify, probeTopology],
+  )
+
   const setSearch = React.useCallback((patch: Partial<SearchState>) => {
     setSearchState((s) => ({ ...s, ...patch }))
   }, [])
@@ -341,6 +406,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     checking,
     logs,
     search,
+    node,
+    topology,
+    topologyLoading,
+    probeTopology,
+    saveNode,
+    setRemoteForward,
     refresh,
     probeRemotes,
     pingAll,
@@ -368,6 +439,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         statusRef.current = s
         setStatus(s)
         void probeRemotes()
+      })
+      .catch((e) => toast.error("状态获取失败", { description: errText(e) }))
+    api
+      .node()
+      .then((n) => {
+        if (alive && n.id) setNode(n)
       })
       .catch((e) => toast.error("状态获取失败", { description: errText(e) }))
     return () => {

@@ -5,6 +5,9 @@
 //   HOME=/Users/Shared/alex ../bin/mnemo dashboard --no-open --port 7797 &
 //   node scripts/readme-shots.mjs http://127.0.0.1:7797 ../docs/assets
 // A neutral HOME path matters: it is visible in the session header.
+// Optionally, MESH_BASE points at a second dashboard whose device has
+// neighbors (e.g. one set up like e2e/serve.mjs --mesh); its topology view is
+// saved as topology.png.
 import { chromium } from "@playwright/test"
 
 const [base = "http://127.0.0.1:7797", out = "../docs/assets"] = process.argv.slice(2)
@@ -31,6 +34,12 @@ for (const theme of ["light", "dark"]) {
   await page.locator("[data-hit]").waitFor()
   await page.waitForTimeout(400)
   await page.screenshot({ path: `${out}/session${sfx}.png` })
+
+  if (process.env.MESH_BASE && theme === "light") {
+    await page.goto(process.env.MESH_BASE + "/topology/")
+    await page.getByTestId("topology-table").waitFor()
+    await page.screenshot({ path: `${out}/topology.png`, clip: { x: 210, y: 0, width: 1230, height: 580 } })
+  }
   await ctx.close()
 }
 await browser.close()
