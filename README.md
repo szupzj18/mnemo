@@ -222,7 +222,7 @@ flowchart LR
   L -->|RRF merge| A
 ```
 
-The design is **message passing, not shared storage**. Each machine indexes only its own logs, a search is a message sent to every device, and results come back as ranked hits merged with Reciprocal Rank Fusion. `context` and `session` reads are routed to the device that holds the session, so no central database collects everyone's transcripts. To form a mesh, run `remote add` on each machine. Unreachable devices are skipped with a warning.
+The design is **message passing, not shared storage**. Each machine indexes only its own logs, a search is a message sent to every device, and results come back as ranked hits merged with Reciprocal Rank Fusion. `context` and `session` reads are routed to the device that holds the session, so no central database collects everyone's transcripts. Each device lists only its direct neighbors; turn on `mnemo node --forward on` on a device and searches relay through it, so any topology works (chains, trees, meshes) with loops and duplicates handled. Hits carry their route, e.g. `devbox-109/devbox-126`. Unreachable devices are skipped with a warning.
 
 Details: [Multi-device](docs/multi-device.md).
 
@@ -256,7 +256,7 @@ See [SECURITY.md](SECURITY.md) to report a vulnerability.
 | [Getting started](docs/getting-started.md) | Install, connect each agent, keep the index fresh |
 | [Agent tools](docs/agent-tools.md) | MCP / Pi tool schemas and the search → context → session workflow |
 | [CLI reference](docs/cli.md) | Every command and flag |
-| [Multi-device](docs/multi-device.md) | Remotes, mesh setup, SSH and Kerberos notes |
+| [Multi-device](docs/multi-device.md) | Remotes, relays and topologies, SSH and Kerberos notes |
 | [Architecture](docs/architecture.md) | Index schema, CJK matching, sync, federation |
 | [Benchmarks](docs/benchmarks.md) | Latency, token cost, end-to-end experiment |
 

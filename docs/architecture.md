@@ -73,11 +73,18 @@ retry 退避  →  (body : "retry"*) AND (body : "退避"* OR grams : ("退避")
 
 ## Federation
 
-`fan_out_search` runs the local search (sync, then query) and one SSH call per remote in a `ThreadPoolExecutor`. Each remote runs `mnemo index` and then `mnemo search … --json --host local`, and its hits are tagged with the device name. Results are merged by Reciprocal Rank Fusion keyed on `(host, path, lineno)`:
+`fan_out_search` runs the local search and one call per neighbor in a `ThreadPoolExecutor`. Neighbors speak one of two protocols:
+
+- **Relay (protocol 2):** `mnemo search … --json --relay --visited <ids> --ttl <n>`. The neighbor answers with an envelope `{node, hits, warnings}`. If its `node.json` has `forward` on and `ttl > 0`, it runs the same fan-out over its own neighbors, skipping any node id in `visited`. The caller relabels hits with the route (`local` → `devbox-109`, `devbox-126` → `devbox-109/devbox-126`), learns the neighbor's id, and puts the ids of every neighbor it asks directly into the next `visited` set, so parallel branches do not re-cover them.
+- **Legacy (protocol 1):** `mnemo search … --json --host local`, the neighbor's own index only. Chosen automatically when a neighbor rejects the relay flags, and remembered in `remotes.json`.
+
+Hits are deduplicated on `(node id, path, lineno)`, keeping the shortest route, then merged by Reciprocal Rank Fusion keyed on `(route, path, lineno)`:
 
 ```text
 score(hit) = Σ 1 / (60 + rank_on_device)
 ```
+
+Reads (`context`, `session`, raw) follow the route hop by hop: each relay receives `--relay --host <rest of route>` and refuses unless it forwards.
 
 RRF was chosen over a single global index for two reasons:
 

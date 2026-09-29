@@ -155,6 +155,8 @@ def cmd_search(args):
     else:
         kinds = DEFAULT_KINDS
     hosts = [h.strip() for h in args.host.split(",")] if args.host else None
+    if args.relay:
+        return _relay_search(args, idx, kinds)
     try:
         hits, warnings = fan_out_search(
             idx,
@@ -196,6 +198,64 @@ def cmd_search(args):
     return 0
 
 
+def _relay_search(args, idx, kinds):
+    """Answer a search forwarded by a neighbor (protocol 2): an envelope, never an error."""
+    node = remote_mod.load_node()
+    visited = set(filter(None, (args.visited or "").split(",")))
+    hits, warnings = [], []
+    if node["id"] not in visited:
+        relay = node["forward"] and args.ttl > 0
+        try:
+            hits, warnings = fan_out_search(
+                idx,
+                " ".join(args.query),
+                sources=args.source.split(",") if args.source else None,
+                kinds=kinds,
+                cwd=args.cwd,
+                since=_since(args.since),
+                limit=args.limit,
+                hosts=None if relay else [LOCAL],
+                sync_local=not args.no_sync,
+                include_injected=args.include_injected,
+                visited=visited,
+                ttl=args.ttl,
+            )
+        except RemoteError as exc:
+            warnings.append(str(exc))
+    print(json.dumps({"node": {"id": node["id"], "name": node["name"]}, "hits": hits,
+                      "warnings": warnings}, ensure_ascii=False))
+    return 0
+
+
+def _check_forward(args, host):
+    """A read passing through this device on its way elsewhere needs forwarding enabled."""
+    if host != LOCAL and getattr(args, "relay", False) and not remote_mod.load_node()["forward"]:
+        raise RemoteError("%s does not forward reads to other devices (enable with `mnemo node --forward on`)"
+                          % remote_mod.load_node()["name"])
+
+
+def cmd_node(args):
+    node = remote_mod.load_node()
+    if args.name:
+        node["name"] = args.name
+    if args.forward:
+        node["forward"] = args.forward == "on"
+    if args.name or args.forward:
+        remote_mod.save_node(node)
+    neighbors = [{"name": r["name"], "host": r["host"], "node_id": r.get("node_id"), "proto": r.get("proto")}
+                 for r in remote_mod.load_remotes()]
+    if args.json:
+        print(json.dumps(dict(node, neighbors=neighbors), ensure_ascii=False, indent=2))
+        return 0
+    print("name     %s" % node["name"])
+    print("id       %s" % node["id"])
+    print("forward  %s%s" % ("on" if node["forward"] else "off",
+                             "" if node["forward"] else "  (neighbors cannot search or read through this device)"))
+    for n in neighbors:
+        print("neighbor %-16s %-24s %s" % (n["name"], n["host"], (n["node_id"] or "id not learned yet")[:12]))
+    return 0
+
+
 def _slice(messages, head, tail):
     if head:
         messages = messages[:head]
@@ -223,12 +283,13 @@ def _print_messages(path, rows, full_text=False, show_envelope=False):
 def cmd_session(args):
     host = args.host or LOCAL
     try:
+        _check_forward(args, host)
         if host == LOCAL:
             idx = Index(args.db)
             sess = raw_session(idx, args.path) if args.raw else get_session(idx, args.path)
         else:
             sess = remote_session(
-                remote_mod.get_remote(host), args.path,
+                host, args.path,
                 head=args.head, tail=args.tail, raw=args.raw,
             )
     except RemoteError as exc:
@@ -256,6 +317,11 @@ def cmd_session(args):
 
 def cmd_context(args):
     host = args.host or LOCAL
+    try:
+        _check_forward(args, host)
+    except RemoteError as exc:
+        print("error: %s" % exc, file=sys.stderr)
+        return 1
     if host == LOCAL:
         idx = Index(args.db)
         rows = raw_context(idx, args.path, args.line, args.before, args.after) if args.raw \
@@ -263,7 +329,7 @@ def cmd_context(args):
     else:
         try:
             rows = remote_context(
-                remote_mod.get_remote(host), args.path, args.line,
+                host, args.path, args.line,
                 args.before, args.after, raw=args.raw,
             )
         except RemoteError as exc:
@@ -454,7 +520,12 @@ def main(argv=None):
     sp.add_argument("--cwd", help="substring match on working directory")
     sp.add_argument("--since", help="YYYY-MM-DD")
     sp.add_argument("--limit", type=int, default=20)
-    sp.add_argument("--host", help="comma-separated devices (default: local + all remotes)")
+    sp.add_argument("--host", help="comma-separated devices or routes, e.g. local,devbox-109/devbox-126 "
+                                   "(default: everything reachable)")
+    # Protocol 2, used between devices: answer a neighbor's forwarded search.
+    sp.add_argument("--relay", action="store_true", help=argparse.SUPPRESS)
+    sp.add_argument("--visited", help=argparse.SUPPRESS)
+    sp.add_argument("--ttl", type=int, default=0, help=argparse.SUPPRESS)
     sp.add_argument("--no-sync", action="store_true",
                     help="skip the incremental local index sync before searching")
     sp.add_argument("--include-injected", action="store_true",
@@ -467,7 +538,8 @@ def main(argv=None):
     sp.add_argument("line", type=int)
     sp.add_argument("--before", type=int, default=4)
     sp.add_argument("--after", type=int, default=8)
-    sp.add_argument("--host", help="device holding the hit (default: local)")
+    sp.add_argument("--host", help="device or route holding the hit, from the search result (default: local)")
+    sp.add_argument("--relay", action="store_true", help=argparse.SUPPRESS)
     sp.add_argument("--raw", action="store_true", help="read full bodies from the original session file (no 20k cap)")
     sp.add_argument("--show-envelope", action="store_true",
                     help="show verbatim bodies including stripped boilerplate instead of cleaned text")
@@ -476,7 +548,8 @@ def main(argv=None):
 
     sp = sub.add_parser("session", help="dump all indexed messages of one session file")
     sp.add_argument("path")
-    sp.add_argument("--host", help="device holding the session (default: local)")
+    sp.add_argument("--host", help="device or route holding the session, from the search result (default: local)")
+    sp.add_argument("--relay", action="store_true", help=argparse.SUPPRESS)
     sp.add_argument("--head", type=int, default=0, help="only first N messages")
     sp.add_argument("--tail", type=int, default=0, help="only last N messages")
     sp.add_argument("--raw", action="store_true", help="read full bodies from the original session file (no 20k cap)")
@@ -484,6 +557,13 @@ def main(argv=None):
                     help="show verbatim bodies including stripped boilerplate instead of cleaned text")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_session)
+
+    sp = sub.add_parser("node", help="this device's name, id and relay policy")
+    sp.add_argument("--name", help="rename this device (how neighbors see it)")
+    sp.add_argument("--forward", choices=("on", "off"),
+                    help="relay searches and reads so neighbors can reach devices behind this one")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_node)
 
     sp = sub.add_parser("status", help="index stats")
     sp.add_argument("--json", action="store_true")

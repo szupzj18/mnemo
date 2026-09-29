@@ -76,36 +76,49 @@ def ping_all(remotes):
 
 
 def diagnose_search(query, hosts, limit):
+    """Federated search with per-neighbor timing for the dashboard.
+
+    Same routing as fan_out_search (relays, dedupe, routes as host labels);
+    each direct neighbor's time and hit count include whatever it relayed.
+    """
+    node = remote_mod.load_node()
     remotes = remote_mod.load_remotes()
     wanted = set(hosts) if hosts else None
     selected = [r for r in remotes if wanted is None or r["name"] in wanted]
     include_local = wanted is None or LOCAL in wanted
+    covered = {node["id"]} | {r["node_id"] for r in selected if r.get("node_id")}
+    kinds = list(DEFAULT_KINDS)
     per_host, warnings, payload = [], [], []
 
     jobs = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(selected) + 1) as pool:
         if include_local:
-            jobs[pool.submit(_time, lambda: remote_mod._local_search(
-                DEFAULT_DB_PATH, query, None, list(DEFAULT_KINDS), None, None, limit,
-                True, warnings))] = LOCAL
+            jobs[pool.submit(_time, lambda: (remote_mod._local_search(
+                DEFAULT_DB_PATH, query, None, kinds, None, None, limit,
+                True, warnings), []))] = LOCAL
         for r in selected:
             def run_remote(r=r):
                 return remote_mod._remote_search(
-                    r, query, None, list(DEFAULT_KINDS), None, None, limit, True)
+                    r, query, None, kinds, None, None, limit, True, False,
+                    covered - {r.get("node_id")}, remote_mod.DEFAULT_TTL - 1)
             jobs[pool.submit(_time, run_remote)] = r["name"]
         for fut in concurrent.futures.as_completed(jobs):
             name = jobs[fut]
             try:
-                rows, ms = fut.result()
-                per_host.append({"host": name, "ok": True, "ms": ms, "hits": len(rows)})
-                for h in rows:
-                    h["host"] = name
-                payload.append((name, rows))
+                (rows, remote_warnings), ms = fut.result()
             except RemoteError as exc:
                 per_host.append({"host": name, "ok": False, "error": str(exc)})
                 warnings.append(str(exc))
+                continue
+            if name == LOCAL:
+                for h in rows:
+                    h["host"] = LOCAL
+                    h["node"] = node["id"]
+            warnings.extend(remote_warnings)
+            per_host.append({"host": name, "ok": True, "ms": ms, "hits": len(rows)})
+            payload.append((name, rows))
 
-    merged = remote_mod._rrf(payload, limit)
+    merged = remote_mod._rrf(remote_mod._dedupe(payload), limit)
     return {"per_host": per_host, "merged": merged, "warnings": warnings}
 
 
@@ -290,7 +303,7 @@ class Handler(BaseHTTPRequestHandler):
                             value["messages"] = value["messages"][-int(tail):]
                 else:
                     value = remote_mod.remote_session(
-                        remote_mod.get_remote(host), path_value,
+                        host, path_value,
                         head=head, tail=tail, raw=raw, timeout=180,
                     )
                 if value is None:

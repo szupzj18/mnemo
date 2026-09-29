@@ -10,7 +10,8 @@ from .search import DEFAULT_KINDS, get_context, get_session, raw_context, raw_se
 
 def build_tools():
     names = [LOCAL] + [r["name"] for r in remote_mod.load_remotes()]
-    host_desc = "comma-separated devices to search; available: %s (default: all)" % ",".join(names)
+    host_desc = ("comma-separated devices to search; available: %s, or a route such as "
+                 "neighbor/device from earlier results (default: everything reachable)" % ",".join(names))
     return [
         {
             "name": "search_sessions",
@@ -52,7 +53,7 @@ def build_tools():
                 "properties": {
                     "path": {"type": "string"},
                     "line": {"type": "integer"},
-                    "host": {"type": "string", "description": "device holding the hit, from the search result (default: local)"},
+                    "host": {"type": "string", "description": "device or route holding the hit, copied from the search result (default: local)"},
                     "before": {"type": "integer", "description": "messages before the hit (default 4)"},
                     "after": {"type": "integer", "description": "messages after the hit (default 8)"},
                     "raw": {"type": "boolean", "description": "read full untruncated bodies from the original session file"},
@@ -73,7 +74,7 @@ def build_tools():
                 "type": "object",
                 "properties": {
                     "path": {"type": "string"},
-                    "host": {"type": "string", "description": "device holding the session, from the search result (default: local)"},
+                    "host": {"type": "string", "description": "device or route holding the session, copied from the search result (default: local)"},
                     "head": {"type": "integer", "description": "only return the first N messages"},
                     "tail": {"type": "integer", "description": "only return the last N messages"},
                     "raw": {"type": "boolean", "description": "read full untruncated bodies straight from the original session JSONL"},
@@ -159,7 +160,7 @@ def handle_call(name, args, index):
                 else get_context(index, args["path"], int(args["line"]), before, after)
         else:
             rows = remote_context(
-                remote_mod.get_remote(host),
+                host,
                 args["path"],
                 int(args["line"]),
                 before,
@@ -177,7 +178,7 @@ def handle_call(name, args, index):
             sess = raw_session(index, args["path"]) if raw else get_session(index, args["path"])
         else:
             sess = remote_session(
-                remote_mod.get_remote(host), args["path"],
+                host, args["path"],
                 head=head, tail=tail, raw=raw,
             )
         if sess is None:
