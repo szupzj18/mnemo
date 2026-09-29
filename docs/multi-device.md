@@ -18,7 +18,7 @@ Adding a device means no data migration, and removing one leaves nothing behind 
 Requirements on the remote: passwordless SSH (keys or Kerberos/GSSAPI), `rsync`, and Python 3.7+ with SQLite FTS5.
 
 ```bash
-mnemo remote add devbox-126                  # ssh host = name
+mnemo remote add devbox-b                  # ssh host = name
 mnemo remote add gpu-box user@10.0.0.12      # explicit ssh target
 ```
 
@@ -36,15 +36,15 @@ Devices get new code from you, not from GitHub: see [Keeping devices up to date]
 Each device lists only its **direct neighbors** in `~/.mnemo/remotes.json`. A search asks every neighbor; a neighbor with forwarding enabled passes it on to its own neighbors, so devices you cannot reach directly are still found:
 
 ```text
-laptop ──▶ devbox-109 ──▶ devbox-126        laptop sees devbox-126 as "devbox-109/devbox-126"
+laptop ──▶ devbox-a ──▶ devbox-b        laptop sees devbox-b as "devbox-a/devbox-b"
 ```
 
 ```bash
-# on devbox-109: let neighbors search and read through this device
+# on devbox-a: let neighbors search and read through this device
 mnemo node --forward on
 ```
 
-- **Routes as hosts.** Every hit carries its route from you, e.g. `devbox-109/devbox-126`. Pass it back as `--host` (or the MCP `host` field) and `context` / `session` reads travel the same path.
+- **Routes as hosts.** Every hit carries its route from you, e.g. `devbox-a/devbox-b`. Pass it back as `--host` (or the MCP `host` field) and `context` / `session` reads travel the same path.
 - **No loops, no duplicates.** Each device has a stable id (`mnemo node`). A forwarded search carries the ids already covered and a hop budget (3 by default), so cycles stop, and a device reached over several routes is reported once, via the shortest one.
 - **Forwarding is opt-in per device** (`forward: off` by default). A relay decides for itself whether neighbors may reach what lies behind it; with it off, the device still answers for its own sessions.
 - **Mixed versions.** A neighbor running an older mnemo is asked the old way (its own index only) and never relays.
@@ -68,14 +68,14 @@ A laptop can usually SSH into its devboxes, but they cannot connect back to it. 
 ```bash
 # on the laptop
 mnemo node --name laptop                                  # how the devbox will see this device
-mnemo link devbox-109 --allow-inbound --install           # run it now and at every login
+mnemo link devbox-a --allow-inbound --install           # run it now and at every login
 mnemo link --list                                         # state of each link
-mnemo link devbox-109 --uninstall                         # revoke
+mnemo link devbox-a --uninstall                         # revoke
 ```
 
 `--install` runs the link as a per-user service: a launchd agent on macOS, a systemd user unit on Linux (`loginctl enable-linger` keeps it up without a login session), and elsewhere a background process until the next reboot. `mnemo upgrade` restarts installed links so they run the new code. Without `--install`, `mnemo link` runs in the foreground. The dashboard's device cards show each link's state and switch it on or off.
 
-While it runs, devbox-109 lists `laptop` as a neighbor and its searches (and its agents' searches) include the laptop's sessions; routes like `laptop` or `laptop/devbox-126` work for reads as usual. When the laptop sleeps or the link stops, the devbox's searches skip it silently; asking it for something explicitly says it is not linked. The link reconnects with backoff after network changes.
+While it runs, devbox-a lists `laptop` as a neighbor and its searches (and its agents' searches) include the laptop's sessions; routes like `laptop` or `laptop/devbox-b` work for reads as usual. When the laptop sleeps or the link stops, the devbox's searches skip it silently; asking it for something explicitly says it is not linked. The link reconnects with backoff after network changes.
 
 What the devbox can do over the link is fixed on the laptop side: search, context, session, status, node info and an incremental sync. It gets no shell, cannot rename the laptop, change its relay setting, push code to it or run anything else, and requests pass through the laptop's own relay policy like any neighbor's. On the devbox, the link is a Unix socket in `~/.mnemo/links/` that only its user can open. `--allow-inbound` is required because this does let anyone with that devbox account read the laptop's sessions.
 

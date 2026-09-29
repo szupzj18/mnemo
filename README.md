@@ -27,15 +27,15 @@ English · [简体中文](README.zh-CN.md)
 you ▸ test_backoff_is_bounded is failing again. Didn't we fix this before?
 
 claude ▸ search_sessions(query="backoff flaky")
-         1 hit · codex · devbox-126 · 2026-09-26 · /home/alex/relay
+         1 hit · codex · devbox-b · 2026-09-26 · /home/alex/relay
            "CI is red on main: test_[[backoff]]_is_bounded is [[flaky]]. Investigate."
 
-       ▸ get_context(path=…/rollout-2026-09-26….jsonl, line=2, host="devbox-126")
+       ▸ get_context(path=…/rollout-2026-09-26….jsonl, line=2, host="devbox-b")
            tool  1 failed, 199 passed … assert 30.000000000000004 <= 30.0
            codex A floating-point edge case … I'll clamp explicitly in backoff()
            codex apply_patch: return min(cap, random.uniform(0, base * 2 ** attempt))
 
-claude ▸ Yes. Codex fixed this on devbox-126 on Sep 26: the jittered delay could
+claude ▸ Yes. Codex fixed this on devbox-b on Sep 26: the jittered delay could
          exceed the 30s cap by float error, so the clamp moved after the jitter.
          That fix isn't on this branch. Want me to apply the same patch?
 ```
@@ -205,24 +205,24 @@ The dashboard also covers index stats, per-device health, device add/update/remo
 ## Multiple machines
 
 ```bash
-mnemo remote add devbox-126          # rsync-installs mnemo over SSH and builds its index
-mnemo search "sglang oom"            # now searches local + devbox-126 in parallel
+mnemo remote add devbox-b          # rsync-installs mnemo over SSH and builds its index
+mnemo search "sglang oom"            # now searches local + devbox-b in parallel
 ```
 
 ```mermaid
 flowchart LR
   A["Agent on laptop"] -->|search| L["mnemo (laptop)"]
   L -->|local query| LI[("laptop index")]
-  L -->|ssh: mnemo search --host local| R1["mnemo (devbox-109)"]
-  L -->|ssh: mnemo search --host local| R2["mnemo (devbox-126)"]
-  R1 --> I1[("devbox-109 index")]
-  R2 --> I2[("devbox-126 index")]
+  L -->|ssh: mnemo search --host local| R1["mnemo (devbox-a)"]
+  L -->|ssh: mnemo search --host local| R2["mnemo (devbox-b)"]
+  R1 --> I1[("devbox-a index")]
+  R2 --> I2[("devbox-b index")]
   R1 -. ranked hits .-> L
   R2 -. ranked hits .-> L
   L -->|RRF merge| A
 ```
 
-The design is **message passing, not shared storage**. Each machine indexes only its own logs, a search is a message sent to every device, and results come back as ranked hits merged with Reciprocal Rank Fusion. `context` and `session` reads are routed to the device that holds the session, so no central database collects everyone's transcripts. Each device lists only its direct neighbors; turn on `mnemo node --forward on` on a device and searches relay through it, so any topology works (chains, trees, meshes) with loops and duplicates handled. Hits carry their route, e.g. `devbox-109/devbox-126`. Unreachable devices are skipped with a warning.
+The design is **message passing, not shared storage**. Each machine indexes only its own logs, a search is a message sent to every device, and results come back as ranked hits merged with Reciprocal Rank Fusion. `context` and `session` reads are routed to the device that holds the session, so no central database collects everyone's transcripts. Each device lists only its direct neighbors; turn on `mnemo node --forward on` on a device and searches relay through it, so any topology works (chains, trees, meshes) with loops and duplicates handled. Hits carry their route, e.g. `devbox-a/devbox-b`. Unreachable devices are skipped with a warning.
 
 Details: [Multi-device](docs/multi-device.md).
 

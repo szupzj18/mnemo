@@ -75,7 +75,7 @@ retry 退避  →  (body : "retry"*) AND (body : "退避"* OR grams : ("退避")
 
 `fan_out_search` runs the local search and one call per neighbor in a `ThreadPoolExecutor`. Neighbors speak one of two protocols:
 
-- **Relay (protocol 2):** `mnemo search … --json --relay --visited <ids> --ttl <n>`. The neighbor answers with an envelope `{node, hits, warnings}`. If its `node.json` has `forward` on and `ttl > 0`, it runs the same fan-out over its own neighbors, skipping any node id in `visited`. The caller relabels hits with the route (`local` → `devbox-109`, `devbox-126` → `devbox-109/devbox-126`), learns the neighbor's id, and puts the ids of every neighbor it asks directly into the next `visited` set, so parallel branches do not re-cover them.
+- **Relay (protocol 2):** `mnemo search … --json --relay --visited <ids> --ttl <n>`. The neighbor answers with an envelope `{node, hits, warnings}`. If its `node.json` has `forward` on and `ttl > 0`, it runs the same fan-out over its own neighbors, skipping any node id in `visited`. The caller relabels hits with the route (`local` → `devbox-a`, `devbox-b` → `devbox-a/devbox-b`), learns the neighbor's id, and puts the ids of every neighbor it asks directly into the next `visited` set, so parallel branches do not re-cover them.
 - **Legacy (protocol 1):** `mnemo search … --json --host local`, the neighbor's own index only. Chosen automatically when a neighbor rejects the relay flags, and remembered in `remotes.json`.
 
 Hits are deduplicated on `(node id, path, lineno)`, keeping the shortest route, then merged by Reciprocal Rank Fusion keyed on `(route, path, lineno)`:
