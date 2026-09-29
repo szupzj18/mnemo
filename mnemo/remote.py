@@ -2,8 +2,11 @@ import concurrent.futures
 import json
 import os
 import shlex
+import socket
 import sqlite3
 import subprocess
+import sys
+import uuid
 
 from .index import Index, IndexTooNew
 from .search import search as local_search
@@ -13,6 +16,9 @@ CONFIG_PATH = os.path.join(CONFIG_DIR, "remotes.json")
 LOCAL = "local"
 RRF_K = 60
 CONNECT_TIMEOUT = 8
+# How many relays a search may cross; each hop adds one SSH round trip.
+DEFAULT_TTL = 3
+ROUTE_SEP = "/"
 
 
 class RemoteError(Exception):
@@ -41,6 +47,65 @@ def load_remotes():
             r.setdefault("bin", "~/mnemo/bin/mnemo")
             out.append(r)
     return out
+
+
+def update_remote(name, **fields):
+    """Persist learned facts about a neighbor (its node id, protocol level)."""
+    remotes = load_remotes()
+    changed = False
+    for r in remotes:
+        if r["name"] == name:
+            for k, v in fields.items():
+                if r.get(k) != v:
+                    r[k] = v
+                    changed = True
+    if changed:
+        save_remotes(remotes)
+
+
+# ------------------------------------------------------------------ this node
+
+def _node_path():
+    return os.path.join(CONFIG_DIR, "node.json")
+
+
+def load_node():
+    """This device's identity and relay policy, created on first use.
+
+    id       stable across renames; dedupes a device reached over several routes
+    name     how this device introduces itself
+    forward  relay searches and reads for neighbors (off by default: a neighbor
+             may otherwise reach devices it has no direct trust with)
+    """
+    try:
+        with open(_node_path(), encoding="utf-8") as f:
+            node = json.load(f)
+    except (OSError, ValueError):
+        node = {}
+    if not node.get("id"):
+        node = {
+            "id": uuid.uuid4().hex,
+            "name": node.get("name") or socket.gethostname().split(".")[0] or "mnemo",
+            "forward": bool(node.get("forward", False)),
+        }
+        save_node(node)
+    node.setdefault("forward", False)
+    return node
+
+
+def save_node(node):
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    tmp = _node_path() + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(node, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, _node_path())
+
+
+def split_route(host):
+    """'devbox-109/devbox-126' -> ('devbox-109', 'devbox-126'); 'local' -> ('local', None)."""
+    host = host or LOCAL
+    first, _, rest = host.partition(ROUTE_SEP)
+    return first, (rest or None)
 
 
 def save_remotes(remotes):
@@ -103,9 +168,16 @@ def _remote_command(remote, argv):
 
 
 def remote_exec(remote, argv, timeout=60):
-    cmd = _ssh_base(remote) + [_remote_command(remote, argv)]
+    env = None
+    if remote.get("transport") == "local":
+        # Another mnemo home on this machine: used to test multi-node topologies.
+        repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        cmd = [sys.executable, os.path.join(repo, "bin", "mnemo")] + list(argv)
+        env = dict(os.environ, HOME=remote["home"])
+    else:
+        cmd = _ssh_base(remote) + [_remote_command(remote, argv)]
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
     except subprocess.TimeoutExpired:
         raise RemoteError("%s: timed out after %ds" % (remote["name"], timeout))
     except OSError as exc:
@@ -158,11 +230,22 @@ def install(remote, logger=lambda m: None, timeout=600, build_index=True):
 
 # ----------------------------------------------------------------- search io
 
-def search_argv(query, sources, kinds, cwd, since, limit, include_injected=False):
-    argv = ["search", query, "--json", "--limit", str(limit), "--host", LOCAL]
-    # --host local pins the remote to its own index. Without it the remote
-    # would fan out to its own registered devices, chaining the federation,
-    # re-tagging other hosts' hits with the remote's name.
+def search_argv(query, sources, kinds, cwd, since, limit, include_injected=False,
+                relay=False, visited=(), ttl=0):
+    """argv for a forwarded search.
+
+    Legacy form pins the remote to its own index with --host local. The relay
+    form (protocol 2) lets it forward to its own neighbors: --visited carries
+    every node already covered (loops and duplicate fan-out stop there) and
+    --ttl the hops left; the reply is an envelope with the node id and warnings.
+    """
+    argv = ["search", query, "--json", "--limit", str(limit)]
+    if relay:
+        argv += ["--relay", "--ttl", str(ttl)]
+        if visited:
+            argv += ["--visited", ",".join(sorted(visited))]
+    else:
+        argv += ["--host", LOCAL]
     if sources:
         argv += ["--source", ",".join(sources)]
     if kinds is not None:
@@ -179,18 +262,58 @@ def search_argv(query, sources, kinds, cwd, since, limit, include_injected=False
     return argv
 
 
-def _remote_search(remote, query, sources, kinds, cwd, since, limit, sync, include_injected):
+def _relabel(remote, hits):
+    """Hits from a neighbor get routes through it: local -> name, x -> name/x."""
+    for h in hits:
+        h["host"] = remote["name"] if h.get("host", LOCAL) == LOCAL else remote["name"] + ROUTE_SEP + h["host"]
+    return hits
+
+
+def _remote_search(remote, query, sources, kinds, cwd, since, limit, sync, include_injected,
+                   visited=(), ttl=0):
+    """Search one neighbor (and, if it relays, what lies behind it). Returns (hits, warnings)."""
     if sync:
         remote_exec(remote, ["index"], timeout=120)
-    out = remote_exec(
-        remote,
-        search_argv(query, sources, kinds, cwd, since, limit, include_injected),
-        timeout=30,
-    )
-    rows = json.loads(out)
-    for h in rows:
-        h["host"] = remote["name"]
-    return rows
+    args = (query, sources, kinds, cwd, since, limit, include_injected)
+    if remote.get("proto", 2) >= 2:
+        try:
+            out = remote_exec(remote, search_argv(*args, relay=True, visited=visited, ttl=ttl),
+                              timeout=30 + 30 * ttl)
+        except RemoteError as exc:
+            if "unrecognized arguments" not in str(exc):
+                raise
+            update_remote(remote["name"], proto=1)  # an older mnemo; ask it the old way from now on
+        else:
+            env = json.loads(out)
+            node = env.get("node") or {}
+            if node.get("id"):
+                update_remote(remote["name"], node_id=node["id"], proto=2)
+            warnings = ["via %s: %s" % (remote["name"], w) for w in env.get("warnings", [])]
+            return _relabel(remote, env.get("hits", [])), warnings
+    out = remote_exec(remote, search_argv(*args), timeout=30)
+    return _relabel(remote, json.loads(out)), []
+
+
+def _dedupe(per_host):
+    """Drop hits seen over a longer route: one device reached via A and via A/B counts once."""
+    best = {}
+    for _, hits in per_host:
+        for h in hits:
+            key = (h.get("node") or h["host"], h["path"], h["lineno"])
+            hops = h["host"].count(ROUTE_SEP)
+            if key not in best or hops < best[key]:
+                best[key] = hops
+    out = []
+    for host, hits in per_host:
+        kept, seen = [], set()
+        for h in hits:
+            key = (h.get("node") or h["host"], h["path"], h["lineno"])
+            if best.get(key) == h["host"].count(ROUTE_SEP) and key not in seen:
+                seen.add(key)
+                kept.append(h)
+                best[key] = -1  # claimed; later copies with the same hop count are dropped
+        out.append((host, kept))
+    return out
 
 
 def _rrf(per_host, limit):
@@ -241,25 +364,36 @@ def fan_out_search(
     sync_remotes=True,
     sync_local=True,
     include_injected=False,
+    visited=(),
+    ttl=DEFAULT_TTL,
 ):
-    """Search local index plus registered remotes in parallel.
+    """Search the local index plus neighbors, and through relaying neighbors, beyond.
 
-    Every device's index is synced incrementally before it is searched
-    (sync_local / sync_remotes), so sessions written since the last
-    `mnemo index` are found.
-    hosts: optional subset (names); None means local + every remote.
-    Returns (hits, warnings).
+    Every device's index is synced incrementally before it is searched.
+    hosts: optional subset of routes ("local", "devbox-109", "devbox-109/devbox-126");
+      None means everything reachable.
+    visited: node ids already covered upstream (set when this call relays).
+    Returns (hits, warnings); each hit's host is its route from this device.
     """
+    node = load_node()
     remotes = load_remotes()
     wanted = set(hosts) if hosts else None
-    known = {LOCAL} | {r["name"] for r in remotes}
+    names = {r["name"] for r in remotes}
     if wanted is not None:
-        unknown = wanted - known
+        unknown = {w for w in wanted if split_route(w)[0] not in names | {LOCAL}}
         if unknown:
             raise RemoteError("unknown host(s): %s" % ", ".join(sorted(unknown)))
 
-    selected = [r for r in remotes if wanted is None or r["name"] in wanted]
+    upstream = set(visited)
+    selected = [
+        r for r in remotes
+        if (wanted is None or r["name"] in {split_route(w)[0] for w in wanted})
+        and r.get("node_id") not in upstream
+    ]
     include_local = wanted is None or LOCAL in wanted
+    # Neighbors asked directly in this call need not be reached again through each
+    # other; ones left out by a host filter stay reachable through a relay.
+    covered = upstream | {node["id"]} | {r["node_id"] for r in selected if r.get("node_id")}
     warnings = []
 
     jobs = {}
@@ -272,25 +406,59 @@ def fan_out_search(
         for r in selected:
             jobs[pool.submit(
                 _remote_search, r, query, sources, kinds, cwd, since, limit,
-                sync_remotes, include_injected,
+                sync_remotes, include_injected, covered - {r.get("node_id")}, max(ttl - 1, 0),
             )] = r["name"]
         per_host = []
         for fut in concurrent.futures.as_completed(jobs):
             name = jobs[fut]
             try:
-                per_host.append((name, fut.result()))
+                result = fut.result()
             except RemoteError as exc:
                 warnings.append(str(exc))
+                continue
+            if name == LOCAL:
+                for h in result:
+                    h["host"] = LOCAL
+                    h["node"] = node["id"]
+                per_host.append((name, result))
+            else:
+                rows, remote_warnings = result
+                warnings.extend(remote_warnings)
+                per_host.append((name, rows))
 
-    if include_local:
-        for h in next((rows for host, rows in per_host if host == LOCAL), []):
-            h["host"] = LOCAL
-
+    per_host = _dedupe(per_host)
+    if wanted is not None:
+        # "devbox-109" selects that device; "devbox-109/x" selects x behind it.
+        per_host = [(h, [x for x in rows if x["host"] in wanted]) for h, rows in per_host]
     hits = _rrf(per_host, limit)
     return hits, warnings
 
 
-def remote_session(remote, path, head=None, tail=None, raw=False, timeout=60):
+def _routed_exec(route, argv, timeout):
+    """Run a read on the device at `route`; each relay forwards the rest of the route.
+
+    --relay tells the receiver the request came from a neighbor, so it applies its
+    forward policy before passing it on. Older mnemo builds (protocol 1) do not
+    know the flag; they can only answer for themselves.
+    """
+    first, rest = split_route(route)
+    remote = get_remote(first)
+    hop = list(argv) + (["--host", rest] if rest else [])
+    if remote.get("proto", 2) < 2:
+        if rest:
+            raise RemoteError("%s runs an older mnemo that cannot relay; update it" % first)
+        return remote_exec(remote, hop, timeout=timeout)
+    try:
+        return remote_exec(remote, hop + ["--relay"], timeout=timeout)
+    except RemoteError as exc:
+        if rest or "unrecognized arguments" not in str(exc):
+            raise
+        update_remote(first, proto=1)
+        return remote_exec(remote, hop, timeout=timeout)
+
+
+def remote_session(route, path, head=None, tail=None, raw=False, timeout=60):
+    """Read a session on the device at `route` (a neighbor name or neighbor/…/device)."""
     argv = ["session", path, "--json"]
     if head is not None:
         argv += ["--head", str(head)]
@@ -298,16 +466,16 @@ def remote_session(remote, path, head=None, tail=None, raw=False, timeout=60):
         argv += ["--tail", str(tail)]
     if raw:
         argv.append("--raw")
-    return json.loads(remote_exec(remote, argv, timeout=timeout))
+    return json.loads(_routed_exec(route, argv, timeout))
 
 
-def remote_context(remote, path, line, before, after, raw=False, timeout=30):
+def remote_context(route, path, line, before, after, raw=False, timeout=30):
+    """Messages around a hit on the device at `route`."""
     argv = ["context", path, str(line), "--json",
             "--before", str(before), "--after", str(after)]
     if raw:
         argv.append("--raw")
-    out = remote_exec(remote, argv, timeout=timeout)
-    return json.loads(out)
+    return json.loads(_routed_exec(route, argv, timeout))
 
 
 def remote_status(remote, timeout=20):

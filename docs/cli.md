@@ -24,7 +24,7 @@ Alias: `mnemo query`.
 | `--all-kinds` | off | Also match `reasoning` |
 | `--cwd` | — | Substring of the session's working directory |
 | `--since` | — | Only messages on or after this date |
-| `--host` | local + all remotes | Comma-separated device names; `local` means this machine |
+| `--host` | everything reachable | Comma-separated devices or routes (`local`, `devbox-109`, `devbox-109/devbox-126`) |
 | `--limit` | 20 | Max hits after merging |
 | `--no-sync` | off | Skip the local incremental sync (remotes still sync) |
 | `--include-injected` | off | Also match injected boilerplate bodies (workspace instructions, plugin suggestions, approval-review wraps) that are kept but hidden from search |
@@ -114,6 +114,14 @@ pi           1 sessions         7 messages
 last sync: 2026-09-28 12:07:00
 db:       /home/alex/.mnemo/index.db
 ```
+
+## mnemo node
+
+```bash
+mnemo node [--name NAME] [--forward on|off] [--json]
+```
+
+This device's identity and relay policy, stored in `~/.mnemo/node.json`: a stable id (dedupes a device reached over several routes), a display name, and `forward` (off by default) which lets neighbors search and read *through* this device to its own neighbors. Also lists neighbors with the ids learned from them. See [Multi-device](multi-device.md#topologies-direct-links-and-relays).
 
 ## mnemo remote
 

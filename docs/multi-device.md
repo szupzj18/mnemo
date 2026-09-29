@@ -31,20 +31,27 @@ mnemo remote add gpu-box user@10.0.0.12      # explicit ssh target
 
 After you upgrade Mnemo locally, run `mnemo remote update` to push the new code to every remote.
 
-## Form a mesh
+## Topologies: direct links and relays
 
-Remotes are configured per machine. So that every machine can search every other, run `remote add` on each one:
+Each device lists only its **direct neighbors** in `~/.mnemo/remotes.json`. A search asks every neighbor; a neighbor with forwarding enabled passes it on to its own neighbors, so devices you cannot reach directly are still found:
 
-```bash
-# on the laptop
-mnemo remote add devbox-109 && mnemo remote add devbox-126
-# on devbox-109
-mnemo remote add devbox-126
-# on devbox-126
-mnemo remote add devbox-109
+```text
+laptop ──▶ devbox-109 ──▶ devbox-126        laptop sees devbox-126 as "devbox-109/devbox-126"
 ```
 
-Forwarded searches are pinned to `--host local`, so a device answers only from its own index. Queries never chain through the mesh, and hits are never duplicated.
+```bash
+# on devbox-109: let neighbors search and read through this device
+mnemo node --forward on
+```
+
+- **Routes as hosts.** Every hit carries its route from you, e.g. `devbox-109/devbox-126`. Pass it back as `--host` (or the MCP `host` field) and `context` / `session` reads travel the same path.
+- **No loops, no duplicates.** Each device has a stable id (`mnemo node`). A forwarded search carries the ids already covered and a hop budget (3 by default), so cycles stop, and a device reached over several routes is reported once, via the shortest one.
+- **Forwarding is opt-in per device** (`forward: off` by default). A relay decides for itself whether neighbors may reach what lies behind it; with it off, the device still answers for its own sessions.
+- **Mixed versions.** A neighbor running an older mnemo is asked the old way (its own index only) and never relays.
+
+Full mesh still works and needs no relays: run `remote add` on each device pointing at the others. Relays help when links are one-way, for example when devboxes cannot open connections back to a laptop, or when a device is only reachable through another.
+
+`mnemo node` shows this device's name, id, forwarding and its neighbors; `mnemo node --name laptop` renames it.
 
 ## Freshness and failure
 
@@ -61,4 +68,5 @@ On hosts whose system `krb5.conf` lacks your corporate realm (a stock MIT config
 
 - Mnemo opens no ports on remotes. Everything goes through your existing SSH trust.
 - A remote returns only search hits and the messages you explicitly read. The full index and raw logs never leave it.
-- Anyone who can SSH into a device can already read its logs, so Mnemo doesn't widen that boundary.
+- Anyone who can SSH into a device can already read its logs, so direct links don't widen that boundary.
+- Relays do: with `forward on`, a device lets its neighbors reach devices they have no SSH trust with. Enable it only on devices whose neighbors should see what lies behind them.
