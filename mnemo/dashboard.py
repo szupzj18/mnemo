@@ -8,6 +8,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
+from . import __version__
 from . import remote as remote_mod
 from .index import DEFAULT_DB_PATH, Index, IndexTooNew
 from .remote import LOCAL, RemoteError
@@ -33,6 +34,7 @@ def local_status():
     finally:
         idx.close()
     return {
+        "version": __version__,
         "db": DEFAULT_DB_PATH,
         "last_sync": last,
         "sources": {

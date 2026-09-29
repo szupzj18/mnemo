@@ -42,7 +42,7 @@ const norm = (p: string) => (p.endsWith("/") ? p : p + "/")
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = norm(usePathname() || "/")
-  const { pingAll, refresh, probeRemotes } = useStore()
+  const { status, pingAll, refresh, probeRemotes } = useStore()
   const { resolvedTheme, setTheme } = useTheme()
   const activeHref = pathname === "/session/" ? "/search/" : pathname
 
@@ -72,7 +72,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )
           })}
         </nav>
-        <div className="mt-auto hidden px-2.5 text-xs text-faint md:block">v0.1.0 · 127.0.0.1 本地服务</div>
+        <div className="mt-auto hidden px-2.5 text-xs text-faint md:block">
+          <span data-testid="app-version">{status?.version ? `v${status.version}` : "mnemo"}</span> · 127.0.0.1 本地服务
+        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">

@@ -35,6 +35,7 @@ test.describe("dashboard", () => {
     await expect(local).toHaveAttribute("data-state", "ok")
     await expect(local).toContainText("claude 2 · codex 2 · pi 1")
     await expect(page.getByText("还没有远程设备")).toBeVisible()
+    await expect(page.getByTestId("app-version")).toHaveText(/^v\d+\.\d+\.\d+$/)
   })
 
   test("sidebar navigation reaches every view", async ({ page }) => {
