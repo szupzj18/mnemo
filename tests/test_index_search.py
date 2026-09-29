@@ -8,7 +8,7 @@ import unittest
 from helpers import DemoHome
 
 from mnemo.index import Index
-from mnemo.search import build_match, search
+from mnemo.search import build_match, search, search_sql
 
 
 def quiet_demo():
@@ -98,6 +98,15 @@ class SearchTest(unittest.TestCase):
         self.assertTrue(all(h["ts"] >= "2026-09-25" for h in search(self.idx, "backoff", since="2026-09-25")))
         kinds = {h["kind"] for h in search(self.idx, "backoff", kinds=["tool_call"])}
         self.assertEqual(kinds, {"tool_call"})
+
+    def test_search_plan_keeps_fts5_streaming_rank(self):
+        # Aliasing bm25() to "rank" shadows FTS5's hidden rank column: ORDER BY
+        # rank then sorts every match through a temp B-tree instead of letting
+        # FTS5 stream rows in rank order (~2.4x slower on a 66k-match query).
+        sql = search_sql(["messages MATCH ?", "kind IN ('text', 'summary')"])
+        rows = self.idx.db.execute("EXPLAIN QUERY PLAN " + sql, ("demo", 10)).fetchall()
+        plan = " ".join(str(r[-1]) for r in rows).upper()
+        self.assertNotIn("TEMP B-TREE", plan)
 
     def test_limit(self):
         self.assertEqual(len(search(self.idx, "backoff", limit=3)), 3)

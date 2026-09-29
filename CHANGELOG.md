@@ -4,6 +4,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+- Search could fall back to a slower SQL plan: `bm25(messages) AS rank` shadowed FTS5's hidden `rank` column, so `ORDER BY rank` sorted the expression through a temp B-tree (every match materialised) instead of streaming in rank order. A 66k-match query on a 151k-message index drops from ~85 ms to ~38 ms; results and their `rank` values are unchanged.
+
 ## [0.3.0] - 2026-09-29
 
 ### Added
