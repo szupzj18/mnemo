@@ -10,9 +10,9 @@ const NOISE = [
 ]
 
 const HITS = [
-  { agent: "codex", where: "devbox-126", when: "Sep 26", text: "clamp the delay after adding jitter so retry never exceeds the cap" },
+  { agent: "codex", where: "devbox-b", when: "Sep 26", text: "clamp the delay after adding jitter so retry never exceeds the cap" },
   { agent: "claude", where: "local", when: "Sep 24", text: "retry budget: 5 attempts, exponential backoff from 200 ms" },
-  { agent: "pi", where: "devbox-109", when: "Sep 19", text: "flaky retry test: seed the jitter in CI" },
+  { agent: "pi", where: "devbox-a", when: "Sep 19", text: "flaky retry test: seed the jitter in CI" },
 ]
 
 export function GrepVsMnemo() {
