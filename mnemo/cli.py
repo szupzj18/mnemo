@@ -149,6 +149,41 @@ def cmd_remote_upgrade(args):
     return 1 if any(r["status"] == "failed" for r in results) else 0
 
 
+def cmd_link(args):
+    from . import link
+
+    if args.serve:
+        try:
+            return link.serve()
+        except RemoteError as exc:
+            print("error: %s" % exc, file=sys.stderr)
+            return link.REFUSED
+    if not args.remote:
+        print("usage: mnemo link <remote> --allow-inbound", file=sys.stderr)
+        return 2
+    try:
+        r = remote_mod.get_remote(args.remote)
+    except RemoteError as exc:
+        print("error: %s" % exc, file=sys.stderr)
+        return 1
+    if not args.allow_inbound:
+        print("mnemo link lets %s search and read this device's sessions (and, if this device\n"
+              "forwards, the devices behind it) without being able to connect here itself.\n"
+              "It gets no shell: only search, context, session, status and node info.\n"
+              "Re-run with --allow-inbound to confirm." % r["name"], file=sys.stderr)
+        return 2
+    node = remote_mod.load_node()
+    print("keeping a link open to %s as %r (Ctrl-C to stop)" % (r["name"], node["name"]))
+    try:
+        link.run(r, log=lambda m: print(time.strftime("%H:%M:%S ") + m, flush=True))
+    except link.LinkRefused as exc:
+        print("error: %s" % exc, file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print()
+    return 0
+
+
 def cmd_setup(args):
     from . import setup as st
 
@@ -626,6 +661,14 @@ def main(argv=None):
     sp.add_argument("--visited", help=argparse.SUPPRESS)
     sp.add_argument("--ttl", type=int, default=remote_mod.DEFAULT_TTL, help=argparse.SUPPRESS)
     sp.set_defaults(func=cmd_node)
+
+    sp = sub.add_parser("link", help="let a remote you can reach search this device back over your SSH session")
+    sp.add_argument("remote", nargs="?", help="a registered remote, e.g. devbox-109")
+    sp.add_argument("--allow-inbound", action="store_true",
+                    help="confirm that the remote may search and read this device's sessions")
+    # Run on the remote end of a link, over the SSH session it opened.
+    sp.add_argument("--serve", action="store_true", help=argparse.SUPPRESS)
+    sp.set_defaults(func=cmd_link)
 
     sp = sub.add_parser("status", help="index stats")
     sp.add_argument("--json", action="store_true")

@@ -187,6 +187,10 @@ def _remote_command(remote, argv):
 
 def remote_exec(remote, argv, timeout=60):
     env = None
+    if remote.get("transport") == "link":
+        # A device that linked in to us (mnemo link): answered over its own SSH session.
+        from .link import link_exec
+        return link_exec(remote, argv, timeout)
     if remote.get("transport") == "local":
         # Another mnemo home on this machine: used to test multi-node topologies.
         # It runs its own copy of the code once `install` gave it one.
@@ -231,6 +235,8 @@ def _copy_tree(src, dest):
 def install(remote, logger=lambda m: None, timeout=600, build_index=True):
     """rsync this checkout to the remote; optionally build its index afterwards."""
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if remote.get("transport") == "link":
+        raise RemoteError("%s linked in to this device; update it from there" % remote["name"])
     if remote.get("transport") == "local":
         _copy_tree(repo, os.path.join(remote["home"], "mnemo"))
         logger("code copied to %s" % remote["name"])
@@ -387,6 +393,14 @@ def _local_search(db_path, query, sources, kinds, cwd, since, limit,
         idx.close()
 
 
+def _link_up(remote):
+    """Skip a linked-in neighbor whose session is closed instead of warning on every search."""
+    if remote.get("transport") != "link":
+        return True
+    from .link import is_up
+    return is_up(remote)
+
+
 def fan_out_search(
     index,
     query,
@@ -424,6 +438,7 @@ def fan_out_search(
         r for r in remotes
         if (wanted is None or r["name"] in {split_route(w)[0] for w in wanted})
         and r.get("node_id") not in upstream
+        and (wanted is not None or _link_up(r))
     ]
     include_local = wanted is None or LOCAL in wanted
     # Neighbors asked directly in this call need not be reached again through each
@@ -636,6 +651,8 @@ def upgrade_devices(routes=None, visited=(), ttl=DEFAULT_TTL, relayed=False, log
         here = wanted is None or any(first == r["name"] and not rest for first, rest in wanted)
         deeper = None if wanted is None else [rest for first, rest in wanted if first == r["name"] and rest]
         if not here and not deeper:
+            return out, warn
+        if r.get("transport") == "link":  # it reaches us, not the other way round: it updates itself
             return out, warn
         if r.get("node_id") in set(visited):
             return out, warn

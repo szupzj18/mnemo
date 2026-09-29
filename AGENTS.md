@@ -30,6 +30,7 @@ mnemo/web_dist/              committed static export of web/ (generated)
 mnemo/sources/{claude,codex,pi}.py   per-agent log adapters
 mnemo/setup.py               `mnemo setup`: wires Claude Code, Codex, Pi (idempotent)
 mnemo/upgrade.py             `mnemo upgrade`: backup, rebuild beside, verify, swap
+mnemo/link.py                `mnemo link`: inbound links for devices that cannot connect back; read-only allowlist
 mnemo/fingerprint.py         hash of the running code; devices compare it to find who is behind
 mnemo/integrations/          Pi extension + agent skill (package data; `integrations/` is a symlink)
 scripts/install.sh           curl | sh installer, served at szupzj18.github.io/mnemo/install.sh

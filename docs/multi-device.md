@@ -49,9 +49,7 @@ mnemo node --forward on
 - **Forwarding is opt-in per device** (`forward: off` by default). A relay decides for itself whether neighbors may reach what lies behind it; with it off, the device still answers for its own sessions.
 - **Mixed versions.** A neighbor running an older mnemo is asked the old way (its own index only) and never relays.
 
-Full mesh still works and needs no relays: run `remote add` on each device pointing at the others. Relays help when links are one-way, for example when devboxes cannot open connections back to a laptop, or when a device is only reachable through another.
-
-`mnemo node` shows this device's name, id, forwarding and its neighbors; `mnemo node --name laptop` renames it.
+Full mesh still works and needs no relays: run `remote add` on each device pointing at the others. Relays help when a device is only reachable through another; for links that only work one way, see the next section.
 
 ### In the dashboard
 
@@ -62,6 +60,22 @@ The **Topology** view maps what this device can reach: each device's route, name
 </p>
 
 On the **Devices** page you can rename this device and switch its relay, and switch relaying on a direct neighbor over its SSH link. Turning a relay on asks for confirmation first.
+
+## Links that only work one way
+
+A laptop can usually SSH into its devboxes, but they cannot connect back to it. `mnemo link` lets them search it anyway, over a session the laptop opens:
+
+```bash
+# on the laptop
+mnemo node --name laptop                        # how the devbox will see this device
+mnemo link devbox-109 --allow-inbound           # keep running (tmux, launchd, nohup ...)
+```
+
+While it runs, devbox-109 lists `laptop` as a neighbor and its searches (and its agents' searches) include the laptop's sessions; routes like `laptop` or `laptop/devbox-126` work for reads as usual. When the laptop sleeps or the link stops, the devbox's searches skip it silently; asking it for something explicitly says it is not linked. The link reconnects with backoff after network changes.
+
+What the devbox can do over the link is fixed on the laptop side: search, context, session, status, node info and an incremental sync. It gets no shell, cannot rename the laptop, change its relay setting, push code to it or run anything else, and requests pass through the laptop's own relay policy like any neighbor's. On the devbox, the link is a Unix socket in `~/.mnemo/links/` that only its user can open. `--allow-inbound` is required because this does let anyone with that devbox account read the laptop's sessions.
+
+`mnemo node` shows this device's name, id, forwarding and its neighbors; `mnemo node --name laptop` renames it.
 
 ## Keeping devices up to date
 
@@ -91,3 +105,4 @@ On hosts whose system `krb5.conf` lacks your corporate realm (a stock MIT config
 - A remote returns only search hits and the messages you explicitly read. The full index and raw logs never leave it.
 - Anyone who can SSH into a device can already read its logs, so direct links don't widen that boundary.
 - Relays do: with `forward on`, a device lets its neighbors reach devices they have no SSH trust with. Enable it only on devices whose neighbors should see what lies behind them.
+- So do inbound links, in the other direction: `mnemo link --allow-inbound` lets a device you can reach read your sessions (read-only commands only). Stop the link to revoke it.
