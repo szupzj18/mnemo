@@ -24,7 +24,7 @@ Alias: `mnemo query`.
 | `--all-kinds` | off | Also match `reasoning` |
 | `--cwd` | — | Substring of the session's working directory |
 | `--since` | — | Only messages on or after this date |
-| `--host` | everything reachable | Comma-separated devices or routes (`local`, `devbox-109`, `devbox-109/devbox-126`) |
+| `--host` | everything reachable | Comma-separated devices or routes (`local`, `devbox-a`, `devbox-a/devbox-b`) |
 | `--limit` | 20 | Max hits after merging |
 | `--no-sync` | off | Skip the local incremental sync (remotes still sync) |
 | `--include-injected` | off | Also match injected boilerplate bodies (workspace instructions, plugin suggestions, approval-review wraps) that are kept but hidden from search |
@@ -136,7 +136,7 @@ mnemo remote remove <name>                        # unregister; leaves files on 
 
 `ssh-host` defaults to `name` and can be any alias from `~/.ssh/config`. `--bin` sets the remote launcher path (default `~/mnemo/bin/mnemo`). See [Multi-device](multi-device.md).
 
-`remote upgrade` compares code fingerprints (`mnemo node` shows this device's) and updates only the devices that differ: every device reachable, including ones behind relays, or just the given routes, e.g. `devbox-109/devbox-126`. Each gets the code by rsync, then an incremental sync, or a backed-up rebuild if the index schema changed.
+`remote upgrade` compares code fingerprints (`mnemo node` shows this device's) and updates only the devices that differ: every device reachable, including ones behind relays, or just the given routes, e.g. `devbox-a/devbox-b`. Each gets the code by rsync, then an incremental sync, or a backed-up rebuild if the index schema changed.
 
 ## mnemo link
 

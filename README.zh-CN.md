@@ -27,15 +27,15 @@
 你     ▸ test_backoff_is_bounded 又挂了，之前是不是修过？
 
 claude ▸ search_sessions(query="backoff flaky")
-         1 条命中 · codex · devbox-126 · 2026-09-26 · /home/alex/relay
+         1 条命中 · codex · devbox-b · 2026-09-26 · /home/alex/relay
            "CI is red on main: test_[[backoff]]_is_bounded is [[flaky]]. Investigate."
 
-       ▸ get_context(path=…/rollout-2026-09-26….jsonl, line=2, host="devbox-126")
+       ▸ get_context(path=…/rollout-2026-09-26….jsonl, line=2, host="devbox-b")
            tool  1 failed, 199 passed … assert 30.000000000000004 <= 30.0
            codex A floating-point edge case … I'll clamp explicitly in backoff()
            codex apply_patch: return min(cap, random.uniform(0, base * 2 ** attempt))
 
-claude ▸ 修过。9 月 26 日 Codex 在 devbox-126 上处理过：加了 jitter 的延迟会因浮点误差
+claude ▸ 修过。9 月 26 日 Codex 在 devbox-b 上处理过：加了 jitter 的延迟会因浮点误差
          略超 30s 上限，修法是把截断挪到 jitter 之后。这个修复不在当前分支上，要我照着打一遍吗？
 ```
 
@@ -198,24 +198,24 @@ ln -s ~/mnemo/integrations/pi/mnemo.ts ~/.pi/agent/extensions/mnemo.ts
 ## 多台机器
 
 ```bash
-mnemo remote add devbox-126          # 经 SSH 用 rsync 安装并构建远端索引
-mnemo search "sglang oom"            # 之后同时搜本机和 devbox-126
+mnemo remote add devbox-b          # 经 SSH 用 rsync 安装并构建远端索引
+mnemo search "sglang oom"            # 之后同时搜本机和 devbox-b
 ```
 
 ```mermaid
 flowchart LR
   A["笔记本上的 Agent"] -->|search| L["mnemo（笔记本）"]
   L -->|本地查询| LI[("本机索引")]
-  L -->|ssh: mnemo search --host local| R1["mnemo（devbox-109）"]
-  L -->|ssh: mnemo search --host local| R2["mnemo（devbox-126）"]
-  R1 --> I1[("devbox-109 索引")]
-  R2 --> I2[("devbox-126 索引")]
+  L -->|ssh: mnemo search --host local| R1["mnemo（devbox-a）"]
+  L -->|ssh: mnemo search --host local| R2["mnemo（devbox-b）"]
+  R1 --> I1[("devbox-a 索引")]
+  R2 --> I2[("devbox-b 索引")]
   R1 -. 排序后的命中 .-> L
   R2 -. 排序后的命中 .-> L
   L -->|RRF 融合| A
 ```
 
-核心理念是**以通信共享记忆，而不是建共享存储**。每台机器只索引自己的日志；一次搜索就是发给各设备的一条消息，返回的排序命中用 Reciprocal Rank Fusion 融合。`context` 和 `session` 的读取路由到持有该会话的设备执行，不存在收集所有人会话的中心库。每台设备只需登记直连的邻居；在某台设备上执行 `mnemo node --forward on`，搜索就能经它中转到更远的设备，链式、树形、网状拓扑都可以，环路和重复结果会自动处理。命中会带上路由，例如 `devbox-109/devbox-126`。不可达的设备会被跳过并给出警告。
+核心理念是**以通信共享记忆，而不是建共享存储**。每台机器只索引自己的日志；一次搜索就是发给各设备的一条消息，返回的排序命中用 Reciprocal Rank Fusion 融合。`context` 和 `session` 的读取路由到持有该会话的设备执行，不存在收集所有人会话的中心库。每台设备只需登记直连的邻居；在某台设备上执行 `mnemo node --forward on`，搜索就能经它中转到更远的设备，链式、树形、网状拓扑都可以，环路和重复结果会自动处理。命中会带上路由，例如 `devbox-a/devbox-b`。不可达的设备会被跳过并给出警告。
 
 详见 [Multi-device](docs/multi-device.md)。
 
