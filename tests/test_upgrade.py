@@ -139,6 +139,16 @@ class UpgradeTest(unittest.TestCase):
         r = run("upgrade", "--restore")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("restored", r.stdout)
+        self.assertIn("no other devices", run("upgrade", "--no-backup").stdout)
+
+    def test_if_needed_only_syncs_a_current_schema(self):
+        env = dict(os.environ, HOME=self.demo.home)
+        r = subprocess.run([sys.executable, os.path.join(REPO, "bin", "mnemo"), "--db", self.demo.db,
+                            "upgrade", "--if-needed"], capture_output=True, text=True, env=env, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("schema v%s is current" % SCHEMA_VERSION, r.stdout)
+        self.assertEqual(upgrade.list_backups(self.demo.db), [], "no rebuild, so no backup")
+        self.assertFalse(upgrade.schema_current(self.demo.db + ".missing"))
 
 
 class StaleProcessTest(unittest.TestCase):

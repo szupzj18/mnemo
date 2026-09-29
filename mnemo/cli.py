@@ -8,6 +8,7 @@ import time
 from . import __version__
 from .index import DEFAULT_DB_PATH, SCHEMA_VERSION, Index, IndexTooNew
 from . import remote as remote_mod
+from .fingerprint import code_fingerprint
 from .remote import LOCAL, RemoteError, fan_out_search, remote_context, remote_session
 from .search import DEFAULT_KINDS, get_context, get_session, raw_context, raw_session, recent
 from .sources import SOURCES
@@ -64,6 +65,16 @@ def cmd_upgrade(args):
         return 0
 
     log = (lambda m: print("  " + m, file=sys.stderr)) if args.verbose else (lambda m: None)
+    if args.if_needed and up.schema_current(args.db):
+        # Pushed new code, same index schema: an incremental sync is enough.
+        try:
+            stats = Index(args.db).sync()
+        except IndexTooNew as exc:
+            print("error: %s" % exc, file=sys.stderr)
+            return 1
+        print("index schema v%s is current; synced %d new, %d updated sessions"
+              % (SCHEMA_VERSION, stats["files_new"], stats["files_updated"]))
+        return 0
     if not args.no_backup:
         dest = up.backup(args.db, keep=args.keep)
         if dest:
@@ -90,20 +101,52 @@ def cmd_upgrade(args):
         print("  restart the agent sessions that own them (or: kill %s)"
               % " ".join(str(p) for p, _, _ in stale), file=sys.stderr)
 
-    if args.remotes:
-        for r in remote_mod.load_remotes():
-            print("%s: syncing code ..." % r["name"])
-            try:
-                # Code first, index untouched: the remote `upgrade` backs it up before rebuilding.
-                remote_mod.install(r, logger=lambda m, n=r["name"]: print("  %s: %s" % (n, m)),
-                                   build_index=False)
-                out = remote_mod.remote_exec(r, ["upgrade"] + (["--no-backup"] if args.no_backup else []), timeout=1800)
-                for line in out.strip().splitlines():
-                    print("  %s: %s" % (r["name"], line))
-            except RemoteError as exc:
-                print("warning: %s: %s" % (r["name"], exc), file=sys.stderr)
-                rc = 1
+    if args.if_needed or args.no_remotes:
+        return rc
+    if not args.remotes:
+        sys.stdout.flush()
+        print("devices: bringing every reachable device to this code (skip with --no-remotes) ...")
+        results, warnings = remote_mod.upgrade_devices(logger=lambda m: print("  " + m))
+        _print_device_upgrades(results, warnings)
+        return rc
+    for r in remote_mod.load_remotes():
+        print("%s: syncing code ..." % r["name"])
+        try:
+            # Code first, index untouched: the remote `upgrade` backs it up before rebuilding.
+            remote_mod.install(r, logger=lambda m, n=r["name"]: print("  %s: %s" % (n, m)),
+                               build_index=False)
+            argv = ["upgrade", "--no-remotes"] + (["--no-backup"] if args.no_backup else [])
+            out = remote_mod.remote_exec(r, argv, timeout=1800)
+            for line in out.strip().splitlines():
+                print("  %s: %s" % (r["name"], line))
+        except RemoteError as exc:
+            print("warning: %s: %s" % (r["name"], exc), file=sys.stderr)
+            rc = 1
     return rc
+
+
+def _print_device_upgrades(results, warnings):
+    marks = {"updated": "+", "current": "=", "failed": "!"}
+    for item in results:
+        print("  %s %-28s %s" % (marks[item["status"]], item["route"],
+                                 item.get("error") or item["status"]))
+    if not results and not warnings:
+        print("  no other devices")
+    for w in warnings:
+        print("warning: %s" % w, file=sys.stderr)
+
+
+def cmd_remote_upgrade(args):
+    visited = set(filter(None, (args.visited or "").split(",")))
+    results, warnings = remote_mod.upgrade_devices(
+        routes=args.routes or None, visited=visited, ttl=args.ttl, relayed=args.relay,
+        logger=(lambda m: None) if args.json else (lambda m: print("  " + m)))
+    if args.json:
+        print(json.dumps({"node": remote_mod.load_node()["id"], "results": results, "warnings": warnings},
+                         ensure_ascii=False))
+        return 0
+    _print_device_upgrades(results, warnings)
+    return 1 if any(r["status"] == "failed" for r in results) else 0
 
 
 def cmd_setup(args):
@@ -254,10 +297,11 @@ def cmd_node(args):
     neighbors = [{"name": r["name"], "host": r["host"], "node_id": r.get("node_id"), "proto": r.get("proto")}
                  for r in remote_mod.load_remotes()]
     if args.json:
-        print(json.dumps(dict(node, neighbors=neighbors), ensure_ascii=False, indent=2))
+        print(json.dumps(dict(node, code=code_fingerprint(), neighbors=neighbors), ensure_ascii=False, indent=2))
         return 0
     print("name     %s" % node["name"])
     print("id       %s" % node["id"])
+    print("code     %s" % code_fingerprint())
     print("forward  %s%s" % ("on" if node["forward"] else "off",
                              "" if node["forward"] else "  (neighbors cannot search or read through this device)"))
     for n in neighbors:
@@ -514,7 +558,11 @@ def main(argv=None):
     sp.add_argument("--no-backup", action="store_true", help="skip the pre-upgrade backup")
     sp.add_argument("--keep", type=int, default=3, help="backups to keep (default 3)")
     sp.add_argument("--remotes", action="store_true",
-                    help="also sync code to every registered device and upgrade its index")
+                    help="sync code to every registered device and rebuild its index, even if current")
+    sp.add_argument("--no-remotes", action="store_true",
+                    help="leave other devices alone (default: update those running different code)")
+    # Run on a device that was just sent new code: rebuild only if the schema changed.
+    sp.add_argument("--if-needed", action="store_true", help=argparse.SUPPRESS)
     sp.add_argument("--restore", nargs="?", const="", metavar="BACKUP",
                     help="replace the index with a backup (default: the newest)")
     sp.add_argument("--list", action="store_true", help="list backups")
@@ -607,6 +655,15 @@ def main(argv=None):
     rsp = rsub.add_parser("remove", help="unregister a device (does not touch files on it)")
     rsp.add_argument("name")
     rsp.set_defaults(func=cmd_remote_remove)
+
+    rsp = rsub.add_parser("upgrade", help="bring devices running other code to this device's code, "
+                                          "through relays too (default: every reachable device)")
+    rsp.add_argument("routes", nargs="*", metavar="ROUTE", help="only these devices, e.g. devbox-109/devbox-126")
+    rsp.add_argument("--json", action="store_true")
+    rsp.add_argument("--relay", action="store_true", help=argparse.SUPPRESS)
+    rsp.add_argument("--visited", help=argparse.SUPPRESS)
+    rsp.add_argument("--ttl", type=int, default=remote_mod.DEFAULT_TTL, help=argparse.SUPPRESS)
+    rsp.set_defaults(func=cmd_remote_upgrade)
 
     rsp = rsub.add_parser("update", help="re-sync code and re-index one device or all remotes")
     rsp.add_argument("name", nargs="?", help="device name (default: all)")

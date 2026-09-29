@@ -15,6 +15,8 @@ export interface GraphNode {
   state: TopoState
   forward: boolean | null
   legacy: boolean
+  /** Runs other code than this device: true/false once probed, null when unknown. */
+  outdated: boolean | null
   host?: string
   ms?: number
   error?: string
@@ -30,6 +32,11 @@ export interface GraphEdge {
 export interface Graph {
   nodes: GraphNode[]
   edges: GraphEdge[]
+}
+
+/** Devices known to run other code than this one, by route. */
+export function outdatedRoutes(graph: Graph): string[] {
+  return graph.nodes.filter((n) => n.outdated).map((n) => n.route)
 }
 
 const neighborState = (n: TopoNeighbor): TopoState => (n.ok === true ? "ok" : n.ok === false ? "bad" : "unknown")
@@ -50,6 +57,7 @@ export function buildGraph(root: TopoNode): Graph {
     state: "ok",
     forward: root.forward,
     legacy: false,
+    outdated: false,
   })
   const queue: { key: string; route: string; depth: number; tree: TopoNode }[] = [
     { key: root.id, route: "", depth: 0, tree: root },
@@ -73,6 +81,7 @@ export function buildGraph(root: TopoNode): Graph {
         state: neighborState(n),
         forward: n.node ? n.node.forward : (known?.forward ?? null),
         legacy: Boolean(n.legacy),
+        outdated: n.legacy ? true : n.node ? n.node.code !== root.code : (known?.outdated ?? null),
         host: n.host ?? known?.host,
         ms: n.ms,
         error: n.error,
@@ -81,6 +90,13 @@ export function buildGraph(root: TopoNode): Graph {
     }
   }
   return { nodes: [...nodes.values()], edges: [...edges.values()] }
+}
+
+/** Direct neighbors running other code than this device (true), the same (false), or unknown (null). */
+export function neighborOutdated(root: TopoNode | undefined): Record<string, boolean | null> {
+  const out: Record<string, boolean | null> = {}
+  for (const n of root?.neighbors ?? []) out[n.name] = n.legacy ? true : n.node ? n.node.code !== root!.code : null
+  return out
 }
 
 /** Direct neighbors' relay policy as reported by the probe, by remotes.json name. */

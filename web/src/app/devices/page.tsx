@@ -13,7 +13,7 @@ import { NodeSettings } from "@/components/node-settings"
 import { RemoteDescription } from "@/components/remote-description"
 import { srcSummary } from "@/lib/format"
 import { useStore } from "@/lib/store"
-import { neighborForward } from "@/lib/topology"
+import { neighborForward, neighborOutdated } from "@/lib/topology"
 
 /** A neighbor's relay switch; its state comes from the topology probe. */
 function RemoteForward({ name, forward }: { name: string; forward: boolean | null | undefined }) {
@@ -106,6 +106,7 @@ export default function DevicesPage() {
   } = useStore()
   const remotes = status?.remotes ?? []
   const forwards = neighborForward(topology?.topology)
+  const outdated = neighborOutdated(topology?.topology)
 
   React.useEffect(() => {
     if (!topology && !topologyLoading && remotes.length) void probeTopology()
@@ -130,7 +131,7 @@ export default function DevicesPage() {
           <ConfirmButton
             title="更新全部设备"
             description={`将向 ${remotes.length} 台设备重新 rsync 代码并增量建索引。`}
-            onConfirm={() => void updateRemotes()}
+            onConfirm={() => void updateRemotes().then(probeTopology)}
           >
             全部更新代码
           </ConfirmButton>
@@ -150,6 +151,11 @@ export default function DevicesPage() {
                     <RemoteDescription state={state} ping={ping[r.name]} stat={stat} />
                     <span className="mt-1 block text-xs text-faint" data-testid="remote-forward-state">
                       中转：{topologyLoading && !topology ? "探测中…" : forwardText(topology ? (forwards[r.name] ?? null) : undefined)}
+                      {outdated[r.name] ? (
+                        <span className="ml-2 rounded-md bg-warn-soft px-1.5 py-px font-medium text-warn" data-testid="remote-outdated">
+                          代码需更新
+                        </span>
+                      ) : null}
                     </span>
                     <span className="mt-1 block font-mono text-xs text-faint">bin: {r.bin}</span>
                   </>
@@ -171,7 +177,7 @@ export default function DevicesPage() {
                     <ConfirmButton
                       title={`更新 ${r.name} 的代码`}
                       description="将重新 rsync 代码并在该设备上增量建索引。"
-                      onConfirm={() => void updateRemotes(r.name)}
+                      onConfirm={() => void updateRemotes(r.name).then(probeTopology)}
                     >
                       更新代码
                     </ConfirmButton>

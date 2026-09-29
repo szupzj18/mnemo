@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest"
 import type { TopoNeighbor, TopoNode } from "./api"
-import { buildGraph, layout, neighborForward } from "./topology"
+import { buildGraph, layout, neighborForward, neighborOutdated, outdatedRoutes } from "./topology"
 
-const node = (id: string, forward: boolean, neighbors: TopoNeighbor[] = []): TopoNode => ({
+const node = (id: string, forward: boolean, neighbors: TopoNeighbor[] = [], code = "c0de"): TopoNode => ({
   id,
   name: "name-" + id,
   forward,
+  code,
   neighbors,
 })
 const link = (name: string, child: TopoNode | null, extra: Partial<TopoNeighbor> = {}): TopoNeighbor => ({
@@ -64,6 +65,26 @@ describe("buildGraph", () => {
     const g = buildGraph(node("a", false, [link("b", b)]))
     expect(g.nodes).toHaveLength(3)
     expect(g.edges).toHaveLength(2)
+  })
+})
+
+describe("outdated code", () => {
+  it("compares every probed device with this one", () => {
+    const c = node("c", false, [], "old")
+    const b = node("b", true, [link("c", c)])
+    const g = buildGraph(
+      node("a", false, [
+        link("b", b),
+        link("legacy", null, { node_id: "l", legacy: true }),
+        link("down", null, { ok: false }),
+      ]),
+    )
+    const by = Object.fromEntries(g.nodes.map((n) => [n.route, n.outdated]))
+    expect(by).toEqual({ local: false, b: false, "b/c": true, legacy: true, down: null })
+    expect(outdatedRoutes(g)).toEqual(["legacy", "b/c"])
+    const root = node("a", false, [link("b", node("b", false, [], "old")), link("x", null, { legacy: true })])
+    expect(neighborOutdated(root)).toEqual({ b: true, x: true })
+    expect(neighborOutdated(undefined)).toEqual({})
   })
 })
 

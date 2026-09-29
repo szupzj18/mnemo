@@ -51,6 +51,11 @@ def _stored_version(db_path):
         db.close()
 
 
+def schema_current(db_path):
+    """True when the index exists and already has this code's schema."""
+    return os.path.isfile(db_path) and _stored_version(db_path) == SCHEMA_VERSION
+
+
 def backup(db_path, keep=BACKUP_KEEP, label=None):
     """Snapshot db_path into backups/; keep the newest `keep`. Returns the path or None."""
     if not os.path.isfile(db_path):

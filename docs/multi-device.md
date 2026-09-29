@@ -29,7 +29,7 @@ mnemo remote add gpu-box user@10.0.0.12      # explicit ssh target
 3. Runs `mnemo index` there to build the remote index.
 4. Registers the device in `~/.mnemo/remotes.json`.
 
-After you upgrade Mnemo locally, run `mnemo remote update` to push the new code to every remote.
+Devices get new code from you, not from GitHub: see [Keeping devices up to date](#keeping-devices-up-to-date).
 
 ## Topologies: direct links and relays
 
@@ -62,6 +62,17 @@ The **Topology** view maps what this device can reach: each device's route, name
 </p>
 
 On the **Devices** page you can rename this device and switch its relay, and switch relaying on a direct neighbor over its SSH link. Turning a relay on asks for confirmation first.
+
+## Keeping devices up to date
+
+Every device knows a short fingerprint of the code it runs (`mnemo node` shows it), so the device you upgrade can tell which others are behind:
+
+- **`mnemo upgrade`** (and re-running the installer) brings every reachable device that runs different code up to this code after upgrading the local index. Devices already current are left alone; unreachable ones are reported and skipped. `--no-remotes` turns this off.
+- **`mnemo remote upgrade [<route> ...]`** does just that step, for every device or for the given routes.
+- **Through relays.** A device you cannot reach directly is updated by the relay in front of it, which forwards its own (freshly updated) code. As with searches, this only happens through devices with forwarding on. Pushing code runs it on the target, so a relay extends that reach. It is the same reach its own SSH access already gives whoever controls it.
+- **In the dashboard** the topology view marks devices that need an update, with a per-device **Update** button and one for all of them.
+
+Updates happen only when you ask: there is no background auto-update changing files on other machines behind your back.
 
 ## Freshness and failure
 

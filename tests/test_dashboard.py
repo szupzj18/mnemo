@@ -173,6 +173,11 @@ class DashboardServerTest(unittest.TestCase):
         self.assertEqual((topo["id"], topo["neighbors"]), (node["id"], []))
         res, _ = self.request("POST", "/api/node/remote", {"name": "nope", "forward": True}, token=TOKEN)
         self.assertEqual(res.status, 400)
+        self.assertEqual(topo["code"], node["code"])
+        _, body = self.request("POST", "/api/upgrade-devices", {}, token=TOKEN)
+        self.assertEqual(json.loads(body), {"ok": True, "results": [], "warnings": []})
+        res, _ = self.request("POST", "/api/upgrade-devices", {"routes": [""]}, token=TOKEN)
+        self.assertEqual(res.status, 400)
 
     def test_bad_requests_are_400(self):
         res, _ = self.request("POST", "/api/search", {"query": "  "}, token=TOKEN)

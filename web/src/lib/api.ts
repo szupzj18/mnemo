@@ -91,6 +91,14 @@ export interface NodeInfo {
   id: string
   name: string
   forward: boolean
+  /** Fingerprint of the code the device runs; absent on builds that predate it. */
+  code?: string
+}
+
+export interface DeviceUpgrade {
+  route: string
+  status: "updated" | "current" | "failed"
+  error?: string
 }
 
 /** One device in a topology probe, with the neighbors it reported. */
@@ -168,6 +176,8 @@ export const api = {
   setRemoteNode: (name: string, patch: { forward?: boolean; node_name?: string }) =>
     call<Ok<{ node: NodeInfo }>>("/api/node/remote", { name, ...patch }),
   topology: () => call<Ok<TopologyResult>>("/api/topology", {}),
+  upgradeDevices: (routes?: string[]) =>
+    call<Ok<{ results: DeviceUpgrade[]; warnings: string[] }>>("/api/upgrade-devices", routes ? { routes } : {}),
   search: (query: string, limit: number, hosts: string[] | null) =>
     call<SearchResponse>("/api/search", { query, limit, hosts }),
   session: (path: string, host: string, raw: boolean) =>

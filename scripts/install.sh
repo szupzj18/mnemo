@@ -3,7 +3,8 @@
 #
 #   curl -fsSL https://szupzj18.github.io/mnemo/install.sh | sh
 #
-# Re-running upgrades: git pull, then `mnemo upgrade` (backup, rebuild, swap).
+# Re-running upgrades: git pull, then `mnemo upgrade` (backup, rebuild, swap,
+# and update other devices that run older code).
 # Environment overrides:
 #   MNEMO_DIR       checkout location          (default ~/mnemo)
 #   MNEMO_BIN_DIR   where the `mnemo` link goes (default ~/.local/bin)

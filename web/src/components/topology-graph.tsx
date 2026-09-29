@@ -67,6 +67,7 @@ export function TopologyGraph({ graph }: { graph: Graph }) {
             data-testid="topology-node"
             data-route={n.route}
             data-state={n.state}
+            data-outdated={n.outdated === null ? undefined : String(n.outdated)}
           >
             <title>
               {[n.route, n.nodeName && `节点名 ${n.nodeName}`, n.host && `SSH ${n.host}`, n.error]
@@ -87,7 +88,7 @@ export function TopologyGraph({ graph }: { graph: Graph }) {
             <text x={32} y={23} className="fill-foreground text-[13px] font-semibold">
               {truncate(label(n), 17)}
             </text>
-            <text x={32} y={41} className="fill-faint text-[11px]">
+            <text x={32} y={41} className={cn("text-[11px]", n.outdated && n.state === "ok" ? "fill-warn" : "fill-faint")}>
               {truncate(subline(n), 22)}
             </text>
             {n.forward ? (
@@ -107,9 +108,12 @@ export function TopologyGraph({ graph }: { graph: Graph }) {
 
 function subline(n: Positioned): string {
   if (n.state === "bad") return "无法连接"
-  if (n.legacy) return "旧版本 · 无法探测后方"
   if (n.state === "unknown") return "未探测"
-  const parts = [n.nodeName && n.nodeName !== label(n) ? n.nodeName : null, n.ms !== undefined ? `${n.ms} ms` : null]
+  const parts = [
+    n.outdated ? "需更新" : null,
+    n.nodeName && n.nodeName !== label(n) ? n.nodeName : null,
+    n.ms !== undefined ? `${n.ms} ms` : null,
+  ]
   return parts.filter(Boolean).join(" · ") || (n.depth === 0 ? "本机" : "")
 }
 

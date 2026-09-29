@@ -5,9 +5,10 @@ import Link from "next/link"
 import { Loader2, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { ConfirmButton } from "@/components/confirm-button"
 import { TopologyGraph } from "@/components/topology-graph"
 import { useStore } from "@/lib/store"
-import { buildGraph, type GraphNode } from "@/lib/topology"
+import { buildGraph, outdatedRoutes, type GraphNode } from "@/lib/topology"
 import { cn } from "@/lib/utils"
 
 const STATE: Record<GraphNode["state"], [string, string]> = {
@@ -36,7 +37,7 @@ function Legend() {
 }
 
 export default function TopologyPage() {
-  const { status, topology, topologyLoading, probeTopology } = useStore()
+  const { status, topology, topologyLoading, probeTopology, upgrading, upgradeDevices } = useStore()
 
   React.useEffect(() => {
     if (!topology && !topologyLoading) void probeTopology()
@@ -46,6 +47,8 @@ export default function TopologyPage() {
   const graph = React.useMemo(() => (topology ? buildGraph(topology.topology) : null), [topology])
   const remotes = status?.remotes.length ?? 0
   const reachable = graph ? graph.nodes.filter((n) => n.depth > 0 && n.state === "ok").length : 0
+  const outdated = graph ? outdatedRoutes(graph) : []
+  const busy = (route: string) => upgrading.has("*") || upgrading.has(route)
 
   return (
     <div className="flex flex-col gap-4.5">
@@ -55,11 +58,24 @@ export default function TopologyPage() {
             <h2 className="text-sm font-semibold">从本机可达的设备</h2>
             <p className="text-xs text-faint" data-testid="topology-summary">
               {graph
-                ? `${reachable} 台在线 · 共 ${graph.nodes.length - 1} 台 · 最多 ${topology!.ttl} 跳 · 探测用时 ${topology!.ms} ms`
+                ? `${reachable} 台在线 · 共 ${graph.nodes.length - 1} 台` +
+                  (outdated.length ? ` · ${outdated.length} 台需更新` : "") +
+                  ` · 最多 ${topology!.ttl} 跳 · 探测用时 ${topology!.ms} ms`
                 : "与搜索走同样的路径：只经过开启中转的设备，最多 3 跳。"}
             </p>
           </div>
           <span className="flex-1" />
+          {outdated.length ? (
+            <ConfirmButton
+              title={`更新 ${outdated.length} 台设备的代码`}
+              description={`将把本机的代码 rsync 到 ${outdated.join("、")}，经中转的设备由中转设备转推；索引结构有变化时会先备份再重建。`}
+              onConfirm={() => void upgradeDevices()}
+              variant="default"
+            >
+              {upgrading.has("*") ? <Loader2 className="animate-spin" /> : null}
+              更新落后设备（{outdated.length}）
+            </ConfirmButton>
+          ) : null}
           <Button variant="outline" size="sm" disabled={topologyLoading} onClick={() => void probeTopology()}>
             {topologyLoading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
             {topologyLoading ? "探测中" : "重新探测"}
@@ -95,7 +111,9 @@ export default function TopologyPage() {
                 <th className="px-3 py-2.5 font-medium">节点名</th>
                 <th className="px-3 py-2.5 font-medium">状态</th>
                 <th className="px-3 py-2.5 font-medium">中转</th>
-                <th className="px-5 py-2.5 text-right font-medium">延迟</th>
+                <th className="px-3 py-2.5 font-medium">代码</th>
+                <th className="px-3 py-2.5 text-right font-medium">延迟</th>
+                <th className="w-24 px-5 py-2.5" />
               </tr>
             </thead>
             <tbody>
@@ -113,7 +131,32 @@ export default function TopologyPage() {
                     </span>
                   </td>
                   <td className="px-3 py-2.5 text-subtle">{n.forward === null ? "—" : n.forward ? "开启" : "关闭"}</td>
-                  <td className="tabular px-5 py-2.5 text-right text-subtle">{n.state === "ok" && n.ms !== undefined ? `${n.ms} ms` : "—"}</td>
+                  <td className="px-3 py-2.5" data-testid="topology-code">
+                    {n.outdated === null ? (
+                      <span className="text-subtle">—</span>
+                    ) : n.outdated ? (
+                      <span className="rounded-md bg-warn-soft px-2 py-0.5 text-xs font-medium text-warn">需更新</span>
+                    ) : (
+                      <span className="text-subtle">最新</span>
+                    )}
+                  </td>
+                  <td className="tabular px-3 py-2.5 text-right text-subtle">
+                    {n.state === "ok" && n.ms !== undefined ? `${n.ms} ms` : "—"}
+                  </td>
+                  <td className="px-5 py-1.5 text-right">
+                    {n.outdated ? (
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        disabled={busy(n.route)}
+                        data-testid="topology-upgrade"
+                        onClick={() => void upgradeDevices([n.route])}
+                      >
+                        {busy(n.route) ? <Loader2 className="animate-spin" /> : null}
+                        更新
+                      </Button>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>
