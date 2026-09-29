@@ -20,7 +20,7 @@ curl -fsSL https://szupzj18.github.io/mnemo/install.sh | sh
 
 The script checks Python 3.7+ and SQLite FTS5, clones to `~/mnemo` (`MNEMO_DIR`), links `mnemo` into `~/.local/bin` (`MNEMO_BIN_DIR`), builds the index and runs `mnemo setup` (skip with `MNEMO_NO_SETUP=1`). Re-running it upgrades: `git pull`, then `mnemo upgrade`. It refuses to touch a checkout with local changes or a directory that is not a mnemo checkout.
 
-Alternatively `uv tool install git+https://github.com/szupzj18/mnemo` or `pipx install git+https://github.com/szupzj18/mnemo`, then `mnemo index && mnemo setup`.
+Alternatively install the [`mnemo-search`](https://pypi.org/project/mnemo-search/) package with `uv tool install mnemo-search` or `pipx install mnemo-search` (the command is `mnemo`), then `mnemo index && mnemo setup`.
 
 By hand:
 
@@ -99,7 +99,7 @@ If another process is writing the index, the search waits up to 10 s. If the syn
 ## Upgrading
 
 ```bash
-git -C ~/mnemo pull
+git -C ~/mnemo pull          # or: uv tool upgrade mnemo-search / pipx upgrade mnemo-search
 mnemo upgrade                # back up, rebuild, verify and swap; then update devices running older code
 ```
 

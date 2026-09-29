@@ -120,7 +120,7 @@ search_sessions ──▶ get_context ──▶ get_session
 curl -fsSL https://szupzj18.github.io/mnemo/install.sh | sh
 ```
 
-一条命令完成：检查 Python 3.7+ 和 SQLite FTS5，克隆到 `~/mnemo`，把 `mnemo` 链进 `~/.local/bin`，建索引，再运行 `mnemo setup` 自动接好本机检测到的 Agent（Claude Code 的 MCP 和技能、Codex 的 MCP、Pi 扩展；已配置的不会重复改动）。再运行一次即升级。习惯用 Python 工具管理器的话：`uv tool install git+https://github.com/szupzj18/mnemo && mnemo setup`（`pipx install` 同理）。
+一条命令完成：检查 Python 3.7+ 和 SQLite FTS5，克隆到 `~/mnemo`，把 `mnemo` 链进 `~/.local/bin`，建索引，再运行 `mnemo setup` 自动接好本机检测到的 Agent（Claude Code 的 MCP 和技能、Codex 的 MCP、Pi 扩展；已配置的不会重复改动）。再运行一次即升级。习惯用 Python 工具管理器的话：`uv tool install mnemo-search && mnemo setup`（或 `pipx install mnemo-search`；装好后命令是 `mnemo`）。
 
 装好后试试 `mnemo search "retry budget"`，或者问 Agent 一个只有旧会话才知道答案的问题。
 
