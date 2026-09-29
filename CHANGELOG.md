@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-29
+
 ### Added
 - Scheduled releases: every other Monday a workflow opens a "Release x.y.z" PR (when `CHANGELOG.md` has entries under *Unreleased*) that previews the release notes and merges itself once CI passes; merging tags the version and publishes the GitHub Release. The version follows the entries: Added/Changed bump the minor version, fixes alone the patch. `scripts/release.py` does the changelog and version work.
 - PyPI package `mnemo-search` (the command stays `mnemo`), published by each release with trusted publishing.
@@ -72,6 +74,7 @@ First public release, as *agentsearch* (renamed to **Mnemo** the same day).
 - Local dashboard: search with per-device diagnostics, click-through to a chat-style session transcript with match navigation, device management, and a token-gated `127.0.0.1` API.
 - Agent skill in `integrations/skills/mnemo`.
 
-[Unreleased]: https://github.com/szupzj18/mnemo/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/szupzj18/mnemo/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/szupzj18/mnemo/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/szupzj18/mnemo/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/szupzj18/mnemo/releases/tag/v0.1.0
