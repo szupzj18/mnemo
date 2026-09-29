@@ -42,6 +42,11 @@ def local_status():
     }
 
 
+def node_info():
+    node = remote_mod.load_node()
+    return {"id": node["id"], "name": node["name"], "forward": node["forward"]}
+
+
 def local_sync():
     idx = Index(DEFAULT_DB_PATH)
     try:
@@ -225,6 +230,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/status":
             self._json(local_status())
             return
+        if parsed.path == "/api/node":
+            self._json(node_info())
+            return
         if parsed.path == "/api/remote-status":
             qs = parse_qs(parsed.query)
             try:
@@ -281,6 +289,28 @@ class Handler(BaseHTTPRequestHandler):
                 for r in remotes:
                     remote_mod.install(r, logger=lambda m, n=r["name"]: logs.append(n + ": " + m))
                 self._json({"ok": True, "logs": logs})
+            elif path == "/api/node":
+                node = remote_mod.load_node()
+                if "name" in data:
+                    node["name"] = remote_mod.check_node_name(data["name"])
+                if "forward" in data:
+                    node["forward"] = bool(data["forward"])
+                remote_mod.save_node(node)
+                self._json(dict(node_info(), ok=True))
+            elif path == "/api/node/remote":
+                name = (data.get("name") or "").strip()
+                forward = data.get("forward")
+                node_name = data.get("node_name")
+                if node_name is not None:
+                    node_name = remote_mod.check_node_name(node_name)
+                if forward is None and node_name is None:
+                    raise RemoteError("nothing to change")
+                info = remote_mod.set_remote_node(
+                    name, forward=None if forward is None else bool(forward), node_name=node_name)
+                self._json({"ok": True, "node": info})
+            elif path == "/api/topology":
+                t, ms = _time(remote_mod.probe_topology)
+                self._json({"ok": True, "ms": ms, "topology": t, "ttl": remote_mod.DEFAULT_TTL})
             elif path == "/api/search":
                 query = (data.get("query") or "").strip()
                 if not query:

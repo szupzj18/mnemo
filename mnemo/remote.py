@@ -6,6 +6,8 @@ import socket
 import sqlite3
 import subprocess
 import sys
+import threading
+import time
 import uuid
 
 from .index import Index, IndexTooNew
@@ -49,18 +51,33 @@ def load_remotes():
     return out
 
 
+# Neighbors are searched and probed in parallel threads, each of which may learn
+# something; serialize the read-modify-write so no thread's update is lost.
+_remotes_lock = threading.Lock()
+
+
 def update_remote(name, **fields):
     """Persist learned facts about a neighbor (its node id, protocol level)."""
-    remotes = load_remotes()
-    changed = False
-    for r in remotes:
-        if r["name"] == name:
-            for k, v in fields.items():
-                if r.get(k) != v:
-                    r[k] = v
-                    changed = True
-    if changed:
-        save_remotes(remotes)
+    with _remotes_lock:
+        remotes = load_remotes()
+        changed = False
+        for r in remotes:
+            if r["name"] == name:
+                for k, v in fields.items():
+                    if r.get(k) != v:
+                        r[k] = v
+                        changed = True
+        if changed:
+            save_remotes(remotes)
+
+
+def _atomic_json(path, data):
+    """Write via a temp file unique to this process and thread, then rename into place."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = "%s.%d.%d.tmp" % (path, os.getpid(), threading.get_ident())
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
 
 
 # ------------------------------------------------------------------ this node
@@ -93,12 +110,15 @@ def load_node():
     return node
 
 
+def check_node_name(name):
+    name = (name or "").strip()
+    if not name or len(name) > 64 or any(c.isspace() and c != " " for c in name):
+        raise RemoteError("node name must be 1-64 characters on one line")
+    return name
+
+
 def save_node(node):
-    os.makedirs(CONFIG_DIR, exist_ok=True)
-    tmp = _node_path() + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(node, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, _node_path())
+    _atomic_json(_node_path(), node)
 
 
 def split_route(host):
@@ -109,11 +129,7 @@ def split_route(host):
 
 
 def save_remotes(remotes):
-    os.makedirs(CONFIG_DIR, exist_ok=True)
-    tmp = CONFIG_PATH + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({"remotes": remotes}, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, CONFIG_PATH)
+    _atomic_json(CONFIG_PATH, {"remotes": remotes})
 
 
 def add_remote(name, host, bin_path="~/mnemo/bin/mnemo"):
@@ -476,6 +492,88 @@ def remote_context(route, path, line, before, after, raw=False, timeout=30):
     if raw:
         argv.append("--raw")
     return json.loads(_routed_exec(route, argv, timeout))
+
+
+def probe_topology(visited=(), ttl=DEFAULT_TTL, relayed=False):
+    """This device and, through relaying neighbors, the network reachable from it.
+
+    Walks the same paths a search would: a neighbor asked by a neighbor
+    (relayed) reports what lies behind it only if it forwards, the hop budget
+    matches search, and devices already covered upstream are listed as edges
+    but not probed again. Returns
+      {id, name, forward, neighbors: [{name, node_id, ok, ms, error, seen, legacy,
+                                       node: <same shape> | None}]}
+    SSH targets are only reported to this device's own dashboard (not relayed).
+    """
+    node = load_node()
+    out = {"id": node["id"], "name": node["name"], "forward": node["forward"], "neighbors": []}
+    if node["id"] in set(visited) or (relayed and not node["forward"]):
+        return out
+    remotes = load_remotes()
+    covered = set(visited) | {node["id"]} | {r["node_id"] for r in remotes if r.get("node_id")}
+
+    def probe(r):
+        entry = {"name": r["name"], "node_id": r.get("node_id"), "node": None}
+        if not relayed:
+            entry["host"] = r["host"]
+        if r.get("node_id") in set(visited):
+            entry["seen"] = True
+            return entry
+        if ttl <= 0:
+            return entry
+        argv = ["node", "--json", "--probe", "--relay", "--ttl", str(ttl - 1)]
+        rest = covered - {r.get("node_id")}
+        if rest:
+            argv += ["--visited", ",".join(sorted(rest))]
+        t = time.time()
+        try:
+            legacy = r.get("proto", 2) < 2
+            if not legacy:
+                try:
+                    child = json.loads(remote_exec(r, argv, timeout=15 + 15 * ttl))
+                except RemoteError as exc:
+                    # Builds without the probe still answer searches; just can't map past them.
+                    if "unrecognized arguments" not in str(exc) and "invalid choice" not in str(exc):
+                        raise
+                    legacy = True
+                else:
+                    entry["node"] = child
+                    entry["node_id"] = child.get("id")
+                    if child.get("id") and child["id"] != r.get("node_id"):
+                        update_remote(r["name"], node_id=child["id"])
+            if legacy:
+                entry["legacy"] = True
+                remote_exec(r, ["--version"], timeout=CONNECT_TIMEOUT + 4)
+        except RemoteError as exc:
+            entry.update(ok=False, error=str(exc), ms=int((time.time() - t) * 1000))
+            return entry
+        entry.update(ok=True, ms=int((time.time() - t) * 1000))
+        return entry
+
+    if remotes:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(remotes)) as pool:
+            out["neighbors"] = list(pool.map(probe, remotes))
+    return out
+
+
+def set_remote_node(name, forward=None, node_name=None, timeout=30):
+    """Change a direct neighbor's relay policy or name over SSH; returns its node info."""
+    argv = ["node", "--json"]
+    if forward is not None:
+        argv += ["--forward", "on" if forward else "off"]
+    if node_name:
+        argv += ["--name", node_name]
+    remote = get_remote(name)
+    try:
+        info = json.loads(remote_exec(remote, argv, timeout=timeout))
+    except RemoteError as exc:
+        if "invalid choice" in str(exc):
+            raise RemoteError("%s runs an older mnemo without relaying; update its code first" % name)
+        raise
+    info.pop("neighbors", None)
+    if info.get("id"):
+        update_remote(name, node_id=info["id"])
+    return info
 
 
 def remote_status(remote, timeout=20):

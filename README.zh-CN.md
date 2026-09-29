@@ -193,7 +193,7 @@ ln -s ~/mnemo/integrations/pi/mnemo.ts ~/.pi/agent/extensions/mnemo.ts
   <img alt="会话视图：时间轨、命中高亮、工具耗时" src="docs/assets/session.png" width="880">
 </picture>
 
-面板还提供索引统计、各设备健康状态、设备增删和更新、搜索诊断（每台设备的耗时与命中数），支持浅色和深色主题。
+面板还提供索引统计、各设备健康状态、设备增删和更新、经中转可达的全部设备的拓扑图、搜索诊断（每台设备的耗时与命中数），支持浅色和深色主题。
 
 ## 多台机器
 

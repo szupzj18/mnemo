@@ -200,7 +200,7 @@ Click a hit to open the full session as a chat thread. Matches are highlighted a
   <img alt="Session view with a timeline rail, highlighted matches and tool-call durations" src="docs/assets/session.png" width="880">
 </picture>
 
-The dashboard also covers index stats, per-device health, device add/update/remove and search diagnostics (latency and hits per device). It has light and dark themes.
+The dashboard also covers index stats, per-device health, device add/update/remove, a topology map of every device reachable through relays, and search diagnostics (latency and hits per device). It has light and dark themes.
 
 ## Multiple machines
 

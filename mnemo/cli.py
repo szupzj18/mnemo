@@ -235,12 +235,21 @@ def _check_forward(args, host):
 
 
 def cmd_node(args):
+    if args.probe:
+        visited = set(filter(None, (args.visited or "").split(",")))
+        print(json.dumps(remote_mod.probe_topology(visited, args.ttl, relayed=args.relay),
+                         ensure_ascii=False))
+        return 0
     node = remote_mod.load_node()
-    if args.name:
-        node["name"] = args.name
+    if args.name is not None:
+        try:
+            node["name"] = remote_mod.check_node_name(args.name)
+        except RemoteError as exc:
+            print("error: %s" % exc, file=sys.stderr)
+            return 1
     if args.forward:
         node["forward"] = args.forward == "on"
-    if args.name or args.forward:
+    if args.name is not None or args.forward:
         remote_mod.save_node(node)
     neighbors = [{"name": r["name"], "host": r["host"], "node_id": r.get("node_id"), "proto": r.get("proto")}
                  for r in remote_mod.load_remotes()]
@@ -563,6 +572,11 @@ def main(argv=None):
     sp.add_argument("--forward", choices=("on", "off"),
                     help="relay searches and reads so neighbors can reach devices behind this one")
     sp.add_argument("--json", action="store_true")
+    # Protocol 2, used between devices and by the dashboard: map the reachable network.
+    sp.add_argument("--probe", action="store_true", help=argparse.SUPPRESS)
+    sp.add_argument("--relay", action="store_true", help=argparse.SUPPRESS)
+    sp.add_argument("--visited", help=argparse.SUPPRESS)
+    sp.add_argument("--ttl", type=int, default=remote_mod.DEFAULT_TTL, help=argparse.SUPPRESS)
     sp.set_defaults(func=cmd_node)
 
     sp = sub.add_parser("status", help="index stats")
