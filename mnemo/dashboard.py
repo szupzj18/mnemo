@@ -386,10 +386,24 @@ def serve(port=DEFAULT_PORT, open_browser=True):
     url = "http://127.0.0.1:%d/" % port
     if open_browser:
         webbrowser.open(url)
-    print("mnemo dashboard: %s (Ctrl-C to stop)" % url)
+    print("mnemo dashboard: %s (Ctrl-C to stop)" % url, flush=True)
+
+    # Follow code updates: once the code on disk changes, restart in place on the
+    # same port with the same token, so open tabs keep working.
+    from . import live
+    from .link import self_argv
+
+    live.mark("dashboard")
+    reload = []
+    live.watch(lambda: (reload.append(True), httpd.shutdown()))
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         httpd.server_close()
+    if reload:
+        print("mnemo dashboard: code updated, restarting", flush=True)
+        os.environ["MNEMO_DASHBOARD_TOKEN"] = Handler.token
+        argv = self_argv() + ["dashboard", "--no-open", "--port", str(port)]
+        os.execv(argv[0], argv)
