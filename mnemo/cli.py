@@ -93,6 +93,7 @@ def cmd_upgrade(args):
 
     rc = 0
     sys.stdout.flush()  # keep stdout/stderr in order when piped
+    _restart_links()  # before listing stale processes, so links are not among them
     stale = up.stale_processes()
     if stale:
         print("warning: %d mnemo process(es) still run the previous code and may write"
@@ -100,10 +101,10 @@ def cmd_upgrade(args):
         for pid, started, cmd in stale:
             print("  pid %d  since %s  %s" % (pid, time.strftime("%m-%d %H:%M", time.localtime(started)), cmd[-60:]),
                   file=sys.stderr)
-        print("  restart the agent sessions that own them (or: kill %s)"
+        print("  restart the agent sessions that own them (or: kill %s); MCP servers and dashboards"
+              " started by this version follow later updates on their own"
               % " ".join(str(p) for p, _, _ in stale), file=sys.stderr)
 
-    _restart_links()
     if args.if_needed or args.no_remotes:
         return rc
     if not args.remotes:
@@ -234,6 +235,14 @@ def cmd_link(args):
     except KeyboardInterrupt:
         print()
     return 0
+
+
+def cmd_mcp(args):
+    from . import mcp_server
+
+    if args.call is not None:
+        return mcp_server.call_main(args.call)
+    return mcp_server.run()
 
 
 def cmd_setup(args):
@@ -772,7 +781,9 @@ def main(argv=None):
     rsp.set_defaults(func=cmd_remote_update)
 
     sp = sub.add_parser("mcp", help="run MCP stdio server")
-    sp.set_defaults(func=lambda a: __import__("mnemo.mcp_server", fromlist=["run"]).run())
+    # One tool call in a fresh process; the server runs every call this way.
+    sp.add_argument("--call", metavar="TOOL", help=argparse.SUPPRESS)
+    sp.set_defaults(func=cmd_mcp)
 
     sp = sub.add_parser("dashboard", help="open the local web admin panel")
     sp.add_argument("--port", type=int, default=7787)

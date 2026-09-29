@@ -35,11 +35,14 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def self_argv():
-    """argv that runs this same mnemo: the checkout's launcher, or the package (pip/uv installs)."""
+    """argv that runs this same mnemo: the checkout's launcher, or (pip/uv installs) the
+    package imported from where this one lives. Not `-m mnemo`: that would pick up a
+    `mnemo/` directory in whatever the working directory happens to be."""
     launcher = os.path.join(REPO, "bin", "mnemo")
     if os.path.isfile(launcher):
         return [sys.executable, launcher]
-    return [sys.executable, "-m", "mnemo"]
+    boot = "import sys; sys.path.insert(0, %r); from mnemo.cli import main; sys.exit(main())" % REPO
+    return [sys.executable, "-c", boot]
 
 
 class LinkRefused(RemoteError):

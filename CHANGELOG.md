@@ -4,7 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+- Upgrades reach running agent sessions: the MCP server runs every tool call in a fresh process, so after `mnemo upgrade` (or a `git pull`) the next search in an already-open Claude Code or Codex session uses the new code, with no restart. Only a changed tool list still needs a new session. MCP servers started by older versions need one last restart.
+- The dashboard restarts itself in place when its code changes, on the same port and with the same token, so open tabs keep working.
+- `mnemo upgrade` no longer lists processes that follow updates by themselves, and restarts links before listing the rest.
+
 ### Fixed
+- pip/uv installs started their own subprocesses (link answers, tool calls, services) with `python -m mnemo`, which imports a `mnemo/` directory from the current working directory if there is one; they now import the installed package explicitly.
 - Search could fall back to a slower SQL plan: `bm25(messages) AS rank` shadowed FTS5's hidden `rank` column, so `ORDER BY rank` sorted the expression through a temp B-tree (every match materialised) instead of streaming in rank order. A 66k-match query on a 151k-message index drops from ~85 ms to ~38 ms; results and their `rank` values are unchanged.
 
 ## [0.3.0] - 2026-09-29

@@ -24,7 +24,8 @@ mnemo/cli.py                 argparse front end
 mnemo/index.py               schema + incremental sync
 mnemo/search.py              FTS5 query builder, BM25, context/session/raw reads
 mnemo/remote.py              SSH exec, fan-out, RRF, rsync install
-mnemo/mcp_server.py          stdio JSON-RPC MCP server
+mnemo/mcp_server.py          stdio JSON-RPC MCP server; each tool call runs in a fresh `mnemo mcp --call`
+mnemo/live.py                long-running processes that follow code updates (markers, code watcher)
 mnemo/dashboard.py           HTTP API + static server for mnemo/web_dist
 mnemo/web_dist/              committed static export of web/ (generated)
 mnemo/sources/{claude,codex,pi}.py   per-agent log adapters

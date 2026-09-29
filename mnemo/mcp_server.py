@@ -1,4 +1,5 @@
 import json
+import subprocess
 import sys
 
 from . import __version__
@@ -206,7 +207,52 @@ def handle_call(name, args, index):
     raise ValueError("unknown tool: %s" % name)
 
 
+def call_fresh(name, args, timeout=900):
+    """Run one tool call in a new process, so it always uses the code on disk now.
+
+    This server lives as long as the agent session that started it; answering in
+    process would keep serving the code it started with through every upgrade.
+    """
+    from .link import self_argv
+
+    try:
+        p = subprocess.run(self_argv() + ["mcp", "--call", name or ""], input=json.dumps(args or {}),
+                           capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return _error("%s timed out after %ds" % (name, timeout))
+    try:
+        return json.loads(p.stdout)
+    except ValueError:
+        err = (p.stderr or "").strip().splitlines()
+        return _error(err[-1] if err else "tool process exited with %d" % p.returncode)
+
+
+def call_main(name):
+    """`mnemo mcp --call NAME`: one tool call, arguments as JSON on stdin, result on stdout."""
+    try:
+        args = json.loads(sys.stdin.read() or "{}")
+    except ValueError as exc:
+        args, result = None, _error("bad arguments: %s" % exc)
+    if args is not None:
+        index = Index()
+        try:
+            result = handle_call(name, args, index)
+        except Exception as exc:
+            result = _error(str(exc))
+        finally:
+            index.close()
+    sys.stdout.write(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
+def _error(text):
+    return {"content": [{"type": "text", "text": "error: %s" % text}], "isError": True}
+
+
 def run():
+    from . import live
+
+    live.mark("mcp")
     sys.stderr.write("mnemo mcp: indexing sessions...\n")
     index = Index()
     try:
@@ -214,6 +260,7 @@ def run():
     except IndexTooNew as exc:
         # Keep serving reads; searches report the same warning per call.
         stats = {"error": str(exc)}
+    index.close()  # tool calls open their own, in their own process
     sys.stderr.write("mnemo mcp: ready (%s)\n" % json.dumps(stats))
     tools = build_tools()
 
@@ -244,10 +291,7 @@ def run():
             resp = {"jsonrpc": "2.0", "id": rid, "result": {"tools": tools}}
         elif method == "tools/call":
             params = req.get("params") or {}
-            try:
-                result = handle_call(params.get("name"), params.get("arguments"), index)
-            except Exception as exc:
-                result = {"content": [{"type": "text", "text": "error: %s" % exc}], "isError": True}
+            result = call_fresh(params.get("name"), params.get("arguments"))
             resp = {"jsonrpc": "2.0", "id": rid, "result": result}
         elif method == "ping":
             resp = {"jsonrpc": "2.0", "id": rid, "result": {}}

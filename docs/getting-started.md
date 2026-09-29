@@ -103,7 +103,7 @@ git -C ~/mnemo pull          # or: uv tool upgrade mnemo-search / pipx upgrade m
 mnemo upgrade                # back up, rebuild, verify and swap; then update devices running older code
 ```
 
-Then restart agent sessions that were already running, so their MCP servers load the new code. Until then they keep working: an older mnemo never writes to an index a newer one has upgraded, and rows an old process wrote before that guard existed are repaired on the next sync. If anything looks wrong, `mnemo upgrade --restore` brings back the previous index.
+Running agent sessions pick up the new code on their next tool call: the MCP server runs each call in a fresh process. Only a release that adds or changes tools needs a new session to see them. A running dashboard restarts itself on the same port, and `mnemo link` services are restarted by `mnemo upgrade`. An older mnemo never writes to an index a newer one has upgraded, and rows an old process wrote before that guard existed are repaired on the next sync. If anything looks wrong, `mnemo upgrade --restore` brings back the previous index.
 
 ## Try it
 

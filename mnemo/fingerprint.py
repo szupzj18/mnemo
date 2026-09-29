@@ -27,6 +27,12 @@ def _files():
 
 @functools.lru_cache(maxsize=1)
 def code_fingerprint():
+    """The code this process loaded (computed once, at first use)."""
+    return compute()
+
+
+def compute():
+    """The code on disk right now; differs from code_fingerprint() after an update."""
     h = hashlib.sha256()
     for path in _files():
         try:

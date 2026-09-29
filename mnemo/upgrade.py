@@ -159,9 +159,10 @@ def code_mtime():
 
 
 def stale_processes(since=None):
-    """Long-running mnemo processes (MCP servers, dashboards) started before `since`.
+    """Long-running mnemo processes (MCP servers, dashboards, links) started before `since`.
 
     They still run the old code and write rows in the old shape until restarted.
+    Processes that follow code updates by themselves (live.mark) are left out.
     """
     since = since or code_mtime()
     try:
@@ -171,7 +172,9 @@ def stale_processes(since=None):
         ).stdout
     except (OSError, subprocess.SubprocessError):
         return []
-    me = {os.getpid(), os.getppid()}
+    from . import live
+
+    me = {os.getpid(), os.getppid()} | live.marked_pids()
     return [
         (pid, started, args) for pid, started, args in parse_ps(out)
         if pid not in me and started < since
