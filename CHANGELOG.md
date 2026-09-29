@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+- Scheduled releases: every other Monday a workflow opens a "Release x.y.z" PR (when `CHANGELOG.md` has entries under *Unreleased*) that previews the release notes and merges itself once CI passes; merging tags the version and publishes the GitHub Release. The version follows the entries: Added/Changed bump the minor version, fixes alone the patch. `scripts/release.py` does the changelog and version work.
+- PyPI package `mnemo-search` (the command stays `mnemo`), published by each release with trusted publishing.
+
+### Fixed
+- pip/uv installs: `mnemo remote add/update` synced the whole `site-packages` directory to the remote; it now sends just the package and a launcher. The wheel also lacked the dashboard's `.source-hash`, which made pip-installed devices look outdated to checkouts forever; code fingerprints no longer include the launcher, so both kinds of install agree.
+
 ## [0.2.0] - 2026-09-29
 
 Mnemo now spans any device topology: searches pass through relays, devices that cannot connect back can still be searched (`mnemo link`), and upgrading one machine brings every reachable device up to date. The dashboard gains a topology view, and installing takes one command.
