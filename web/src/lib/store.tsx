@@ -6,6 +6,7 @@ import {
   api,
   type Hit,
   type HostResult,
+  type LinkInfo,
   type NodeInfo,
   type Ping,
   type RemoteStatus,
@@ -13,6 +14,7 @@ import {
   type TopologyResult,
 } from "./api"
 import { fmtSecs, totals } from "./format"
+import { settling } from "./inbound"
 
 export interface LogLine {
   id: number
@@ -53,6 +55,10 @@ interface Store {
   setRemoteForward: (name: string, forward: boolean) => Promise<void>
   /** Routes being brought to this device's code; "*" while updating every device. */
   upgrading: Set<string>
+  /** This device's links to each remote (mnemo link), by remote name. */
+  links: Record<string, LinkInfo>
+  loadLinks: () => Promise<Record<string, LinkInfo>>
+  setLink: (remote: string, on: boolean) => Promise<void>
   upgradeDevices: (routes?: string[]) => Promise<void>
   refresh: () => Promise<void>
   probeRemotes: () => Promise<void>
@@ -115,6 +121,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [topology, setTopology] = React.useState<TopologyResult | null>(null)
   const [topologyLoading, setTopologyLoading] = React.useState(false)
   const [upgrading, setUpgrading] = React.useState<Set<string>>(new Set())
+  const [links, setLinks] = React.useState<Record<string, LinkInfo>>({})
   const logId = React.useRef(0)
   const statusRef = React.useRef<Status | null>(null)
   const searchRef = React.useRef(search)
@@ -402,6 +409,45 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [notify, probeTopology],
   )
 
+  const loadLinks = React.useCallback(async () => {
+    try {
+      const r = await api.links()
+      const next = Object.fromEntries(r.links.map((l) => [l.remote, l]))
+      setLinks(next)
+      return next
+    } catch {
+      return {}
+    }
+  }, [])
+
+  const setLink = React.useCallback(
+    async (remote: string, on: boolean) => {
+      try {
+        const r = await api.setLink(remote, on)
+        if (!r.ok) throw new Error(r.error)
+        // The service starts (or stops) in the background; follow it for a while.
+        let info: LinkInfo | undefined
+        for (let i = 0; i < 20; i++) {
+          info = (await loadLinks())[remote]
+          if (!settling(info, on)) break
+          await new Promise((res) => setTimeout(res, 1000))
+        }
+        if (!on) notify(`已关闭 ${remote} 的反向访问`, "ok")
+        else if (info?.state === "connected")
+          notify(
+            `${remote} 现在可以搜索本机`,
+            "ok",
+            r.manager === "background" ? "后台运行；重启电脑后需要重新开启" : `由 ${r.manager} 常驻，开机自启`,
+          )
+        else notify(`${remote} 的反向访问尚未连上`, "err", info?.error ?? "稍后在设备卡片上查看状态")
+      } catch (e) {
+        notify(`${remote} 反向访问设置失败`, "err", errText(e))
+        await loadLinks()
+      }
+    },
+    [loadLinks, notify],
+  )
+
   const setSearch = React.useCallback((patch: Partial<SearchState>) => {
     setSearchState((s) => ({ ...s, ...patch }))
   }, [])
@@ -460,6 +506,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setRemoteForward,
     upgrading,
     upgradeDevices,
+    links,
+    loadLinks,
+    setLink,
     refresh,
     probeRemotes,
     pingAll,

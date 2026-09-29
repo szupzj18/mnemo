@@ -67,9 +67,13 @@ A laptop can usually SSH into its devboxes, but they cannot connect back to it. 
 
 ```bash
 # on the laptop
-mnemo node --name laptop                        # how the devbox will see this device
-mnemo link devbox-109 --allow-inbound           # keep running (tmux, launchd, nohup ...)
+mnemo node --name laptop                                  # how the devbox will see this device
+mnemo link devbox-109 --allow-inbound --install           # run it now and at every login
+mnemo link --list                                         # state of each link
+mnemo link devbox-109 --uninstall                         # revoke
 ```
+
+`--install` runs the link as a per-user service: a launchd agent on macOS, a systemd user unit on Linux (`loginctl enable-linger` keeps it up without a login session), and elsewhere a background process until the next reboot. `mnemo upgrade` restarts installed links so they run the new code. Without `--install`, `mnemo link` runs in the foreground. The dashboard's device cards show each link's state and switch it on or off.
 
 While it runs, devbox-109 lists `laptop` as a neighbor and its searches (and its agents' searches) include the laptop's sessions; routes like `laptop` or `laptop/devbox-126` work for reads as usual. When the laptop sleeps or the link stops, the devbox's searches skip it silently; asking it for something explicitly says it is not linked. The link reconnects with backoff after network changes.
 

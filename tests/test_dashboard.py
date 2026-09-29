@@ -179,6 +179,16 @@ class DashboardServerTest(unittest.TestCase):
         res, _ = self.request("POST", "/api/upgrade-devices", {"routes": [""]}, token=TOKEN)
         self.assertEqual(res.status, 400)
 
+    def test_links(self):
+        _, body = self.request("GET", "/api/links", token=TOKEN)
+        data = json.loads(body)
+        self.assertIn(data["manager"], ("launchd", "systemd", "background"))
+        self.assertEqual(data["links"], [])
+        res, _ = self.request("POST", "/api/links/install", {"remote": "nope"}, token=TOKEN)
+        self.assertEqual(res.status, 400)
+        res, _ = self.request("POST", "/api/links/uninstall", {"remote": ""}, token=TOKEN)
+        self.assertEqual(res.status, 400)
+
     def test_bad_requests_are_400(self):
         res, _ = self.request("POST", "/api/search", {"query": "  "}, token=TOKEN)
         self.assertEqual(res.status, 400)

@@ -2,6 +2,7 @@ import argparse
 import datetime
 import json
 import os
+import signal
 import sys
 import time
 
@@ -74,6 +75,7 @@ def cmd_upgrade(args):
             return 1
         print("index schema v%s is current; synced %d new, %d updated sessions"
               % (SCHEMA_VERSION, stats["files_new"], stats["files_updated"]))
+        _restart_links()
         return 0
     if not args.no_backup:
         dest = up.backup(args.db, keep=args.keep)
@@ -101,6 +103,7 @@ def cmd_upgrade(args):
         print("  restart the agent sessions that own them (or: kill %s)"
               % " ".join(str(p) for p, _, _ in stale), file=sys.stderr)
 
+    _restart_links()
     if args.if_needed or args.no_remotes:
         return rc
     if not args.remotes:
@@ -109,7 +112,7 @@ def cmd_upgrade(args):
         results, warnings = remote_mod.upgrade_devices(logger=lambda m: print("  " + m))
         _print_device_upgrades(results, warnings)
         return rc
-    for r in remote_mod.load_remotes():
+    for r in remote_mod.pushable(remote_mod.load_remotes()):
         print("%s: syncing code ..." % r["name"])
         try:
             # Code first, index untouched: the remote `upgrade` backs it up before rebuilding.
@@ -123,6 +126,15 @@ def cmd_upgrade(args):
             print("warning: %s: %s" % (r["name"], exc), file=sys.stderr)
             rc = 1
     return rc
+
+
+def _restart_links():
+    """Link services keep running the old code until restarted."""
+    from . import service
+    try:
+        service.restart_installed(log=lambda m: print("links: " + m))
+    except RemoteError as exc:
+        print("warning: links: %s" % exc, file=sys.stderr)
 
 
 def _print_device_upgrades(results, warnings):
@@ -149,10 +161,26 @@ def cmd_remote_upgrade(args):
     return 1 if any(r["status"] == "failed" for r in results) else 0
 
 
-def cmd_link(args):
-    from . import link
+def _print_links(items, as_json):
+    if as_json:
+        print(json.dumps(items, ensure_ascii=False, indent=2))
+        return
+    if not items:
+        print("no remotes registered")
+    for it in items:
+        since = time.strftime("%m-%d %H:%M", time.localtime(it["since"])) if it.get("since") else ""
+        print("%-16s %-10s %-11s %s%s" % (it["remote"], "service" if it["installed"] else "-", it["state"], since,
+                                          ("  " + it["error"]) if it.get("error") and it["state"] != "connected" else ""))
 
+
+def cmd_link(args):
+    from . import link, service
+
+    if args.list:
+        _print_links(service.status(), args.json)
+        return 0
     if args.serve:
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))  # still unlink the socket
         try:
             return link.serve()
         except RemoteError as exc:
@@ -166,6 +194,14 @@ def cmd_link(args):
     except RemoteError as exc:
         print("error: %s" % exc, file=sys.stderr)
         return 1
+    if args.uninstall:
+        try:
+            m = service.uninstall(r["name"])
+        except RemoteError as exc:
+            print("error: %s" % exc, file=sys.stderr)
+            return 1
+        print("stopped linking to %s (%s); it can no longer search this device" % (r["name"], m))
+        return 0
     if not args.allow_inbound:
         print("mnemo link lets %s search and read this device's sessions (and, if this device\n"
               "forwards, the devices behind it) without being able to connect here itself.\n"
@@ -173,7 +209,23 @@ def cmd_link(args):
               "Re-run with --allow-inbound to confirm." % r["name"], file=sys.stderr)
         return 2
     node = remote_mod.load_node()
+    if args.install:
+        try:
+            m = service.install(r["name"])
+        except RemoteError as exc:
+            print("error: %s" % exc, file=sys.stderr)
+            return 1
+        note = {"launchd": "starts at login", "systemd": "starts with your user session "
+                "(`loginctl enable-linger` keeps it up without one)",
+                "background": "runs until reboot; re-run after one"}[m]
+        print("linking to %s as %r in the background via %s; %s" % (r["name"], node["name"], m, note))
+        print("log: %s   status: mnemo link --list   revoke: mnemo link %s --uninstall"
+              % (service.log_path(r["name"]), r["name"]))
+        return 0
     print("keeping a link open to %s as %r (Ctrl-C to stop)" % (r["name"], node["name"]))
+    # Service managers stop us with SIGTERM: exit through the normal path so the
+    # link's state is recorded as stopped and its SSH session closed.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     try:
         link.run(r, log=lambda m: print(time.strftime("%H:%M:%S ") + m, flush=True))
     except link.LinkRefused as exc:
@@ -557,6 +609,8 @@ def cmd_remote_update(args):
             remotes = [r for r in remotes if r["name"] == args.name]
             if not remotes:
                 raise RemoteError("no remote named %r" % args.name)
+        else:
+            remotes = remote_mod.pushable(remotes)
         for r in remotes:
             print("updating %s ..." % r["name"], file=sys.stderr)
             remote_mod.install(r, logger=lambda m: print("  %s" % m, file=sys.stderr))
@@ -666,6 +720,11 @@ def main(argv=None):
     sp.add_argument("remote", nargs="?", help="a registered remote, e.g. devbox-109")
     sp.add_argument("--allow-inbound", action="store_true",
                     help="confirm that the remote may search and read this device's sessions")
+    sp.add_argument("--install", action="store_true",
+                    help="run the link as a background service that starts at login (launchd/systemd)")
+    sp.add_argument("--uninstall", action="store_true", help="stop and remove the link service (revoke access)")
+    sp.add_argument("--list", action="store_true", help="show link services and their state")
+    sp.add_argument("--json", action="store_true")
     # Run on the remote end of a link, over the SSH session it opened.
     sp.add_argument("--serve", action="store_true", help=argparse.SUPPRESS)
     sp.set_defaults(func=cmd_link)

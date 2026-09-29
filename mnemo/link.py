@@ -32,7 +32,14 @@ from .remote import CONNECT_TIMEOUT, RemoteError
 REFUSED = 3
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MNEMO = os.path.join(REPO, "bin", "mnemo")
+
+
+def self_argv():
+    """argv that runs this same mnemo: the checkout's launcher, or the package (pip/uv installs)."""
+    launcher = os.path.join(REPO, "bin", "mnemo")
+    if os.path.isfile(launcher):
+        return [sys.executable, launcher]
+    return [sys.executable, "-m", "mnemo"]
 
 
 class LinkRefused(RemoteError):
@@ -199,12 +206,49 @@ def link_exec(remote, argv, timeout):
 
 # ------------------------------------------------------------- local side
 
+def state_path(name):
+    return os.path.join(remote_mod.CONFIG_DIR, "links", "out-%s.json" % name)
+
+
+def write_state(name, state, error=None):
+    """What the link to `name` is doing, for `mnemo link --list` and the dashboard."""
+    path = state_path(name)
+    try:
+        remote_mod._atomic_json(path, {"remote": name, "pid": os.getpid(), "state": state,
+                                       "since": int(time.time()), "error": error})
+    except OSError:
+        pass
+
+
+def read_state(name):
+    """The last state the link process wrote, or "stopped" if that process is gone."""
+    try:
+        with open(state_path(name), encoding="utf-8") as f:
+            st = json.load(f)
+    except (OSError, ValueError):
+        return {"remote": name, "state": "stopped", "pid": None, "since": None, "error": None}
+    if st.get("state") not in ("stopped", "refused") and not _alive(st.get("pid")):
+        st.update(state="stopped", pid=None)
+    return st
+
+
+def _alive(pid):
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def _answer(argv, timeout):
     if not allowed(argv):
         return {"rc": 2, "out": "", "err": "refused over an inbound link: mnemo %s" % " ".join(argv[:2])}
     try:
-        p = subprocess.run([sys.executable, MNEMO] + list(argv), capture_output=True, text=True,
-                           timeout=timeout)
+        p = subprocess.run(self_argv() + list(argv), capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return {"rc": 1, "out": "", "err": "timed out after %ds" % timeout}
     return {"rc": p.returncode, "out": p.stdout, "err": p.stderr}
@@ -214,7 +258,7 @@ def _serve_command(remote):
     argv = ["link", "--serve"]
     if remote.get("transport") == "local":  # tests: another HOME on this machine
         own = os.path.join(remote["home"], "mnemo", "bin", "mnemo")
-        cmd = [sys.executable, own if os.path.isfile(own) else MNEMO] + argv
+        cmd = ([sys.executable, own] if os.path.isfile(own) else self_argv()) + argv
         return cmd, dict(os.environ, HOME=remote["home"])
     ssh = [
         "ssh",
@@ -252,7 +296,7 @@ def connect(remote, log=lambda m: None, stop=None):
 
     ready = False
     if stop is not None:
-        threading.Thread(target=lambda: (stop.wait(), proc.terminate()), daemon=True).start()
+        threading.Thread(target=lambda: (stop.wait(), proc.stdin.close()), daemon=True).start()
     try:
         send({"hello": {"name": node["name"], "id": node["id"]}})
         for line in proc.stdout:
@@ -262,15 +306,24 @@ def connect(remote, log=lambda m: None, stop=None):
                 continue
             if "ready" in msg:
                 ready = True
+                write_state(remote["name"], "connected")
                 log("linked: %s can now search this device as %r" % (remote["name"], msg["ready"]["name"]))
             elif "argv" in msg:
                 threading.Thread(target=work, args=(msg,), daemon=True).start()
     except (OSError, ValueError):
         pass
     finally:
-        if proc.poll() is None:
+        # Closing its stdin lets the other end clean up (unlink its socket) and exit;
+        # terminate only if it does not.
+        try:
+            proc.stdin.close()
+        except OSError:
+            pass
+        try:
+            proc.wait(5)
+        except subprocess.TimeoutExpired:
             proc.terminate()
-        proc.wait()
+            proc.wait()
     if not ready:
         err = (proc.stderr.read() or "").strip().splitlines()
         msg = "%s: %s" % (remote["name"], err[-1] if err else "link could not start")
@@ -281,17 +334,25 @@ def connect(remote, log=lambda m: None, stop=None):
 def run(remote, log=print, stop=None):
     """Keep the link up: reconnect with backoff until interrupted."""
     delay = 2
-    while stop is None or not stop.is_set():
-        try:
-            connect(remote, log=log, stop=stop)
-            delay = 2
-            log("link to %s dropped; reconnecting" % remote["name"])
-        except LinkRefused:
-            raise
-        except RemoteError as exc:
-            log("link to %s failed: %s; retrying in %ds" % (remote["name"], exc, delay))
-            if stop is not None and stop.wait(delay):
-                break
-            if stop is None:
-                time.sleep(delay)
-            delay = min(delay * 2, 60)
+    name = remote["name"]
+    try:
+        while stop is None or not stop.is_set():
+            write_state(name, "connecting")
+            try:
+                connect(remote, log=log, stop=stop)
+                delay = 2
+                log("link to %s dropped; reconnecting" % name)
+            except LinkRefused as exc:
+                write_state(name, "refused", str(exc))
+                raise
+            except RemoteError as exc:
+                write_state(name, "retrying", str(exc))
+                log("link to %s failed: %s; retrying in %ds" % (name, exc, delay))
+                if stop is not None and stop.wait(delay):
+                    break
+                if stop is None:
+                    time.sleep(delay)
+                delay = min(delay * 2, 60)
+    finally:
+        if read_state(name).get("state") != "refused":
+            write_state(name, "stopped")

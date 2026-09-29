@@ -17,7 +17,8 @@ const python = process.env.PYTHON || "python3"
 const port = process.env.E2E_PORT || "7899"
 const root = mkdtempSync(join(tmpdir(), "mnemo-e2e-"))
 const home = join(root, "home")
-const env = { ...process.env, HOME: home, TZ: "UTC", MNEMO_DASHBOARD_TOKEN: "" }
+// Link services (mnemo link --install) run as plain background processes here.
+const env = { ...process.env, HOME: home, TZ: "UTC", MNEMO_DASHBOARD_TOKEN: "", MNEMO_SERVICE_MANAGER: "background" }
 
 const mnemo = (args, h = home) =>
   execFileSync(python, [join(repo, "bin", "mnemo"), ...args], { env: { ...env, HOME: h }, stdio: "inherit" })
@@ -57,7 +58,18 @@ if (process.argv.includes("--mesh")) {
 }
 
 const child = spawn(python, [join(repo, "bin", "mnemo"), "dashboard", "--no-open", "--port", port], { env, stdio: "inherit" })
-const stop = () => child.kill("SIGTERM")
+const stop = () => {
+  // Links the tests switched on outlive the dashboard; stop them with it.
+  for (const name of ["devbox-a", "devbox-down"]) {
+    try {
+      execFileSync(python, [join(repo, "bin", "mnemo"), "link", name, "--uninstall"], { env, stdio: "ignore" })
+    } catch {}
+  }
+  child.kill("SIGTERM")
+}
 process.on("SIGTERM", stop)
 process.on("SIGINT", stop)
-child.on("exit", (code) => process.exit(code ?? 0))
+child.on("exit", (code) => {
+  if (process.argv.includes("--mesh")) stop()
+  process.exit(code ?? 0)
+})

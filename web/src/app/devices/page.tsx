@@ -14,6 +14,56 @@ import { RemoteDescription } from "@/components/remote-description"
 import { srcSummary } from "@/lib/format"
 import { useStore } from "@/lib/store"
 import { neighborForward, neighborOutdated } from "@/lib/topology"
+import { linkLabel, linkOn, type Tone } from "@/lib/inbound"
+import type { LinkInfo } from "@/lib/api"
+import { cn } from "@/lib/utils"
+
+const TONE: Record<Tone, string> = { ok: "text-ok", warn: "text-warn", err: "text-err", muted: "text-faint" }
+
+/** Whether this remote may search this device back (mnemo link --install). */
+function InboundState({ info }: { info: LinkInfo | undefined }) {
+  const { text, tone, detail } = linkLabel(info)
+  return (
+    <span className="mt-1 block truncate text-xs text-faint" data-testid="inbound-state" title={detail}>
+      反向访问：<span className={cn(tone !== "muted" && "font-medium", TONE[tone])}>{text}</span>
+      {detail ? <span className="ml-1">· {detail}</span> : null}
+    </span>
+  )
+}
+
+function InboundSwitch({ name, info }: { name: string; info: LinkInfo | undefined }) {
+  const { setLink } = useStore()
+  const [busy, setBusy] = React.useState(false)
+  const on = linkOn(info)
+  async function set(v: boolean) {
+    setBusy(true)
+    await setLink(name, v)
+    setBusy(false)
+  }
+  const label = (
+    <>
+      {busy ? <Loader2 className="animate-spin" /> : null}
+      {on ? "关闭反向访问" : "允许反向访问"}
+    </>
+  )
+  if (on)
+    return (
+      <Button variant="outline" size="sm" disabled={busy} data-testid="inbound-toggle" onClick={() => void set(false)}>
+        {label}
+      </Button>
+    )
+  return (
+    <ConfirmButton
+      title={`允许 ${name} 搜索本机？`}
+      description={`本机会常驻一个到 ${name} 的 SSH 连接（开机自启），让它能搜索和读取本机的会话；如果本机开启了中转，也包括本机之后的设备。它拿不到 shell，只能执行搜索、读取会话和查看状态。能登录 ${name} 这个账号的人都能用到这项访问，随时可以在这里关闭。`}
+      onConfirm={() => void set(true)}
+    >
+      <span data-testid="inbound-toggle" className="contents">
+        {label}
+      </span>
+    </ConfirmButton>
+  )
+}
 
 /** A neighbor's relay switch; its state comes from the topology probe. */
 function RemoteForward({ name, forward }: { name: string; forward: boolean | null | undefined }) {
@@ -103,10 +153,16 @@ export default function DevicesPage() {
     topology,
     topologyLoading,
     probeTopology,
+    links,
+    loadLinks,
   } = useStore()
   const remotes = status?.remotes ?? []
   const forwards = neighborForward(topology?.topology)
   const outdated = neighborOutdated(topology?.topology)
+
+  React.useEffect(() => {
+    void loadLinks()
+  }, [loadLinks])
 
   React.useEffect(() => {
     if (!topology && !topologyLoading && remotes.length) void probeTopology()
@@ -130,7 +186,7 @@ export default function DevicesPage() {
           </Button>
           <ConfirmButton
             title="更新全部设备"
-            description={`将向 ${remotes.length} 台设备重新 rsync 代码并增量建索引。`}
+            description={`将向 ${remotes.filter((r) => r.transport !== "link").length} 台设备重新 rsync 代码并增量建索引。`}
             onConfirm={() => void updateRemotes().then(probeTopology)}
           >
             全部更新代码
@@ -140,6 +196,47 @@ export default function DevicesPage() {
           {remotes.map((r) => {
             const state = remoteState(r.name, ping, checking)
             const stat = rstat[r.name]
+            if (r.transport === "link") {
+              // It linked in to us (mnemo link on that device): reachable only while its link is up,
+              // and managed from there.
+              return (
+                <DeviceCard
+                  key={r.name}
+                  name={r.name}
+                  tag="反向链接"
+                  state={state}
+                  description={
+                    <>
+                      <RemoteDescription state={state} ping={ping[r.name]} stat={stat} />
+                      <span className="mt-1 block text-xs text-faint" data-testid="linked-in">
+                        它通过 mnemo link 连入本机，在它那边开关；它离线时搜索会自动跳过。
+                      </span>
+                    </>
+                  }
+                  sources={stat && state === "ok" ? srcSummary(stat.sources) : undefined}
+                  lastSync={stat ? stat.last_sync : undefined}
+                  actions={
+                    <>
+                      <Button variant="outline" size="sm" onClick={() => void pingOne(r.name)}>
+                        测试
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => void remoteStatus(r.name)}>
+                        索引状态
+                      </Button>
+                      <ConfirmButton
+                        title={`移除 ${r.name}`}
+                        description="只删除本机的记录；它下次连入时会重新出现，要彻底停止请在它那边关闭反向访问。"
+                        destructive
+                        variant="destructive"
+                        onConfirm={() => void removeRemote(r.name)}
+                      >
+                        移除
+                      </ConfirmButton>
+                    </>
+                  }
+                />
+              )
+            }
             return (
               <DeviceCard
                 key={r.name}
@@ -157,6 +254,7 @@ export default function DevicesPage() {
                         </span>
                       ) : null}
                     </span>
+                    <InboundState info={links[r.name]} />
                     <span className="mt-1 block font-mono text-xs text-faint">bin: {r.bin}</span>
                   </>
                 }
@@ -174,6 +272,7 @@ export default function DevicesPage() {
                       同步
                     </Button>
                     <RemoteForward name={r.name} forward={topology ? forwards[r.name] : undefined} />
+                    <InboundSwitch name={r.name} info={links[r.name]} />
                     <ConfirmButton
                       title={`更新 ${r.name} 的代码`}
                       description="将重新 rsync 代码并在该设备上增量建索引。"
