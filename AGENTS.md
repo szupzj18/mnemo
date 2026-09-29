@@ -52,7 +52,7 @@ python3 -m unittest discover -s tests          # backend + dashboard server
 cd web
 pnpm lint && pnpm typecheck && pnpm test       # UI static checks + unit tests
 pnpm build                                     # re-export into mnemo/web_dist
-pnpm e2e                                       # Playwright over synthetic sessions
+pnpm e2e                                       # Playwright over synthetic sessions + phone-width site checks
 pnpm e2e:docker                                # + pixel diffs in CI's Linux image
 ```
 

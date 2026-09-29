@@ -26,7 +26,7 @@ NEXT_PUBLIC_MNEMO_TOKEN=dev pnpm dev                       # http://localhost:30
 | `pnpm test` | Vitest unit tests for `src/lib` (formatting, transcript timeline, body tokenizer) |
 | `pnpm build` | Static export, then sync to `mnemo/web_dist` with a source hash |
 | `pnpm check:dist` | Fails if `mnemo/web_dist` was not rebuilt after a source change (CI runs this) |
-| `pnpm e2e` | Playwright against a real `mnemo dashboard` over synthetic sessions |
+| `pnpm e2e` | Playwright against a real `mnemo dashboard` over synthetic sessions, plus a phone-width suite (`e2e/mobile.spec.ts`) over the website's static export; the export is built on first run and rebuilt when `site/` changes |
 | `pnpm e2e:docker [--update]` | Same, in CI's Linux image; `--update` refreshes screenshot baselines |
 
 Screenshot baselines live in `e2e/__screenshots__` and are compared only on Linux (CI or `e2e:docker`); on macOS the suite runs every functional assertion and skips pixel diffs. Behind a proxy, set `MNEMO_DOCKER_PROXY=http://host.docker.internal:<port>` for `e2e:docker`.

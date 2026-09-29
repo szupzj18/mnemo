@@ -14,6 +14,6 @@ proxy=""
 # shellcheck disable=SC2086
 docker run --rm --ipc=host $proxy \
   -e CI=1 -e NEXT_TELEMETRY_DISABLED=1 -e COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
-  -v "$PWD":/work -v /work/web/node_modules -w /work/web \
+  -v "$PWD":/work -v /work/web/node_modules -v /work/site/node_modules -w /work/web \
   "mcr.microsoft.com/playwright:v$version-noble" \
-  sh -c "corepack enable && pnpm install --frozen-lockfile --store-dir /tmp/pnpm-store --config.confirmModulesPurge=false >/dev/null && pnpm exec playwright test $args"
+  sh -c "corepack enable && pnpm install --frozen-lockfile --store-dir /tmp/pnpm-store --config.confirmModulesPurge=false >/dev/null && (cd ../site && pnpm install --frozen-lockfile --store-dir /tmp/pnpm-store --config.confirmModulesPurge=false >/dev/null && SITE_BASE_PATH=/mnemo pnpm build >/dev/null) && pnpm exec playwright test $args"
