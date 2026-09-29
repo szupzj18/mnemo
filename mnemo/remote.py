@@ -1,4 +1,5 @@
 import concurrent.futures
+import contextlib
 import json
 import os
 import shlex
@@ -7,6 +8,7 @@ import socket
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -228,6 +230,42 @@ RSYNC_EXCLUDES = (
 )
 
 
+# Same as bin/mnemo in a checkout; pip/uv installs have no launcher, so remotes get this one.
+LAUNCHER = """#!/usr/bin/env python3
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+
+from mnemo.cli import main
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+"""
+
+
+@contextlib.contextmanager
+def _source_tree():
+    """The directory a remote's ~/mnemo mirrors: this checkout, or, for pip/uv installs
+    (where the package's parent is site-packages), just the package plus a launcher."""
+    pkg = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(pkg)
+    if os.path.isfile(os.path.join(root, "bin", "mnemo")):
+        yield root
+        return
+    tmp = tempfile.mkdtemp(prefix="mnemo-src-")
+    try:
+        shutil.copytree(pkg, os.path.join(tmp, "mnemo"), ignore=shutil.ignore_patterns(*RSYNC_EXCLUDES))
+        os.makedirs(os.path.join(tmp, "bin"))
+        launcher = os.path.join(tmp, "bin", "mnemo")
+        with open(launcher, "w", encoding="utf-8") as f:
+            f.write(LAUNCHER)
+        os.chmod(launcher, 0o755)
+        yield tmp
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def _copy_tree(src, dest):
     """rsync --delete for the local transport, without needing rsync."""
     tmp = dest + ".new"
@@ -238,10 +276,14 @@ def _copy_tree(src, dest):
 
 
 def install(remote, logger=lambda m: None, timeout=600, build_index=True):
-    """rsync this checkout to the remote; optionally build its index afterwards."""
-    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    """rsync this mnemo to the remote; optionally build its index afterwards."""
     if remote.get("transport") == "link":
         raise RemoteError("%s linked in to this device; update it from there" % remote["name"])
+    with _source_tree() as src:
+        _install_from(src, remote, logger, timeout, build_index)
+
+
+def _install_from(repo, remote, logger, timeout, build_index):
     if remote.get("transport") == "local":
         _copy_tree(repo, os.path.join(remote["home"], "mnemo"))
         logger("code copied to %s" % remote["name"])

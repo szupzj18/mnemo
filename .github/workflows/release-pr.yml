@@ -1,0 +1,95 @@
+name: Release PR
+
+# Every other Monday (even ISO weeks), 10:00 Asia/Shanghai: if CHANGELOG.md has
+# entries under Unreleased, open a "Release x.y.z" PR that previews the release
+# notes and merges itself once CI passes. Merging it triggers release.yml.
+# Close the PR (or turn off auto-merge) to skip or hold a release.
+
+on:
+  schedule:
+    - cron: "0 2 * * 1"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (default: from the changelog entries)"
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-pr
+  cancel-in-progress: false
+
+jobs:
+  release-pr:
+    runs-on: ubuntu-latest
+    env:
+      # PRs opened with the default token do not trigger CI, and main requires CI;
+      # RELEASE_TOKEN (a fine-grained PAT or app token) lets the checks run.
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+      HAS_RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Release week?
+        id: due
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] && ! python scripts/release.py due; then
+            echo "Odd ISO week: releases go out every other Monday."; echo "skip=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Plan
+        id: plan
+        if: steps.due.outputs.skip != '1'
+        run: |
+          python scripts/release.py plan --json > plan.json
+          python scripts/release.py plan
+          needed=$(python -c 'import json; print(int(json.load(open("plan.json"))["needed"]))')
+          open=$(gh pr list --state open --json headRefName --jq '[.[] | select(.headRefName | startswith("release/"))] | length')
+          if [ "$needed" != 1 ]; then echo "skip=1" >> "$GITHUB_OUTPUT"
+          elif [ "$open" != 0 ]; then echo "A release PR is already open."; echo "skip=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open the release PR
+        if: steps.due.outputs.skip != '1' && steps.plan.outputs.skip != '1'
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          prev=$(python scripts/release.py current)
+          version=$(python scripts/release.py prepare ${VERSION:+--version "$VERSION"})
+          branch="release/v$version"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -am "Release $version"
+          git push origin "$branch"
+
+          {
+            echo "Releases **$version** (from $prev) when CI passes: tag \`v$version\`, GitHub Release, PyPI (\`mnemo-search\`)."
+            echo
+            echo "**Hold or skip:** turn off auto-merge, or close this PR. **Edit the notes:** commit to \`CHANGELOG.md\` on this branch (a one-paragraph summary above the first heading reads well)."
+            if [ "$HAS_RELEASE_TOKEN" != "true" ]; then
+              echo
+              echo "> [!WARNING]"
+              echo "> Opened without \`RELEASE_TOKEN\`, so CI will not start on its own: close and reopen this PR to run it."
+            fi
+            echo
+            echo "---"
+            echo
+            echo "## Release notes preview"
+            echo
+            python scripts/release.py notes "$version"
+            echo
+            echo "**Changes since v$prev:** https://github.com/${{ github.repository }}/compare/v$prev...$branch"
+          } > body.md
+
+          gh pr create --title "Release $version" --body-file body.md --base main --head "$branch"
+          gh pr merge "$branch" --auto --rebase

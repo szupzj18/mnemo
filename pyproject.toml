@@ -3,7 +3,7 @@ requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mnemo"
+name = "mnemo-search"
 dynamic = ["version"]
 description = "One memory for all your coding agents: search Claude Code, Codex and Pi sessions across machines"
 readme = "README.md"
@@ -33,4 +33,4 @@ version = { attr = "mnemo.__version__" }
 
 [tool.setuptools.package-data]
 # The prebuilt dashboard and the agent integrations `mnemo setup` links.
-mnemo = ["web_dist/**/*", "integrations/**/*"]
+mnemo = ["web_dist/**/*", "web_dist/.source-hash", "integrations/**/*"]

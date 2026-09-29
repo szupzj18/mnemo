@@ -27,7 +27,7 @@ Using a synthetic `HOME` keeps your real sessions out of bug reports, screenshot
 1. Open an issue first for anything larger than a bug fix, so we can agree on the approach.
 2. Keep PRs focused, one change per PR.
 3. Run the checks in [AGENTS.md → Verify your change](AGENTS.md#verify-your-change).
-4. Update the docs and `CHANGELOG.md` (*Unreleased*) when behavior changes.
+4. Update the docs and `CHANGELOG.md` (*Unreleased*) when behavior changes. These entries become the release notes, so write them for users.
 5. **Never include real session content** in issues, PRs, fixtures or screenshots, because it may contain secrets.
 
 ## Code style
@@ -35,3 +35,13 @@ Using a synthetic `HOME` keeps your real sessions out of bug reports, screenshot
 - Python: 3.7 compatible, standard library only.
 - Web: TypeScript, shadcn/ui components, Tailwind utilities; keep pure logic in `web/src/lib` with Vitest tests.
 - Match the surrounding code: small functions, short comments that explain *why*.
+
+## Releases
+
+Releases are automated and go out every other Monday (even ISO weeks, 10:00 Asia/Shanghai) when *Unreleased* has entries:
+
+1. `.github/workflows/release-pr.yml` runs `scripts/release.py prepare`, which moves *Unreleased* into a new version section and bumps `mnemo/__init__.py`. It then opens a **Release x.y.z** PR whose description previews the release notes, with auto-merge on. Added, Changed, Removed or Deprecated entries bump the minor version; Fixed or Security alone bump the patch.
+2. To hold a release, turn off auto-merge or close the PR. To polish the notes, commit to `CHANGELOG.md` on the release branch.
+3. When the PR merges, `.github/workflows/release.yml` tags `vx.y.z`, publishes the GitHub Release from that changelog section, and uploads `mnemo-search` to PyPI.
+
+To release outside the schedule, run **Release PR** from the Actions tab (optionally with a version). `python scripts/release.py plan` shows what the next release would be.

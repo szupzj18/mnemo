@@ -2,8 +2,9 @@
 
 __version__ is not bumped per change and remotes get code by rsync without
 .git, so the version number cannot say whether two devices run the same code.
-The hash covers what a device executes: the launcher, the Python package, the
-agent integrations and the dashboard build (via its source hash).
+The hash covers what a device executes: the Python package, the agent
+integrations and the dashboard build (via its source hash). Not the launcher:
+pip/uv installs have none, and it only puts the package on sys.path.
 """
 import functools
 import hashlib
@@ -14,7 +15,6 @@ ROOT = os.path.dirname(PACKAGE)
 
 
 def _files():
-    yield os.path.join(ROOT, "bin", "mnemo")
     yield os.path.join(PACKAGE, "web_dist", ".source-hash")
     integrations = os.path.join(PACKAGE, "integrations")
     for dirpath, dirnames, filenames in os.walk(PACKAGE):
