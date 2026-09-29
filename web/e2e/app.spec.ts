@@ -1,7 +1,8 @@
 import { expect, test, type Page } from "@playwright/test"
 
 // Runs against `mnemo dashboard` over scripts/make-demo-home.py data:
-// 5 sessions (claude 2, codex 2, pi 1), 45 messages, no remotes.
+// 5 sessions (claude 2, codex 2, pi 1), 45 messages, no remotes. The demo HOME
+// has no OpenCode database, so that source is listed with 0.
 
 const pageErrors = new WeakMap<Page, string[]>()
 
@@ -33,7 +34,7 @@ test.describe("dashboard", () => {
     await expect(page.getByTestId("stat").filter({ hasText: "索引消息" })).toContainText("45")
     const local = page.locator('[data-testid="device-card"][data-device="local"]')
     await expect(local).toHaveAttribute("data-state", "ok")
-    await expect(local).toContainText("claude 2 · codex 2 · pi 1")
+    await expect(local).toContainText("claude 2 · codex 2 · opencode 0 · pi 1")
     await expect(page.getByText("还没有远程设备")).toBeVisible()
     await expect(page.getByTestId("app-version")).toHaveText(/^v\d+\.\d+\.\d+$/)
   })
