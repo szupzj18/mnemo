@@ -5,6 +5,9 @@ const baseURL = `http://127.0.0.1:${port}`
 // A second dashboard whose device has neighbors (see e2e/serve.mjs --mesh).
 const meshPort = String(Number(port) - 1)
 const meshURL = `http://127.0.0.1:${meshPort}`
+// The website's static export under /mnemo/, for the phone-width suite (see e2e/serve-site.mjs).
+const sitePort = String(Number(port) - 3)
+const siteURL = `http://127.0.0.1:${sitePort}`
 
 const browser = {
   ...devices["Desktop Chrome"],
@@ -45,11 +48,15 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
-    { name: "chromium", testIgnore: /mesh\.spec\.ts/, use: { ...browser } },
+    { name: "chromium", testIgnore: /(mesh|mobile)\.spec\.ts/, use: { ...browser } },
     { name: "mesh", testMatch: /mesh\.spec\.ts/, use: { ...browser, baseURL: meshURL } },
+    // A 390x844 touch phone on Chromium; the assertions measure layout, no pixel baselines.
+    { name: "mobile", testMatch: /mobile\.spec\.ts/, use: { ...devices["Pixel 7"], viewport: { width: 390, height: 844 }, channel: browser.channel, baseURL: siteURL } },
   ],
   webServer: [
     { ...server, command: "node e2e/serve.mjs", url: `${baseURL}/`, env: { E2E_PORT: port } },
     { ...server, command: "node e2e/serve.mjs --mesh", url: `${meshURL}/`, env: { E2E_PORT: meshPort } },
+    // Builds site/out first when it is missing or stale, which takes a while on a cold checkout.
+    { ...server, timeout: 300_000, command: "node e2e/serve-site.mjs", url: `${siteURL}/mnemo/`, env: { E2E_SITE_PORT: sitePort } },
   ],
 })

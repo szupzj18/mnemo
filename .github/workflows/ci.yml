@@ -101,6 +101,11 @@ jobs:
         run: corepack enable && pnpm install --frozen-lockfile
       - name: Build UI from sources
         run: pnpm build
+      - name: Build website for the mobile suite
+        working-directory: site
+        run: pnpm install --frozen-lockfile && pnpm build
+        env:
+          SITE_BASE_PATH: /mnemo
       - name: Playwright
         run: pnpm exec playwright test
       - uses: actions/upload-artifact@v4
