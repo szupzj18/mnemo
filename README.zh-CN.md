@@ -9,7 +9,7 @@
 
 **所有编程 Agent 共用的一份记忆。**
 
-让 Agent 直接回忆你在本机和 devbox 上跑过的每一个 Claude Code、Codex、Pi 会话，开口问就行。
+让 Agent 直接回忆你在本机和 devbox 上跑过的每一个 Claude Code、Codex、OpenCode、Pi 会话，开口问就行。
 
 [![Python 3.7+](https://img.shields.io/badge/python-3.7%2B-3776AB?logo=python&logoColor=white)](#安装)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-0-2ea44f)](#安装)
@@ -106,7 +106,7 @@ search_sessions ──▶ get_context ──▶ get_session
 
 ## 特性
 
-- **跨 Agent**：Claude Code、Codex（含归档会话）、Pi 统一进一个索引，归一成同一套消息结构。
+- **跨 Agent**：Claude Code、Codex（含归档会话）、OpenCode、Pi 统一进一个索引，归一成同一套消息结构。
 - **跨设备**：查询经 SSH 并行扇出到各台 devbox，按排名融合；会话正文不离开产生它的机器。
 - **对 Agent 省 token**：搜索返回的是排序后的片段而不是原始日志，10 条命中约 1.6k token。对照实验中，Agent 比用 grep 少用 23% 的 token、少调用 52% 的工具（见[评测](#评测)）。
 - **中英文都能搜**：英文前缀匹配，中文子串匹配（unigram + bigram），BM25 排序。
@@ -255,7 +255,7 @@ flowchart LR
 
 ## 路线图
 
-- [ ] 更多 Agent：Gemini CLI（正文存在 protobuf SQLite blob 中）、Cursor、OpenCode
+- [ ] 更多 Agent：Gemini CLI（正文存在 protobuf SQLite blob 中）、Cursor
 - [ ] 语义检索（`sqlite-vec` + 本地 embedding）与关键词检索混合
 - [ ] `context` 返回的 `tool_result` 加长度上限，控制单次 token 上界
 - [ ] external-content FTS 表 + 正文压缩（索引预计小 30–40%）

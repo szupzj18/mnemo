@@ -1,10 +1,12 @@
 from .claude import ClaudeSource
 from .codex import CodexSource
+from .opencode import OpenCodeSource
 from .pi import PiSource
 
 SOURCES = {
     "claude": ClaudeSource,
     "codex": CodexSource,
+    "opencode": OpenCodeSource,
     "pi": PiSource,
 }
 

@@ -24,7 +24,7 @@ Full-text search over user prompts, assistant replies, summaries, tool calls and
 | Parameter | Type | Default | Notes |
 |---|---|---|---|
 | `query` | string | required | Whitespace-separated keywords, all of which must match. English matches word prefixes (`refact` → `refactoring`); Chinese matches substrings (`订阅` → `订阅支出`). |
-| `source` | string | all | Comma-separated subset of `claude,codex,pi` |
+| `source` | string | all | Comma-separated subset of `claude,codex,opencode,pi` |
 | `kinds` | string | `text,summary,tool_call,tool_result` | Add `reasoning` to search model reasoning too. The CLI flags are `--kind` and `--all-kinds`. |
 | `cwd` | string | — | Substring of the session's working directory, e.g. `infra` |
 | `since` | string | — | `YYYY-MM-DD` |
@@ -102,7 +102,7 @@ Lists recently started sessions newest-first, titled with the first real user pr
 
 | Parameter | Type | Default | Notes |
 |---|---|---|---|
-| `source` | string | all | Comma-separated subset of `claude,codex,pi` |
+| `source` | string | all | Comma-separated subset of `claude,codex,opencode,pi` |
 | `cwd` | string | — | Substring of the working directory |
 | `since` | string | — | `YYYY-MM-DD` |
 | `limit` | integer | 25 | Capped at 100 over MCP |

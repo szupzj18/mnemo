@@ -1,11 +1,11 @@
 # Architecture
 
 ```text
- ~/.claude/projects  ~/.codex/sessions  ~/.pi/agent/sessions
-          │                 │                  │
-          ▼                 ▼                  ▼
-   sources/claude.py  sources/codex.py   sources/pi.py      parse + normalize
-          └────────────────┬┴──────────────────┘
+ ~/.claude/projects  ~/.codex/sessions  ~/.pi/agent/sessions  ~/.local/share/opencode/opencode.db
+          │                 │                  │                 │
+          ▼                 ▼                  ▼                 ▼
+   sources/claude.py  sources/codex.py   sources/pi.py   sources/opencode.py    parse + normalize
+          └────────────────┬┴──────────────────┴─────────────────┘
                            ▼
                   index.py  (SQLite FTS5, incremental)       ~/.mnemo/index.db
                            │
