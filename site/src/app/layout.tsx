@@ -5,7 +5,7 @@ import { asset } from "@/lib/site"
 import "./globals.css"
 
 const description =
-  "Mnemo lets any coding agent recall every Claude Code, Codex and Pi session on your machines. Local, zero-dependency, MCP-native."
+  "Memory your coding agents call as a tool: every Claude Code, Codex and Pi session on your machines, searched in ~50 ms, across devices and through relays. Local, zero-dependency, MCP-native."
 
 export const metadata: Metadata = {
   title: "Mnemo — one memory for all your coding agents",
