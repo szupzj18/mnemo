@@ -85,7 +85,7 @@ Idempotent: already-configured agents are left alone, stale symlinks are repaire
 ## mnemo upgrade
 
 ```bash
-mnemo upgrade [--no-backup] [--keep 3] [--remotes] [-v]
+mnemo upgrade [--no-backup] [--keep 3] [--remotes | --no-remotes] [-v]
 mnemo upgrade --list
 mnemo upgrade --restore [BACKUP]
 ```
@@ -96,8 +96,9 @@ The safe way to adopt a new index schema after updating Mnemo:
 2. Rebuilds into a temporary file beside it, so searches keep working on the old index meanwhile.
 3. Verifies the result (schema version, no incomplete rows) and swaps it in with an atomic rename. On any failure the live index is left untouched.
 4. Lists `mnemo mcp` / `mnemo dashboard` processes started before the update. They still run the old code; restart the agent sessions that own them.
+5. Brings every other device that runs different code up to this code, as `mnemo remote upgrade` does. Unreachable devices are reported and skipped. `--no-remotes` leaves them alone.
 
-`--remotes` also rsyncs the code to every registered device and runs the same upgrade there. `--restore` puts back a backup (the newest by default) after saving the current index as a `pre-restore` backup.
+`--remotes` instead rsyncs the code to every registered device and runs a full upgrade there, even on devices already current. `--restore` puts back a backup (the newest by default) after saving the current index as a `pre-restore` backup.
 
 ## mnemo status
 
@@ -128,11 +129,14 @@ This device's identity and relay policy, stored in `~/.mnemo/node.json`: a stabl
 ```bash
 mnemo remote add <name> [ssh-host] [--bin PATH]   # install over SSH, build index, register
 mnemo remote list
+mnemo remote upgrade [<route> ...]                # bring devices running other code up to this code
 mnemo remote update [<name>]                      # re-sync code and re-index (default: all)
 mnemo remote remove <name>                        # unregister; leaves files on the device
 ```
 
 `ssh-host` defaults to `name` and can be any alias from `~/.ssh/config`. `--bin` sets the remote launcher path (default `~/mnemo/bin/mnemo`). See [Multi-device](multi-device.md).
+
+`remote upgrade` compares code fingerprints (`mnemo node` shows this device's) and updates only the devices that differ: every device reachable, including ones behind relays, or just the given routes, e.g. `devbox-109/devbox-126`. Each gets the code by rsync, then an incremental sync, or a backed-up rebuild if the index schema changed.
 
 ## mnemo mcp
 

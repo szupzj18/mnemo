@@ -6,6 +6,7 @@
 // machine reached through the "local" transport instead of SSH.
 //   laptop ─▶ devbox-a (relays) ─▶ devbox-b
 //          └▶ devbox-down (never comes up)
+// devbox-b runs its own, older copy of the code, so it shows as needing an update.
 import { execFileSync, spawn } from "node:child_process"
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -40,6 +41,11 @@ if (process.argv.includes("--mesh")) {
     demo(h)
     mnemo(["index"], h)
   }
+  execFileSync(python, ["-c", [
+    "import sys; sys.path.insert(0, sys.argv[1]); from mnemo import remote",
+    "remote._copy_tree(sys.argv[1], sys.argv[2])",
+    "open(sys.argv[2] + '/mnemo/__init__.py', 'a').write('# an older build\\n')",
+  ].join("\n"), repo, join(b, "mnemo")], { stdio: "inherit" })
   mnemo(["node", "--name", "laptop"])
   mnemo(["node", "--name", "build-a", "--forward", "on"], a)
   mnemo(["node", "--name", "build-b"], b)

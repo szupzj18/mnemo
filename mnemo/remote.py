@@ -2,6 +2,7 @@ import concurrent.futures
 import json
 import os
 import shlex
+import shutil
 import socket
 import sqlite3
 import subprocess
@@ -10,6 +11,7 @@ import threading
 import time
 import uuid
 
+from .fingerprint import code_fingerprint
 from .index import Index, IndexTooNew
 from .search import search as local_search
 
@@ -187,8 +189,10 @@ def remote_exec(remote, argv, timeout=60):
     env = None
     if remote.get("transport") == "local":
         # Another mnemo home on this machine: used to test multi-node topologies.
+        # It runs its own copy of the code once `install` gave it one.
         repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        cmd = [sys.executable, os.path.join(repo, "bin", "mnemo")] + list(argv)
+        own = os.path.join(remote["home"], "mnemo", "bin", "mnemo")
+        cmd = [sys.executable, own if os.path.isfile(own) else os.path.join(repo, "bin", "mnemo")] + list(argv)
         env = dict(os.environ, HOME=remote["home"])
     else:
         cmd = _ssh_base(remote) + [_remote_command(remote, argv)]
@@ -215,9 +219,24 @@ RSYNC_EXCLUDES = (
 )
 
 
+def _copy_tree(src, dest):
+    """rsync --delete for the local transport, without needing rsync."""
+    tmp = dest + ".new"
+    shutil.rmtree(tmp, ignore_errors=True)
+    shutil.copytree(src, tmp, symlinks=True, ignore=shutil.ignore_patterns(*RSYNC_EXCLUDES))
+    shutil.rmtree(dest, ignore_errors=True)
+    os.replace(tmp, dest)
+
+
 def install(remote, logger=lambda m: None, timeout=600, build_index=True):
     """rsync this checkout to the remote; optionally build its index afterwards."""
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if remote.get("transport") == "local":
+        _copy_tree(repo, os.path.join(remote["home"], "mnemo"))
+        logger("code copied to %s" % remote["name"])
+        if build_index:
+            logger(remote_exec(remote, ["index"], timeout=timeout).strip())
+        return
     excludes = []
     for pattern in RSYNC_EXCLUDES:
         excludes += ["--exclude", pattern]
@@ -506,7 +525,8 @@ def probe_topology(visited=(), ttl=DEFAULT_TTL, relayed=False):
     SSH targets are only reported to this device's own dashboard (not relayed).
     """
     node = load_node()
-    out = {"id": node["id"], "name": node["name"], "forward": node["forward"], "neighbors": []}
+    out = {"id": node["id"], "name": node["name"], "forward": node["forward"],
+           "code": code_fingerprint(), "neighbors": []}
     if node["id"] in set(visited) or (relayed and not node["forward"]):
         return out
     remotes = load_remotes()
@@ -574,6 +594,93 @@ def set_remote_node(name, forward=None, node_name=None, timeout=30):
     if info.get("id"):
         update_remote(name, node_id=info["id"])
     return info
+
+
+def neighbor_code(remote):
+    """The code fingerprint a neighbor runs; None for builds that predate fingerprints."""
+    try:
+        info = json.loads(remote_exec(remote, ["node", "--json"], timeout=CONNECT_TIMEOUT + 12))
+    except RemoteError as exc:
+        if "invalid choice" in str(exc):
+            return None
+        raise
+    return info.get("code")
+
+
+def upgrade_devices(routes=None, visited=(), ttl=DEFAULT_TTL, relayed=False, logger=lambda m: None):
+    """Bring devices to this device's code: only those running something else.
+
+    routes: None for every device reachable (through relays, like a search), or
+      routes such as "devbox-109" / "devbox-109/devbox-126" to reach just those
+      (relays on the way are brought up to date first: old code cannot relay this).
+    A device asked by a neighbor (relayed) passes the request on only if it forwards.
+    Each updated device gets the code by rsync, then `mnemo upgrade --if-needed`
+    (an incremental sync, or a backed-up rebuild when the index schema changed).
+    Returns [{route, status: updated|current|failed, error?}] and warnings.
+    """
+    node = load_node()
+    mine = code_fingerprint()
+    results, warnings = [], []
+    if node["id"] in set(visited):
+        return results, warnings
+    if relayed and not node["forward"]:
+        if routes:  # asked for devices behind it by route; a plain sweep just stops here
+            warnings.append("%s does not relay; enable with `mnemo node --forward on` there" % node["name"])
+        return results, warnings
+    remotes = load_remotes()
+    covered = set(visited) | {node["id"]} | {r["node_id"] for r in remotes if r.get("node_id")}
+    wanted = None if routes is None else [split_route(w) for w in routes]
+
+    def one(r):
+        out, warn = [], []
+        here = wanted is None or any(first == r["name"] and not rest for first, rest in wanted)
+        deeper = None if wanted is None else [rest for first, rest in wanted if first == r["name"] and rest]
+        if not here and not deeper:
+            return out, warn
+        if r.get("node_id") in set(visited):
+            return out, warn
+        try:
+            if neighbor_code(r) != mine:
+                logger("%s: updating code" % r["name"])
+                install(r, logger=lambda m: None, build_index=False)
+                remote_exec(r, ["upgrade", "--if-needed"], timeout=1800)
+                status = "updated"
+            else:
+                status = "current"
+        except RemoteError as exc:
+            if here:
+                out.append({"route": r["name"], "status": "failed", "error": str(exc)})
+            else:
+                warn.append(str(exc))
+            return out, warn
+        if here or status == "updated":  # a relay updated on the way is reported too
+            out.append({"route": r["name"], "status": status})
+        if ttl > 0 and (deeper is None or deeper):
+            argv = ["remote", "upgrade", "--relay", "--json", "--ttl", str(ttl - 1)]
+            rest = covered - {r.get("node_id")}
+            if rest:
+                argv += ["--visited", ",".join(sorted(rest))]
+            argv += deeper or []
+            try:
+                env = json.loads(remote_exec(r, argv, timeout=3600))
+            except (RemoteError, ValueError) as exc:
+                warn.append("via %s: %s" % (r["name"], exc))
+                return out, warn
+            for item in env.get("results", []):
+                item["route"] = r["name"] + ROUTE_SEP + item["route"]
+                out.append(item)
+            warn.extend("via %s: %s" % (r["name"], w) for w in env.get("warnings", []))
+        return out, warn
+
+    if remotes:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(remotes)) as pool:
+            for out, warn in pool.map(one, remotes):
+                results.extend(out)
+                warnings.extend(warn)
+    if wanted is not None:
+        names = {r["name"] for r in remotes}
+        warnings.extend("no neighbor named %r" % first for first, _ in wanted if first not in names)
+    return results, warnings
 
 
 def remote_status(remote, timeout=20):

@@ -3,7 +3,8 @@ import { expect, test, type Page, type Route } from "@playwright/test"
 // Runs against `serve.mjs --mesh`: this device ("laptop") has two neighbors,
 //   laptop ─▶ devbox-a (relays, node name build-a) ─▶ devbox-b (build-b)
 //          └▶ devbox-down (never comes up)
-// each other device holding the same demo sessions as the laptop.
+// each other device holding the same demo sessions as the laptop; devbox-b
+// runs an older copy of the code.
 
 const pageErrors = new WeakMap<Page, string[]>()
 
@@ -34,9 +35,22 @@ test("topology maps relayed and unreachable devices", async ({ page }) => {
   const row = page.locator('[data-testid="topology-row"][data-route="devbox-a/devbox-b"]')
   await expect(row).toContainText("build-b")
   await expect(row).toContainText("在线")
+  await expect(row.getByTestId("topology-code")).toHaveText("需更新")
+  await expect(node(page, "devbox-a/devbox-b")).toHaveAttribute("data-outdated", "true")
+  await expect(node(page, "devbox-a")).toHaveAttribute("data-outdated", "false")
+  await expect(page.getByTestId("topology-summary")).toContainText("1 台需更新")
 })
 
 test("this device can be renamed and its relay needs confirmation", async ({ page }) => {
+  // The page probes the topology on load; hold that answer until after the
+  // rename so a stale probe result cannot put the old name back.
+  let release: () => void = () => {}
+  const held = new Promise<void>((r) => (release = r))
+  await page.route("**/api/topology", async (route) => {
+    const res = await route.fetch()
+    await held
+    await route.fulfill({ response: res })
+  })
   await page.goto("/devices/")
   const settings = page.getByTestId("node-settings")
   await expect(settings.getByTestId("node-name")).toHaveText("laptop")
@@ -44,6 +58,9 @@ test("this device can be renamed and its relay needs confirmation", async ({ pag
   await settings.getByRole("button", { name: "重命名本机" }).click()
   await settings.getByLabel("本机节点名").fill("laptop-2")
   await settings.getByLabel("本机节点名").press("Enter")
+  await expect(settings.getByTestId("node-name")).toHaveText("laptop-2")
+  release()
+  await expect(page.getByTestId("remote-forward-state").first()).toHaveText("中转：已开启")
   await expect(settings.getByTestId("node-name")).toHaveText("laptop-2")
   await settings.getByRole("button", { name: "重命名本机" }).click()
   await settings.getByLabel("本机节点名").fill("laptop")
@@ -121,3 +138,15 @@ for (const theme of ["light", "dark"] as const) {
     await expect(page).toHaveScreenshot(`topology-${theme}.png`)
   })
 }
+
+// Last: it changes the fixture (devbox-b gets the current code).
+test("an outdated device behind a relay is brought up to date", async ({ page }) => {
+  await page.goto("/topology/")
+  const row = page.locator('[data-testid="topology-row"][data-route="devbox-a/devbox-b"]')
+  await expect(row.getByTestId("topology-code")).toHaveText("需更新")
+  await row.getByTestId("topology-upgrade").click()
+  await expect(page.getByText("已更新 devbox-a/devbox-b")).toBeVisible({ timeout: 60_000 })
+  await expect(row.getByTestId("topology-code")).toHaveText("最新")
+  await expect(page.getByRole("button", { name: /更新落后设备/ })).toHaveCount(0)
+  await expect(page.getByTestId("topology-summary")).not.toContainText("需更新")
+})

@@ -44,7 +44,8 @@ def local_status():
 
 def node_info():
     node = remote_mod.load_node()
-    return {"id": node["id"], "name": node["name"], "forward": node["forward"]}
+    return {"id": node["id"], "name": node["name"], "forward": node["forward"],
+            "code": remote_mod.code_fingerprint()}
 
 
 def local_sync():
@@ -308,6 +309,12 @@ class Handler(BaseHTTPRequestHandler):
                 info = remote_mod.set_remote_node(
                     name, forward=None if forward is None else bool(forward), node_name=node_name)
                 self._json({"ok": True, "node": info})
+            elif path == "/api/upgrade-devices":
+                routes = data.get("routes") or None
+                if routes is not None and not all(isinstance(r, str) and r for r in routes):
+                    raise RemoteError("routes must be device routes")
+                results, warnings = remote_mod.upgrade_devices(routes=routes)
+                self._json({"ok": True, "results": results, "warnings": warnings})
             elif path == "/api/topology":
                 t, ms = _time(remote_mod.probe_topology)
                 self._json({"ok": True, "ms": ms, "topology": t, "ttl": remote_mod.DEFAULT_TTL})

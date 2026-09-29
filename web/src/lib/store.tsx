@@ -51,6 +51,9 @@ interface Store {
   probeTopology: () => Promise<void>
   saveNode: (patch: Partial<Pick<NodeInfo, "name" | "forward">>) => Promise<boolean>
   setRemoteForward: (name: string, forward: boolean) => Promise<void>
+  /** Routes being brought to this device's code; "*" while updating every device. */
+  upgrading: Set<string>
+  upgradeDevices: (routes?: string[]) => Promise<void>
   refresh: () => Promise<void>
   probeRemotes: () => Promise<void>
   pingAll: (quiet?: boolean) => Promise<void>
@@ -111,6 +114,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [node, setNode] = React.useState<NodeInfo | null>(null)
   const [topology, setTopology] = React.useState<TopologyResult | null>(null)
   const [topologyLoading, setTopologyLoading] = React.useState(false)
+  const [upgrading, setUpgrading] = React.useState<Set<string>>(new Set())
   const logId = React.useRef(0)
   const statusRef = React.useRef<Status | null>(null)
   const searchRef = React.useRef(search)
@@ -309,14 +313,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [notify],
   )
 
+  // Bumped on every local node change: a probe that started before one must not
+  // put the old name or relay setting back when it returns.
+  const nodeGen = React.useRef(0)
+  const nodeRef = React.useRef<NodeInfo | null>(null)
+  React.useEffect(() => {
+    nodeRef.current = node
+  }, [node])
+
   const probeTopology = React.useCallback(async () => {
     setTopologyLoading(true)
+    const gen = nodeGen.current
     try {
       const r = await api.topology()
       if (!r.ok) throw new Error(r.error)
-      setTopology({ ms: r.ms, ttl: r.ttl, topology: r.topology })
-      const t = r.topology
-      setNode({ id: t.id, name: t.name, forward: t.forward })
+      let t = r.topology
+      const saved = nodeRef.current
+      if (gen !== nodeGen.current && saved) t = { ...t, name: saved.name, forward: saved.forward }
+      else setNode({ id: t.id, name: t.name, forward: t.forward, code: t.code })
+      setTopology({ ms: r.ms, ttl: r.ttl, topology: t })
     } catch (e) {
       notify("拓扑探测失败", "err", errText(e))
     } finally {
@@ -327,9 +342,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const saveNode = React.useCallback(
     async (patch: Partial<Pick<NodeInfo, "name" | "forward">>) => {
       try {
+        nodeGen.current++
         const r = await api.setNode(patch)
         if (!r.ok) throw new Error(r.error)
-        setNode({ id: r.id, name: r.name, forward: r.forward })
+        setNode({ id: r.id, name: r.name, forward: r.forward, code: r.code })
         setTopology((t) => (t ? { ...t, topology: { ...t.topology, name: r.name, forward: r.forward } } : t))
         if ("forward" in patch) notify(r.forward ? "本机已开启中转" : "本机已关闭中转", "ok")
         else notify(`本机已更名为 ${r.name}`, "ok")
@@ -352,6 +368,36 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       } catch (e) {
         notify(`${name} 中转设置失败`, "err", errText(e))
       }
+    },
+    [notify, probeTopology],
+  )
+
+  const upgradeDevices = React.useCallback(
+    async (routes?: string[]) => {
+      const keys = routes ?? ["*"]
+      setUpgrading((s) => new Set([...s, ...keys]))
+      const label = routes ? routes.join("、") : "全部落后设备"
+      const id = toast.loading(`正在更新 ${label}…`)
+      try {
+        const r = await api.upgradeDevices(routes)
+        toast.dismiss(id)
+        if (!r.ok) throw new Error(r.error)
+        const updated = r.results.filter((x) => x.status === "updated").map((x) => x.route)
+        const failed = r.results.filter((x) => x.status === "failed")
+        const detail = [
+          ...failed.map((x) => `${x.route}：${x.error ?? "失败"}`),
+          ...r.warnings,
+        ].join(" / ")
+        if (failed.length) notify(`${failed.length} 台设备更新失败`, "err", detail)
+        else if (updated.length) notify(`已更新 ${updated.join("、")}`, "ok", detail || undefined)
+        else notify("所有设备都已是最新代码", "ok", detail || undefined)
+      } catch (e) {
+        toast.dismiss(id)
+        notify(`更新失败：${label}`, "err", errText(e))
+      } finally {
+        setUpgrading((s) => new Set([...s].filter((k) => !keys.includes(k))))
+      }
+      await probeTopology()
     },
     [notify, probeTopology],
   )
@@ -412,6 +458,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     probeTopology,
     saveNode,
     setRemoteForward,
+    upgrading,
+    upgradeDevices,
     refresh,
     probeRemotes,
     pingAll,

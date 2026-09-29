@@ -256,5 +256,82 @@ class MeshTest(unittest.TestCase):
             remote.set_remote_node("nope", forward=True)
 
 
+    # ------------------------------------------------------- code upgrades
+
+    def give_code(self, dev, stale=False):
+        """Install a copy of the code on a device; stale=True makes it differ from ours."""
+        remote.install({"name": dev.name, "home": dev.home, "transport": "local"}, build_index=False)
+        if stale:
+            with open(os.path.join(dev.home, "mnemo", "mnemo", "__init__.py"), "a") as f:
+                f.write("# an older build\n")
+
+    def code_of(self, dev):
+        out = subprocess.run([sys.executable, os.path.join(dev.home, "mnemo", "bin", "mnemo"), "node", "--json"],
+                             env=dict(os.environ, HOME=dev.home), check=True, capture_output=True, text=True)
+        return json.loads(out.stdout)["code"]
+
+    def test_upgrade_reaches_stale_devices_through_relays(self):
+        self.link_a(self.b)
+        self.b.link(self.c)
+        self.b.node(forward=True)
+        self.give_code(self.b)
+        self.give_code(self.c, stale=True)
+        mine = remote.code_fingerprint()
+        self.assertNotEqual(self.code_of(self.c), mine)
+
+        tree = remote.probe_topology()
+        c = tree["neighbors"][0]["node"]["neighbors"][0]["node"]
+        self.assertEqual((tree["code"], c["code"]), (mine, self.code_of(self.c)))
+
+        results, warnings = remote.upgrade_devices()
+        self.assertEqual(warnings, [])
+        self.assertEqual({r["route"]: r["status"] for r in results}, {"B": "current", "B/C": "updated"})
+        self.assertEqual(self.code_of(self.c), mine)
+        self.assertTrue(os.path.isfile(os.path.join(self.c.home, ".mnemo", "index.db")), "index built on C")
+
+        results, _ = remote.upgrade_devices()
+        self.assertEqual({r["status"] for r in results}, {"current"})
+
+    def test_upgrade_stops_at_devices_that_do_not_relay(self):
+        self.link_a(self.b)
+        self.b.link(self.c)
+        self.give_code(self.b, stale=True)
+        self.give_code(self.c, stale=True)
+        results, warnings = remote.upgrade_devices()
+        self.assertEqual(results, [{"route": "B", "status": "updated"}])
+        self.assertEqual(warnings, [], "a plain sweep ends quietly at a non-relay")
+        self.assertNotEqual(self.code_of(self.c), remote.code_fingerprint())
+
+        results, warnings = remote.upgrade_devices(routes=["B/C"])
+        self.assertEqual(results, [])
+        self.assertTrue(any("does not relay" in w for w in warnings), warnings)
+
+    def test_upgrade_by_route_touches_only_that_path(self):
+        self.link_a(self.b, self.d)
+        self.b.link(self.c)
+        self.b.node(forward=True)
+        for dev in (self.b, self.c, self.d):
+            self.give_code(dev, stale=True)
+        results, warnings = remote.upgrade_devices(routes=["B/C"])
+        # B had to be brought up to date to relay the request; D was not asked.
+        self.assertEqual(sorted((r["route"], r["status"]) for r in results), [("B", "updated"), ("B/C", "updated")])
+        mine = remote.code_fingerprint()
+        self.assertEqual([self.code_of(d) == mine for d in (self.b, self.c, self.d)], [True, True, False])
+        _, warnings = remote.upgrade_devices(routes=["nope"])
+        self.assertIn("no neighbor named 'nope'", warnings)
+
+    def test_unreachable_devices_are_reported_not_fatal(self):
+        blocker = os.path.join(self.demo.root, "blocker")
+        open(blocker, "w").close()
+        self.link_a(self.b)
+        remote.save_remotes(remote.load_remotes() + [
+            {"name": "gone", "host": "x", "transport": "local", "home": os.path.join(blocker, "home")}])
+        self.give_code(self.b, stale=True)
+        results, _ = remote.upgrade_devices()
+        by = {r["route"]: r for r in results}
+        self.assertEqual(by["B"]["status"], "updated")
+        self.assertEqual(by["gone"]["status"], "failed")
+
+
 if __name__ == "__main__":
     unittest.main()
