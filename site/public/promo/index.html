@@ -102,6 +102,11 @@ body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--b
 .ctl .lang button { min-width: 0; padding: 10px 12px; }
 .ctl .lang button + button { border-left: 0; }
 .ctl .lang button[aria-pressed="true"] { background: var(--spot); border-color: var(--spot); color: var(--spot-ink); }
+@media (max-width: 520px) {
+  .ctl { gap: 8px; }
+  .ctl button, .ctl .lang button { min-width: 0; padding: 8px 10px; font-size: 11px; }
+  .ctl time { display: none; }
+}
 :root.embed body { padding: 0; }
 :root.embed .note { display: none; }
 :root.embed .screen { border: 0; }
