@@ -1,5 +1,6 @@
 import contextlib
 import io
+import json
 import os
 import stat
 import subprocess
@@ -23,7 +24,7 @@ exit 0
 class AgentHome:
     """A throwaway HOME with a fake `claude` CLI first on PATH."""
 
-    def __init__(self, agents=("claude", "codex", "pi")):
+    def __init__(self, agents=("claude", "codex", "opencode", "pi")):
         self.root = tempfile.mkdtemp(prefix="mnemo-setup-")
         self.home = os.path.join(self.root, "home")
         self.bin = os.path.join(self.root, "bin")
@@ -37,9 +38,12 @@ class AgentHome:
             os.chmod(path, os.stat(path).st_mode | stat.S_IEXEC)
         if "codex" in agents:
             os.makedirs(os.path.join(self.home, ".codex"))
+        if "opencode" in agents:
+            os.makedirs(os.path.join(self.home, ".config", "opencode"))
         if "pi" in agents:
             os.makedirs(os.path.join(self.home, ".pi", "agent"))
-        self._saved = {k: os.environ.get(k) for k in ("HOME", "PATH", "FAKE_CLAUDE_LOG")}
+        self._saved = {k: os.environ.get(k)
+                       for k in ("HOME", "PATH", "FAKE_CLAUDE_LOG", "XDG_CONFIG_HOME", "XDG_DATA_HOME")}
 
     def __enter__(self):
         os.environ["HOME"] = self.home
@@ -81,8 +85,13 @@ class SetupTest(unittest.TestCase):
                 ("claude", "MCP server"): "added",
                 ("claude", "skill"): "added",
                 ("codex", "MCP server"): "added",
+                ("opencode", "MCP server"): "added",
                 ("pi", "extension"): "added",
             })
+            with open(h.path(".config", "opencode", "opencode.json")) as f:
+                oc = json.load(f)
+            self.assertEqual(oc["mcp"]["mnemo"]["type"], "local")
+            self.assertEqual(oc["mcp"]["mnemo"]["command"][-1], "mcp")
             self.assertTrue(any(c.startswith("mcp add --scope user mnemo -- ") and c.endswith(" mcp") for c in h.claude_calls()))
             self.assertEqual(os.path.realpath(h.path(".claude", "skills", "mnemo")), os.path.realpath(setup.SKILL_SRC))
             self.assertEqual(os.path.realpath(h.path(".pi", "agent", "extensions", "mnemo.ts")), os.path.realpath(setup.PI_SRC))
@@ -126,10 +135,55 @@ class SetupTest(unittest.TestCase):
             result = statuses(setup.run())
             self.assertEqual(result[("claude", "detect")], "skipped")
             self.assertEqual(result[("codex", "detect")], "skipped")
+            self.assertEqual(result[("opencode", "detect")], "skipped")
             self.assertEqual(result[("pi", "extension")], "added")
             only = statuses(setup.run(agents=["codex"]))
             self.assertEqual(list(only), [("codex", "MCP server")])
             self.assertTrue(os.path.isfile(h.path(".codex", "config.toml")))
+
+
+class OpenCodeSetupTest(unittest.TestCase):
+    def config(self, h, name="opencode.json"):
+        return h.path(".config", "opencode", name)
+
+    def test_merges_into_an_existing_config_and_backs_it_up(self):
+        with AgentHome(agents=("opencode",)) as h:
+            with open(self.config(h), "w") as f:
+                json.dump({"model": "anthropic/claude", "mcp": {"other": {"type": "remote", "url": "x"}}}, f)
+            self.assertEqual(statuses(setup.run())[("opencode", "MCP server")], "added")
+            with open(self.config(h)) as f:
+                cfg = json.load(f)
+            self.assertEqual(cfg["model"], "anthropic/claude")
+            self.assertEqual(sorted(cfg["mcp"]), ["mnemo", "other"])
+            self.assertEqual(cfg["mcp"]["mnemo"]["timeout"], 120000)
+            self.assertEqual(len([p for p in os.listdir(h.path(".config", "opencode")) if ".bak-" in p]), 1)
+            self.assertEqual(statuses(setup.run())[("opencode", "MCP server")], "ok")
+
+    def test_leaves_jsonc_with_comments_alone_and_says_what_to_add(self):
+        with AgentHome(agents=("opencode",)) as h:
+            text = '{\n  // my theme\n  "theme": "tokyonight",\n}\n'
+            with open(self.config(h, "opencode.jsonc"), "w") as f:
+                f.write(text)
+            step = [s for s in setup.run() if s.agent == "opencode"][0]
+            self.assertEqual(step.status, "skipped")
+            self.assertIn('"mnemo"', step.detail)
+            with open(self.config(h, "opencode.jsonc")) as f:
+                self.assertEqual(f.read(), text)
+            self.assertFalse(os.path.exists(self.config(h)), "no second config next to the jsonc")
+
+    def test_follows_xdg_config_home(self):
+        with AgentHome(agents=()) as h:
+            xdg_config = os.path.join(h.root, "xdg-config")
+            os.makedirs(os.path.join(xdg_config, "opencode"))
+            os.environ["XDG_CONFIG_HOME"] = xdg_config
+            self.assertEqual(statuses(setup.run())[("opencode", "MCP server")], "added")
+            self.assertTrue(os.path.isfile(os.path.join(xdg_config, "opencode", "opencode.json")))
+            self.assertFalse(os.path.exists(h.path(".config", "opencode")))
+
+    def test_dry_run_writes_nothing(self):
+        with AgentHome(agents=("opencode",)) as h:
+            self.assertEqual(statuses(setup.run(dry_run=True))[("opencode", "MCP server")], "added")
+            self.assertFalse(os.path.exists(self.config(h)))
 
 
 class InstallScriptTest(unittest.TestCase):

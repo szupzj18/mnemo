@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 - OpenCode adapter: `~/.local/share/opencode/opencode.db` is indexed as a fourth source. Each session is addressed as `<db path>::<session id>` and reports its own change key through the new `Source.records()` hook, so a new message reindexes one session instead of re-reading the database. `part.rowid` is the `lineno`, so `context`, `session` and `--raw` work as usual.
+- `mnemo setup` connects OpenCode: it adds `mcp.mnemo` to OpenCode's `opencode.json` (or an existing comment-free `opencode.jsonc`) under `$XDG_CONFIG_HOME/opencode`, backing it up first; a `.jsonc` with comments is left alone and the block to add is printed.
 
 ### Changed
 - Upgrades reach running agent sessions: the MCP server runs every tool call in a fresh process, so after `mnemo upgrade` (or a `git pull`) the next search in an already-open Claude Code or Codex session uses the new code, with no restart. Only a changed tool list still needs a new session. MCP servers started by older versions need one last restart.
@@ -13,6 +14,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `mnemo upgrade` no longer lists processes that follow updates by themselves, and restarts links before listing the rest.
 
 ### Fixed
+- OpenCode's database is looked up under `$XDG_DATA_HOME/opencode` when that is set, as OpenCode itself does (default `~/.local/share/opencode`).
 - Concurrent syncs of one index could fail with "database is locked": index writes began with a deferred transaction that read first and then upgraded to a write lock, which SQLite refuses at once (without waiting) when another writer does the same, and the failed transaction kept its lock so the other writer then waited out the 10 s timeout. This hit whenever the MCP server, the CLI, the dashboard or a neighbor's relayed search synced at the same time, most on a fresh index, and made the multi-device test flaky. Writes now take the lock up front (`BEGIN IMMEDIATE`) and roll back on failure, and a session's old rows are replaced in the same transaction as its new ones.
 - pip/uv installs started their own subprocesses (link answers, tool calls, services) with `python -m mnemo`, which imports a `mnemo/` directory from the current working directory if there is one; they now import the installed package explicitly.
 - Search could fall back to a slower SQL plan: `bm25(messages) AS rank` shadowed FTS5's hidden `rank` column, so `ORDER BY rank` sorted the expression through a temp B-tree (every match materialised) instead of streaming in rank order. A 66k-match query on a 151k-message index drops from ~85 ms to ~38 ms; results and their `rank` values are unchanged.

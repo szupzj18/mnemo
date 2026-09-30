@@ -54,7 +54,7 @@ Mnemo keeps its own state in `~/.mnemo/`:
 
 ## Connect your agents
 
-`mnemo setup` does all of the below for every agent it detects (a CLI on `PATH` or its config directory): it registers the MCP server with `claude mcp add`, appends `[mcp_servers.mnemo]` to `~/.codex/config.toml` after backing it up, and links the Claude skill and the Pi extension. Stale symlinks from an older checkout are repaired; real files are never replaced. `--dry-run` previews, `--agent codex` limits it. The manual steps:
+`mnemo setup` does all of the below for every agent it detects (a CLI on `PATH` or its config directory): it registers the MCP server with `claude mcp add`, appends `[mcp_servers.mnemo]` to `~/.codex/config.toml` after backing it up, adds `mcp.mnemo` to OpenCode's `opencode.json`, and links the Claude skill and the Pi extension. Stale symlinks from an older checkout are repaired; real files are never replaced. `--dry-run` previews, `--agent codex` limits it. The manual steps:
 
 ### Claude Code
 
@@ -76,6 +76,24 @@ startup_timeout_sec = 120
 ```
 
 Use an absolute path, because MCP servers don't always inherit your shell's `PATH`. The generous `startup_timeout_sec` covers the first full index if the server is the first thing to build it.
+
+### OpenCode
+
+```json
+// ~/.config/opencode/opencode.json (or $XDG_CONFIG_HOME/opencode/)
+{
+  "mcp": {
+    "mnemo": {
+      "type": "local",
+      "command": ["/Users/you/.local/bin/mnemo", "mcp"],
+      "enabled": true,
+      "timeout": 120000
+    }
+  }
+}
+```
+
+The `timeout` (milliseconds; OpenCode's default is 5 s) covers the first full index, like Codex's `startup_timeout_sec`. OpenCode's own sessions are indexed from `$XDG_DATA_HOME/opencode/opencode.db` (default `~/.local/share/opencode/`).
 
 ### Pi
 
