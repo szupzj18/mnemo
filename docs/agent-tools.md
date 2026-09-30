@@ -17,6 +17,8 @@ The same tools are exposed over MCP (`mnemo mcp`), as a Pi extension, and as CLI
 | `list_recent_sessions` | — | `mnemo recent --json` |
 | `reindex` | — | `mnemo index` |
 
+Over MCP, `search_sessions`, `get_context`, `get_session` and `list_recent_sessions` are annotated `readOnlyHint: true`, so clients that ask before running a tool (Codex does) skip the prompt for them; that is what lets an unattended run such as `codex exec`, where approvals are off and a prompt cancels the call, search past sessions. `reindex` writes the local index and is annotated as a non-destructive write.
+
 ## search_sessions
 
 Full-text search over user prompts, assistant replies, summaries, tool calls and tool results, across every agent on every registered device.
