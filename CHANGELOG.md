@@ -4,6 +4,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+- `mnemo setup` output is grouped by agent with status marks (`+` added, `↻` repaired, `✓` unchanged, `·` skipped, `✗` failed), puts backups and repaired links on their own lines, and ends with a summary and the next step (which sessions to restart, or what to finish by hand). Colors on a terminal only, `NO_COLOR` honoured, ASCII marks on non-UTF-8 terminals; `--json` for scripts.
+
 ## [0.4.1] - 2026-09-30
 
 ### Fixed

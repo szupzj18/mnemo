@@ -255,16 +255,17 @@ def cmd_setup(args):
               file=sys.stderr)
         return 2
     steps = st.run(agents, dry_run=args.dry_run)
-    home = os.path.expanduser("~")
-    marks = {"added": "+", "fixed": "~", "ok": "=", "skipped": "-", "failed": "!"}
-    for step in steps:
-        verb = step.status + (" (dry run)" if args.dry_run and step.status in ("added", "fixed") else "")
-        print("%s %-7s %-11s %-18s %s" % (marks[step.status], step.agent, step.action, verb,
-                                          step.detail.replace(home, "~")))
-    if any(s.status == "added" for s in steps) and not args.dry_run:
-        print("restart running agent sessions to load mnemo")
-    return 1 if any(s.status == "failed" for s in steps) else 0
-
+    failed = any(s.status == "failed" for s in steps)
+    if args.json:
+        print(json.dumps({"dry_run": args.dry_run, "steps": [
+            {"agent": s.agent, "action": s.action, "status": s.status, "detail": s.detail} for s in steps]},
+            ensure_ascii=False, indent=2))
+        return 1 if failed else 0
+    tty = sys.stdout.isatty()
+    encoding = (getattr(sys.stdout, "encoding", "") or "").lower().replace("-", "")
+    print(st.render(steps, dry_run=args.dry_run, color=tty and not os.environ.get("NO_COLOR"),
+                    unicode=encoding.startswith("utf")))
+    return 1 if failed else 0
 
 def cmd_index(args):
     idx = Index(args.db)
@@ -647,6 +648,7 @@ def main(argv=None):
     sp = sub.add_parser("setup", help="connect Claude Code, Codex and Pi to mnemo (safe to re-run)")
     sp.add_argument("--agent", help="comma-separated subset of claude,codex,opencode,pi (default: every one detected)")
     sp.add_argument("--dry-run", action="store_true", help="show what would change without changing anything")
+    sp.add_argument("--json", action="store_true", help="machine-readable steps")
     sp.set_defaults(func=cmd_setup)
 
     sp = sub.add_parser(

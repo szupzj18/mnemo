@@ -152,7 +152,7 @@ def setup_opencode(cmd, dry_run):
     folder = os.path.join(xdg.config(), "opencode")
     jsonc = os.path.join(folder, "opencode.jsonc")
     config = jsonc if os.path.isfile(jsonc) else os.path.join(folder, "opencode.json")
-    snippet = json.dumps({"mcp": {"mnemo": opencode_entry(cmd)}}, indent=2)
+    snippet = '"mnemo": ' + json.dumps(opencode_entry(cmd), indent=2)
     data = {"$schema": "https://opencode.ai/config.json"}
     if os.path.isfile(config):
         with open(config, encoding="utf-8") as f:
@@ -161,8 +161,8 @@ def setup_opencode(cmd, dry_run):
             data = json.loads(text) if text.strip() else data
         except ValueError:
             # JSONC with comments: rewriting it would drop them.
-            return [Step("opencode", "MCP server", "%s has comments; add under \"mcp\": %s"
-                         % (config, snippet), "skipped")]
+            return [Step("opencode", "MCP server", "%s has comments, so it was left alone\n"
+                         "add this inside its \"mcp\" object:\n%s" % (config, snippet), "skipped")]
         if not isinstance(data, dict) or not isinstance(data.get("mcp", {}), dict):
             return [Step("opencode", "MCP server", "%s is not a config object; left alone" % config, "skipped")]
     if "mnemo" in data.get("mcp", {}):
@@ -199,3 +199,83 @@ def run(agents=None, dry_run=False):
             continue
         steps.extend(SETUPS[agent](cmd, dry_run))
     return steps
+
+
+# ------------------------------------------------------------------- output
+
+NAMES = {"claude": "Claude Code", "codex": "Codex", "opencode": "OpenCode", "pi": "Pi"}
+ICONS = {"added": "+", "fixed": "\u21bb", "ok": "\u2713", "skipped": "\u00b7", "failed": "\u2717"}
+ASCII_ICONS = {"added": "+", "fixed": "~", "ok": "=", "skipped": "-", "failed": "!"}
+COLORS = {"added": "34", "fixed": "33", "ok": "32", "skipped": "2", "failed": "31"}
+SUMMARY = (("added", "added", "would add"), ("fixed", "repaired", "would repair"),
+           ("ok", "unchanged", "unchanged"), ("skipped", "skipped", "skipped"), ("failed", "failed", "failed"))
+
+
+def _and(names):
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def render(steps, dry_run=False, color=False, unicode=True, home_dir=None):
+    """Steps grouped by agent, a summary line and what to do next (plain text if color is off)."""
+    icons = ICONS if unicode else ASCII_ICONS
+    home_dir = home_dir or os.path.expanduser("~")
+
+    def paint(code, text):
+        return "\033[%sm%s\033[0m" % (code, text) if color else text
+
+    def tidy(text):
+        return text.replace(home_dir, "~")
+
+    agents = [a for a in AGENTS if any(s.agent == a for s in steps)]
+    found = [a for a in agents if not any(s.agent == a and s.action == "detect" for s in steps)]
+    head = "mnemo setup \u00b7 %d agent%s found" % (len(found), "" if len(found) == 1 else "s")
+    if not unicode:
+        head = head.replace("\u00b7", "-")
+    lines = [paint("1", head) + (paint("2", "  (dry run: nothing is changed)") if dry_run else ""), ""]
+    width = max([len(s.action) for s in steps if s.action != "detect"] or [0])
+
+    for agent in agents:
+        lines.append("  " + paint("1", NAMES.get(agent, agent)))
+        for s in (s for s in steps if s.agent == agent):
+            icon = paint(COLORS[s.status], icons[s.status])
+            if s.action == "detect":
+                lines.append("    %s %s" % (icon, paint("2", s.detail)))
+                continue
+            detail, extra = tidy(s.detail), []
+            if " (backup: " in detail and detail.endswith(")"):
+                detail, backup = detail[:-1].split(" (backup: ", 1)
+                extra.append("backup: " + os.path.basename(backup))
+            if " (was -> " in detail and detail.endswith(")"):
+                detail, was = detail[:-1].split(" (was -> ", 1)
+                extra.append("repaired link, was -> " + was)
+            first, *rest = detail.split("\n")
+            lines.append("    %s %s   %s" % (icon, s.action.ljust(width), first))
+            pad = " " * (width + 9)
+            lines.extend(pad + paint("2", x) for x in extra + rest)
+
+    counts = {k: sum(1 for s in steps if s.status == k) for k, _, _ in SUMMARY}
+    parts = ["%d %s" % (counts[k], would if dry_run else done) for k, done, would in SUMMARY if counts[k]]
+    lines += ["", "  " + (" \u00b7 " if unicode else " - ").join(parts)]
+
+    changed = [NAMES.get(a, a) for a in agents if any(s.agent == a and s.status in ("added", "fixed") for s in steps)]
+    by_hand = [NAMES.get(a, a) for a in agents
+               if any(s.agent == a and s.status == "skipped" and s.action != "detect" for s in steps)]
+    arrow = "\u2192" if unicode else "->"
+    if counts["failed"]:
+        nxt = "Fix the failed steps above, then run mnemo setup again."
+    elif dry_run and changed:
+        nxt = "Run mnemo setup without --dry-run to apply."
+    elif changed:
+        nxt = "Restart %s sessions to load mnemo." % _and(changed)
+    elif by_hand:
+        nxt = None
+    elif found:
+        nxt = "Everything is already set up."
+    else:
+        nxt = "No agents found. Install Claude Code, Codex, OpenCode or Pi, then run mnemo setup again."
+    if nxt:
+        lines.append("  " + paint("1", arrow + " " + nxt))
+    if by_hand and not counts["failed"]:
+        lines.append("  " + paint("1", arrow + " Finish %s by hand, as shown above." % _and(by_hand)))
+    return "\n".join(lines)
+
