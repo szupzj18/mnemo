@@ -10,6 +10,7 @@ const TILE: Record<string, string> = {
   claude: "bg-[#d97757] text-white",
   codex: "bg-[#0f1115] text-white dark:bg-black dark:ring-1 dark:ring-white/15",
   pi: "bg-white ring-1 ring-black/10 dark:bg-muted dark:ring-white/15",
+  opencode: "bg-[#131010] text-white dark:ring-1 dark:ring-white/15",
 }
 
 export function SourceIcon({ source, className }: { source: string; className?: string }) {
@@ -36,6 +37,11 @@ export function SourceIcon({ source, className }: { source: string; className?: 
           <path fill="#4D9ABF" d="M165.29 282.65H282.65V400H400V517.36H282.65V634.72H165.29Z" />
           <path fill="#F1BE58" d="M517.36 400H634.72V634.72H517.36Z" />
         </svg>
+      ) : source === "opencode" ? (
+        // Terminal-style monogram rather than a redrawn brand mark.
+        <span role="img" aria-label="OpenCode" className="font-mono text-[13px] font-bold tracking-tight">
+          oc
+        </span>
       ) : (
         <span className="font-bold">{source.charAt(0).toUpperCase() || "?"}</span>
       )}

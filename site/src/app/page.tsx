@@ -101,7 +101,7 @@ export default function Home() {
               Memory your agents call as a tool
             </h1>
             <p className={`mx-auto mt-6 max-w-2xl text-lg text-balance ${muted}`}>
-              Mnemo indexes every Claude Code, Codex and Pi session on your machines. Any agent can look up what another
+              Mnemo indexes every Claude Code, Codex, OpenCode and Pi session on your machines. Any agent can look up what another
               already worked out, on this laptop or a box three hops away, and read only as much as it needs.
             </p>
             <div className="mx-auto mt-10 flex max-w-2xl flex-col gap-3 sm:flex-row">
