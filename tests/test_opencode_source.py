@@ -167,3 +167,34 @@ class OpenCodeTest(unittest.TestCase):
         stats = idx.sync(home=self.home)
         self.assertEqual(stats["files_new"], 0)
         idx.close()
+
+    def test_an_unreadable_database_keeps_what_was_indexed(self):
+        # Unreadable is not empty: sessions indexed earlier must not be dropped as deleted.
+        broken = [("garbage", lambda: open(self.db_path, "wb").write(b"not a database"))]
+        if os.geteuid() != 0:  # root reads mode-000 files anyway
+            broken.append(("mode 000", lambda: os.chmod(self.db_path, 0)))
+        good = open(self.db_path, "rb").read()
+        for label, breakit in broken:
+            with self.subTest(label):
+                breakit()
+                try:
+                    stats = self.idx.sync(home=self.home)
+                finally:
+                    os.chmod(self.db_path, 0o644)
+                    with open(self.db_path, "wb") as f:
+                        f.write(good)
+                self.assertEqual(stats["files_removed"], 0)
+                self.assertEqual(self.idx.counts()["opencode"]["files"], 2)
+
+    def test_uri_characters_in_the_path(self):
+        # "#", "?" and "%" would otherwise be read as SQLite URI syntax.
+        for name in ("a#b", "a?b", "a%25b"):
+            with self.subTest(name):
+                home = os.path.join(self.root, name, "home")
+                shutil.copytree(os.path.join(self.home, ".local"), os.path.join(home, ".local"))
+                idx = Index(os.path.join(self.root, name, "index.db"))
+                try:
+                    idx.sync(home=home)
+                    self.assertEqual(idx.counts()["opencode"]["files"], 2)
+                finally:
+                    idx.close()

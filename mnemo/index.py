@@ -4,6 +4,7 @@ import time
 
 from .model import cjk_grams, first_ts, make_title
 from .sources import SOURCES, get_sources
+from .sources.base import SourceUnavailable
 
 DEFAULT_DB_PATH = os.path.expanduser("~/.mnemo/index.db")
 
@@ -157,9 +158,11 @@ class Index:
             log("repairing %d file(s) written by an older mnemo" % len(stale))
 
         for source in sources:
-            current = {}
-            for path, mtime, size in source.records():
-                current[path] = (mtime, size)
+            try:
+                current = {path: (mtime, size) for path, mtime, size in source.records()}
+            except SourceUnavailable as exc:
+                log("skip %s: %s" % (source.name, exc))
+                continue
 
             rows = self.db.execute(
                 "SELECT path, mtime, size FROM files WHERE source = ?", (source.name,)
