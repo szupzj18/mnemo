@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Changed
 - `mnemo setup` output is grouped by agent with status marks (`+` added, `↻` repaired, `✓` unchanged, `·` skipped, `✗` failed), puts backups and repaired links on their own lines, and ends with a summary and the next step (which sessions to restart, or what to finish by hand). Colors on a terminal only, `NO_COLOR` honoured, ASCII marks on non-UTF-8 terminals; `--json` for scripts.
 
+### Fixed
+- `search`, `recent`, `context` and `session` wrote terminal escape codes even when piped or redirected; styles are now off unless stdout is a terminal, and `NO_COLOR` and `TERM=dumb` turn them off everywhere.
+- Session titles (`recent`, `list_recent_sessions`, the dashboard) no longer show injected text: a Claude Code skill's body ("Base directory for this skill: …") is treated as injected boilerplate like other envelopes, and Codex's approval-review ("guardian") sessions, whose user turns are all generated, no longer appear as sessions of their own; the reviewer's replies stay searchable. `/loop` prompts, also marked as meta, still title their sessions. Existing sessions pick up the new titles after `mnemo upgrade`.
+
 ## [0.4.1] - 2026-09-30
 
 ### Fixed

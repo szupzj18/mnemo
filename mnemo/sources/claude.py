@@ -1,7 +1,7 @@
 import json
 import os
 
-from ..model import Msg, block_text, clip, norm_ts, strip_envelopes
+from ..model import CLAUDE_EXTRA_RULES, Msg, block_text, clip, norm_ts, strip_envelopes
 from .base import Source, decode_cwd_dir
 
 
@@ -42,7 +42,7 @@ class ClaudeSource(Source):
                     stripped = False
                     if role == "user" and kind == "text":
                         raw0 = text
-                        text, stripped = strip_envelopes(text)
+                        text, stripped = strip_envelopes(text, CLAUDE_EXTRA_RULES)
                     present = raw0.strip() if raw0 is not None else text
                     if present:
                         # Pure-envelope blocks are retained verbatim (raw0) with
