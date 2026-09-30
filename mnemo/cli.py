@@ -266,17 +266,30 @@ def cmd_mcp(args):
 def cmd_doctor(args):
     from . import doctor
 
-    checks = doctor.run(full=args.full, offline=args.offline)
-    failed = any(c.status == doctor.FAIL for c in checks)
     if args.json:
+        checks = doctor.run(full=args.full, offline=args.offline)
         print(json.dumps({"version": __version__, "checks": [c.to_dict() for c in checks]},
                          ensure_ascii=False, indent=2))
-        return 1 if failed else 0
+        return 1 if any(c.status == doctor.FAIL for c in checks) else 0
     encoding = (getattr(sys.stdout, "encoding", "") or "").lower().replace("-", "")
-    print(doctor.render(checks, node_name=remote_mod.load_node()["name"], color=color_enabled(),
-                        unicode=encoding.startswith("utf")))
-    return 1 if failed else 0
-
+    live = color_enabled()
+    style = doctor.Style(color=live, unicode=encoding.startswith("utf"))
+    print(doctor.render_header(remote_mod.load_node()["name"], style) + "\n", flush=True)
+    checks = []
+    # Print each group as soon as it is checked; on a terminal, say what is running
+    # meanwhile (devices can take seconds when one is slow or down).
+    for group, run in doctor.plan(full=args.full, offline=args.offline):
+        if live:
+            sys.stdout.write("  " + style.paint("2", "checking %s..." % group.lower()))
+            sys.stdout.flush()
+        rows = run()
+        if live:
+            sys.stdout.write("\r\033[K")
+        if rows:
+            print(doctor.render_group(group, rows, style), flush=True)
+        checks += rows
+    print("\n" + doctor.render_summary(checks, style))
+    return 1 if any(c.status == doctor.FAIL for c in checks) else 0
 
 def cmd_setup(args):
     from . import setup as st

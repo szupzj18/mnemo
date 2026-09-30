@@ -19,20 +19,28 @@ NOW = 1790000000.0
 
 class VersionTest(unittest.TestCase):
     def test_newer_release_is_a_warning_with_the_upgrade_command(self):
-        c = doctor.check_version(fetch=lambda: "99.0.0")
+        c = doctor.check_version(fetch=lambda: "99.0.0", commits=None)
         self.assertEqual(c.status, doctor.WARN)
         self.assertIn("99.0.0 is out", c.detail)
         self.assertIn("mnemo upgrade", c.fix)
 
     def test_current_offline_or_unreachable_is_fine(self):
         from mnemo import __version__
-        self.assertEqual(doctor.check_version(fetch=lambda: __version__).status, doctor.OK)
-        self.assertEqual(doctor.check_version(fetch=lambda: "0.0.1").status, doctor.OK, "older on PyPI: a checkout")
-        self.assertEqual(doctor.check_version(offline=True).status, doctor.OK)
+        c = doctor.check_version(fetch=lambda: __version__, commits=None)
+        self.assertEqual((c.name, c.status, c.detail), ("mnemo", doctor.OK, "%s \u00b7 latest release" % __version__))
+        self.assertEqual(doctor.check_version(fetch=lambda: "0.0.1", commits=None).status, doctor.OK)
+        self.assertEqual(doctor.check_version(offline=True, commits=None).status, doctor.OK)
 
         def boom():
             raise OSError("no network")
-        self.assertIn("could not check", doctor.check_version(fetch=boom).detail)
+        self.assertIn("could not check", doctor.check_version(fetch=boom, commits=None).detail)
+
+    def test_a_checkout_says_how_far_it_is_past_the_release(self):
+        from mnemo import __version__
+        c = doctor.check_version(offline=True, commits=5)
+        self.assertTrue(c.detail.startswith("%s + 5 unreleased commits \u00b7 checkout" % __version__), c.detail)
+        self.assertIn("\u00b7 checkout", doctor.check_version(offline=True, commits=0).detail)
+        self.assertNotIn("checkout", doctor.check_version(offline=True, commits=None).detail)
 
 
 class IndexTest(unittest.TestCase):
@@ -102,7 +110,12 @@ class DevicesTest(unittest.TestCase):
             {"name": "old", "ok": True, "ms": 5, "legacy": True, "node": None},
             {"name": "lap", "ok": False, "error": "not linked", "node": None},
         ]}
-        got = {c.name: (c.status, c.fix) for c in doctor.check_devices(tree)}
+        checks = {c.name: c for c in doctor.check_devices(tree)}
+        self.assertEqual(checks["a"].fields, ["40 ms", "same", "on"])
+        self.assertEqual(checks["a/b"].fields, ["90 ms", "other", "off"])
+        self.assertEqual(checks["old"].fields, ["5 ms", "older mnemo", "?"])
+        self.assertIsNone(checks["gone"].fields, "unreachable rows say why instead")
+        got = {c.name: (c.status, c.fix) for c in checks.values()}
         self.assertEqual(got["a"], (doctor.OK, None))
         self.assertEqual(got["a/b"], (doctor.WARN, "mnemo remote upgrade"))
         self.assertEqual(got["gone"], (doctor.FAIL, "check the connection: ssh gone"))
@@ -132,10 +145,29 @@ class LinksTest(unittest.TestCase):
 
 
 class RenderTest(unittest.TestCase):
-    def test_all_good(self):
-        out = doctor.render([doctor.Check("mnemo", "version", doctor.OK, "0.4.1, the latest")], node_name="lap")
-        self.assertTrue(out.startswith("mnemo doctor · lap · mnemo "))
-        self.assertTrue(out.endswith("→ All good."))
+    def test_all_good_counts_what_was_checked(self):
+        C = doctor.Check
+        out = doctor.render([C(doctor.MACHINE, "mnemo", doctor.OK, "0.4.1 · latest release"),
+                             C("Agents", "OpenCode", doctor.SKIP, "not installed")], node_name="lap")
+        self.assertEqual(out.splitlines()[0], "mnemo doctor · lap")
+        self.assertIn("  This machine", out.splitlines())
+        self.assertTrue(out.endswith("→ All good: 1 check passed · 1 skipped"))
+
+    def test_devices_render_as_aligned_columns(self):
+        C = doctor.Check
+        rows = [C("Devices", "devbox-109", doctor.OK, "d", fields=["174 ms", "same", "off"]),
+                C("Devices", "gpu-box/devbox-126", doctor.WARN, "d", "mnemo remote upgrade",
+                  fields=["1400 ms", "other", "on"], slow=True),
+                C("Devices", "gone", doctor.FAIL, "unreachable: timed out", "ssh gone")]
+        lines = doctor.render_group("Devices", rows).splitlines()
+        # Column titles sit over the values: name column is as wide as the longest route.
+        self.assertEqual(lines[0], "  Devices" + " " * len("gpu-box/devbox-126") + "latency   code    relay")
+        self.assertEqual(lines[1], "    ✓ devbox-109           174 ms    same    off")
+        self.assertEqual(lines[2], "    ! gpu-box/devbox-126   1400 ms   other   on")
+        self.assertEqual(lines[3], "    ✗ gone                 unreachable: timed out")
+        colored = doctor.render_group("Devices", rows, doctor.Style(color=True))
+        self.assertIn("\033[33m1400 ms", colored, "slow latency is highlighted")
+        self.assertIn("\033[33mother", colored)
 
     def test_counts_and_one_line_per_fix(self):
         C = doctor.Check
@@ -168,10 +200,14 @@ class CliTest(unittest.TestCase):
             self.assertEqual(p.returncode, 1, p.stderr)
             checks = {(c["group"], c["name"]): c["status"] for c in json.loads(p.stdout)["checks"]}
             self.assertEqual(checks[("Devices", "gone")], "fail")
-            self.assertEqual(checks[("mnemo", "index")], "ok")
+            self.assertEqual(checks[("This machine", "index")], "ok")
             text = subprocess.run(MNEMO + ["doctor", "--offline"], env=env, cwd=REPO, capture_output=True, text=True)
             self.assertIn("1 problem", text.stdout)
             self.assertNotIn("\x1b", text.stdout)
+            self.assertNotIn("checking", text.stdout, "progress lines only on a terminal")
+            self.assertNotIn("\r", text.stdout)
+            groups = [ln.strip() for ln in text.stdout.splitlines() if ln.startswith("  ") and not ln.startswith("    ")]
+            self.assertEqual([g.split()[0] for g in groups[:3]], ["This", "Agents", "Devices"])
         finally:
             demo.cleanup()
 
