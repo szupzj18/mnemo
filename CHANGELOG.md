@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-30
+
 ### Fixed
 - Codex cancelled mnemo's tools in unattended runs (`codex exec`, where approvals are off and any tool not marked read-only needs one). The MCP tools now declare annotations: `search_sessions`, `get_context`, `get_session` and `list_recent_sessions` are marked `readOnlyHint`, so Codex no longer cancels them in unattended runs (`codex exec`, where approvals are off and any tool without the hint needs one). `reindex` is marked as a non-destructive write.
 
@@ -96,7 +98,8 @@ First public release, as *agentsearch* (renamed to **Mnemo** the same day).
 - Local dashboard: search with per-device diagnostics, click-through to a chat-style session transcript with match navigation, device management, and a token-gated `127.0.0.1` API.
 - Agent skill in `integrations/skills/mnemo`.
 
-[Unreleased]: https://github.com/szupzj18/mnemo/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/szupzj18/mnemo/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/szupzj18/mnemo/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/szupzj18/mnemo/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/szupzj18/mnemo/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/szupzj18/mnemo/compare/v0.1.0...v0.2.0
