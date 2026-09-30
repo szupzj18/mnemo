@@ -2,9 +2,10 @@ import datetime
 import json
 import os
 import sqlite3
+from urllib.parse import quote
 
 from ..model import Msg, clip, strip_envelopes
-from .base import Source
+from .base import Source, SourceUnavailable
 
 # OpenCode keeps every session in one SQLite database, so a session is
 # addressed as "<database path>::<session id>" and reports its own change key
@@ -27,7 +28,8 @@ class OpenCodeSource(Source):
         return os.path.join(self.home, ".local", "share", "opencode", "opencode.db")
 
     def _connect(self, path):
-        con = sqlite3.connect("file:%s?mode=ro" % path, uri=True)
+        # Quoted: "#", "?" and "%" in the path are URI syntax otherwise.
+        con = sqlite3.connect("file:%s?mode=ro" % quote(path), uri=True)
         con.row_factory = sqlite3.Row
         return con
 
@@ -39,18 +41,21 @@ class OpenCodeSource(Source):
         """
         path = self.db_path()
         if not os.path.isfile(path):
-            return
-        con = self._connect(path)
+            return  # no OpenCode here (or it was removed): no sessions
         try:
-            parts = {r["session_id"]: (r["n"], r["newest"] or 0) for r in con.execute(
-                "SELECT session_id, COUNT(*) AS n, MAX(time_updated) AS newest"
-                " FROM part GROUP BY session_id")}
-            sessions = con.execute(
-                "SELECT id, time_updated FROM session_v2").fetchall()
-        except sqlite3.Error:
-            return  # an unreadable database is skipped like a corrupt session file
-        finally:
-            con.close()
+            con = self._connect(path)
+            try:
+                parts = {r["session_id"]: (r["n"], r["newest"] or 0) for r in con.execute(
+                    "SELECT session_id, COUNT(*) AS n, MAX(time_updated) AS newest"
+                    " FROM part GROUP BY session_id")}
+                sessions = con.execute(
+                    "SELECT id, time_updated FROM session_v2").fetchall()
+            finally:
+                con.close()
+        except sqlite3.Error as exc:
+            # There but unreadable (permissions, locked, another format): say so, so
+            # sync keeps the sessions it has instead of dropping them as deleted.
+            raise SourceUnavailable("%s: %s" % (path, exc))
         for s in sessions:
             count, newest = parts.get(s["id"], (0, 0))
             mtime = max(s["time_updated"] or 0, newest) / 1000.0

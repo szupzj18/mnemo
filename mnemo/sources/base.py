@@ -4,6 +4,12 @@ import os
 from ..model import Msg, clip, norm_ts
 
 
+class SourceUnavailable(Exception):
+    """A source's store exists but cannot be read right now (permissions, locked,
+    unexpected format). Sync skips that source and keeps what it already indexed,
+    instead of treating every session as deleted."""
+
+
 class Source:
     name = ""
 
