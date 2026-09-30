@@ -9,6 +9,13 @@ from .remote import LOCAL, fan_out_search, remote_context, remote_session
 from .search import DEFAULT_KINDS, get_context, get_session, raw_context, raw_session, recent
 
 
+# Tool annotations tell an MCP client whether a call needs the user's approval. Codex skips its
+# approval prompt for readOnlyHint tools, which is what lets an unattended run (`codex exec`,
+# where approvals are off and a prompt would cancel the call) search past sessions.
+READ_ONLY = {"readOnlyHint": True, "idempotentHint": True}
+WRITES_LOCAL_INDEX = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True}
+
+
 def build_tools():
     names = [LOCAL] + [r["name"] for r in remote_mod.load_remotes()]
     host_desc = ("comma-separated devices to search; available: %s, or a route such as "
@@ -16,6 +23,7 @@ def build_tools():
     return [
         {
             "name": "search_sessions",
+            "annotations": READ_ONLY,
             "description": (
                 "Full-text search across coding-agent sessions (claude, codex, opencode, pi) on this machine"
                 " and registered remote devices. Matches user prompts, assistant replies, summaries,"
@@ -46,6 +54,7 @@ def build_tools():
         },
         {
             "name": "get_context",
+            "annotations": READ_ONLY,
             "description": (
                 "Fetch surrounding messages of a search hit (same normalized format) so a hit can be read in context."
             ),
@@ -64,6 +73,7 @@ def build_tools():
         },
         {
             "name": "get_session",
+            "annotations": READ_ONLY,
             "description": (
                 "Fetch every indexed message of the whole session file that a search hit belongs to"
                 " (same normalized format), ordered by time. Use after get_context when you need the"
@@ -85,6 +95,7 @@ def build_tools():
         },
         {
             "name": "list_recent_sessions",
+            "annotations": READ_ONLY,
             "description": (
                 "List coding-agent sessions most recently started, newest first, each with its first"
                 " human task as the title, source, cwd, start time and message count. Use this to answer"
@@ -102,6 +113,7 @@ def build_tools():
         },
         {
             "name": "reindex",
+            "annotations": WRITES_LOCAL_INDEX,
             "description": "Incrementally scan local session files for new/changed sessions. Cheap when nothing changed.",
             "inputSchema": {
                 "type": "object",
