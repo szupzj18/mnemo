@@ -90,6 +90,10 @@ _XML_ENVELOPE_TAGS = (
     "command-stderr",
     # Codex guardian (approval review) prompts: the tool descriptions under review.
     "guardian_tool_descriptions",
+    # Claude Code tells the agent a background task finished.
+    "task-notification",
+    # Claude Code worker forks: fixed instructions ahead of "Your directive: ...".
+    "fork-boilerplate",
 )
 
 
@@ -106,6 +110,11 @@ CODEX_EXTRA_PATTERNS = (
     # Approval/assessment sub-rollouts: the whole user message is wrapped agent
     # history, bounded by a fixed opener and a trailing APPROVAL … END marker.
     r"The following is the Codex agent history\b.*?>>>\s*APPROVAL[A-Z ]*?END",
+    # Attached files ("# Files mentioned by the user:" / "## name: path" ...) ahead
+    # of the actual prompt, which follows "## My request:" and is kept.
+    r"\A\s*#\s*Files mentioned by the user:.*?##\s*My request(?: for Codex)?:[ \t]*\n?",
+    # The same heading left alone once an envelope before it (browser context) is gone.
+    r"\A\s*##\s*My request(?: for Codex)?:[ \t]*\n?",
 )
 CODEX_EXTRA_RULES = tuple(re.compile(p, re.S) for p in CODEX_EXTRA_PATTERNS)
 
