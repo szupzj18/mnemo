@@ -155,8 +155,30 @@ _TITLE_SKIP_PREFIXES = (
 )
 
 
+_COMMAND_NAME = re.compile(r"<command-name>\s*(/[^<\s]+)\s*</command-name>")
+_COMMAND_ARGS = re.compile(r"<command-args>(.*?)</command-args>", re.S)
+
+
 def make_title(msgs, limit=140):
-    """First substantive searchable user prompt of a session, on one line."""
+    """First substantive searchable user prompt of a session, on one line.
+
+    A session started with a slash command or skill and never typed into gets
+    that command as its title ("/disk-scan"), rather than none at all.
+    """
+    title = _prompt_title(msgs, limit)
+    if title:
+        return title
+    for _, m in msgs:
+        if m.role == "user" and m.raw:
+            name = _COMMAND_NAME.search(m.raw)
+            if name:
+                args = _COMMAND_ARGS.search(m.raw)
+                text = name.group(1) + (" " + args.group(1).strip() if args and args.group(1).strip() else "")
+                return re.sub(r"\s+", " ", text)[:limit]
+    return ""
+
+
+def _prompt_title(msgs, limit):
     for _, m in msgs:
         if m.role != "user" or m.kind not in ("text", "summary"):
             continue

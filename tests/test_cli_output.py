@@ -91,6 +91,23 @@ class SessionTitleTest(unittest.TestCase):
         finally:
             idx.close()
 
+    def test_a_session_run_only_through_a_command_is_titled_by_it(self):
+        self.write(".claude/projects/-w/cmd.jsonl", [
+            claude_line("user", "<command-message>disk-scan</command-message>\n<command-name>/disk-scan</command-name>"),
+            claude_line("user", "Base directory for this skill: /u/.claude/skills/disk-scan\n\n# disk-scan", isMeta=True),
+            claude_line("assistant", "Scanning."),
+        ])
+        self.write(".claude/projects/-w/args.jsonl", [
+            claude_line("user", "<command-name>/loop</command-name>\n<command-args>5m check the  ci</command-args>"),
+            claude_line("assistant", "Scheduled."),
+        ])
+        idx = self.index()
+        try:
+            titles = {r["path"].rsplit("/", 1)[1]: r["title"] for r in recent(idx, limit=10)}
+            self.assertEqual(titles, {"cmd.jsonl": "/disk-scan", "args.jsonl": "/loop 5m check the ci"})
+        finally:
+            idx.close()
+
     def test_codex_approval_reviews_are_not_listed_as_sessions(self):
         def item(role, text):
             return json.dumps({"type": "response_item", "timestamp": "2026-09-30T08:00:00Z", "payload": {
