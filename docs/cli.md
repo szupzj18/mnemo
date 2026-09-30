@@ -133,22 +133,22 @@ mnemo doctor [--full] [--offline] [--json]
 Checks everything mnemo depends on and says how to fix what is off:
 
 ```text
-mnemo doctor · laptop · mnemo 0.4.1
+mnemo doctor · laptop
 
-  mnemo
-    ✓ version       0.4.1, the latest
-    ✓ index         ~/.mnemo/index.db, 834 sessions, 1.4 GB, synced 3 min ago
-    ✓ processes     none running old code
+  This machine
+    ✓ mnemo          0.4.1 + 5 unreleased commits · checkout · latest release
+    ✓ index          834 sessions · 1.0 GB · synced 3 min ago
+    ✓ processes      none running old code
   Agents
-    ✓ Claude Code   MCP server + skill
-    ! Codex         not connected: MCP server
-    · OpenCode      not installed
-    ✓ Pi            extension
-  Devices
-    ✓ devbox-109    reachable, 160 ms, same code, relay off
-    ! devbox-126    reachable, 169 ms, runs other code
+    ✓ Claude Code    MCP server + skill
+    ! Codex          not connected: MCP server
+    · OpenCode       not installed
+    ✓ Pi             extension
+  Devices            latency   code    relay
+    ✓ devbox-109     160 ms    same    off
+    ! devbox-126     169 ms    other   off
   Links
-    ✓ devbox-109    connected for 35 min
+    ✓ devbox-109     connected for 35 min
 
   2 warnings
   → mnemo setup
@@ -162,7 +162,7 @@ mnemo doctor · laptop · mnemo 0.4.1
 | Devices | every device a search reaches, through relays too: reachable, same code, relay setting; a device that linked in is fine while asleep |
 | Links | each `mnemo link` service is connected |
 
-`✓` ok, `!` warning (works, worth fixing), `✗` problem, `·` does not apply. It exits 1 when there is a problem. `--json` for scripts.
+`✓` ok, `!` warning (works, worth fixing), `✗` problem, `·` does not apply. Each group is printed as soon as it is checked (on a terminal, a line says what is running meanwhile). Devices are a table: latency (highlighted over 1 s), whether they run this device's code, and their relay setting. A git checkout shows how many commits it is past its release. It exits 1 when there is a problem. `--json` for scripts.
 
 ## mnemo status
 
