@@ -118,6 +118,26 @@ class SessionTitleTest(unittest.TestCase):
             idx.close()
 
 
+class EnvelopeTest(unittest.TestCase):
+    def test_more_injected_wrappers(self):
+        from mnemo.model import CODEX_EXTRA_RULES, strip_envelopes
+        cases = [
+            ("<task-notification>\n<task-id>x</task-id>\n</task-notification>", (), ""),
+            ("<fork-boilerplate>\nYou are a worker fork.\n</fork-boilerplate>\n\nYour directive: audit the css",
+             (), "Your directive: audit the css"),
+            ("# Files mentioned by the user:\n\n## shot.png: /tmp/shot.png\n\n## My request:\nwhy does it fail?",
+             CODEX_EXTRA_RULES, "why does it fail?"),
+            ('<in-app-browser-context source="ui">page</in-app-browser-context>\n\n## My request:\nand this?',
+             CODEX_EXTRA_RULES, "and this?"),
+        ]
+        for text, rules, want in cases:
+            with self.subTest(want or text[:20]):
+                self.assertEqual(strip_envelopes(text, rules), (want, True))
+        # Only at the start: the same words inside a prompt are the user's.
+        mid = "see '## My request:' and '# Files mentioned by the user:' in the doc"
+        self.assertEqual(strip_envelopes(mid, CODEX_EXTRA_RULES), (mid, False))
+
+
 class PipedOutputTest(unittest.TestCase):
     def test_no_escape_codes_when_piped(self):
         root = tempfile.mkdtemp(prefix="mnemo-pipe-")
