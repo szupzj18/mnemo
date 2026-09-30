@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [0.4.0] - 2026-09-30
 
+OpenCode joins Claude Code, Codex and Pi as a fourth source, and `mnemo setup` connects it. Upgrades now reach agent sessions that are already running, and the dashboard, without a restart. Concurrent syncs no longer fail on SQLite locks, and searches are about twice as fast on large indexes.
+
 ### Added
 - OpenCode adapter: `~/.local/share/opencode/opencode.db` is indexed as a fourth source. Each session is addressed as `<db path>::<session id>` and reports its own change key through the new `Source.records()` hook, so a new message reindexes one session instead of re-reading the database. `part.rowid` is the `lineno`, so `context`, `session` and `--raw` work as usual.
 - `mnemo setup` connects OpenCode: it adds `mcp.mnemo` to OpenCode's `opencode.json` (or an existing comment-free `opencode.jsonc`) under `$XDG_CONFIG_HOME/opencode`, backing it up first; a `.jsonc` with comments is left alone and the block to add is printed.
