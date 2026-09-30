@@ -1,4 +1,6 @@
+import contextlib
 import os
+import re
 import sqlite3
 import time
 
@@ -65,20 +67,58 @@ def _schema_int(value):
 SYNC_MIN_INTERVAL = 2.0
 
 
+SCHEMA_TABLES = set(re.findall(r"CREATE (?:VIRTUAL )?TABLE IF NOT EXISTS (\w+)", SCHEMA))
+
+
 class Index:
     def __init__(self, db_path=None):
         self.db_path = db_path or DEFAULT_DB_PATH
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self.db = sqlite3.connect(self.db_path, isolation_level=None)
         self.db.row_factory = sqlite3.Row
-        # MCP server, CLI and dashboard may sync concurrently; wait for the
-        # writer instead of failing with "database is locked".
+        # MCP server, CLI, dashboard and neighbors' relayed searches may sync
+        # concurrently; wait for the writer instead of failing with "database is
+        # locked". (Rollback journal, not WAL: `mnemo upgrade` swaps the file with
+        # os.replace, which a leftover -wal file would corrupt.)
         self.db.execute("PRAGMA busy_timeout = 10000")
-        self.db.executescript(SCHEMA)
+        have = {r[0] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        if not SCHEMA_TABLES <= have:  # new index, or tables an older mnemo did not have
+            self._script(SCHEMA)
         self.stored_version = None
         self._migration_pending = self._detect_pending()
 
+    @contextlib.contextmanager
+    def _write(self):
+        """One write transaction that takes the write lock up front.
+
+        A deferred BEGIN (or a lone write statement) first reads, then upgrades
+        to a write lock; when another writer is doing the same, SQLite refuses
+        one of them at once ("database is locked") instead of letting
+        busy_timeout wait. BEGIN IMMEDIATE queues for the lock instead, and a
+        failure rolls back so no lock outlives it.
+        """
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            yield
+        except BaseException:
+            self.db.execute("ROLLBACK")
+            raise
+        self.db.execute("COMMIT")
+
+    def _script(self, script):
+        """executescript in one IMMEDIATE transaction (it cannot run inside _write)."""
+        try:
+            self.db.executescript("BEGIN IMMEDIATE;\n" + script + "\nCOMMIT;")
+        except BaseException:
+            if self.db.in_transaction:
+                self.db.execute("ROLLBACK")
+            raise
+
     def _set_version(self):
+        with self._write():
+            self._stamp_version()
+
+    def _stamp_version(self):
         self.db.execute(
             "INSERT OR REPLACE INTO meta(key, value) VALUES('schema_version', ?)",
             (SCHEMA_VERSION,),
@@ -132,11 +172,12 @@ class Index:
     def _apply_schema(self):
         """Drop and recreate tables for the current schema (full reparse next)."""
         self._check_writable()
-        self.db.execute("DROP TABLE IF EXISTS messages")
-        self.db.execute("DROP TABLE IF EXISTS file_ranges")
-        self.db.execute("DROP TABLE IF EXISTS files")
-        self.db.executescript(SCHEMA)
-        self._set_version()
+        self._script(
+            "DROP TABLE IF EXISTS messages; DROP TABLE IF EXISTS file_ranges; DROP TABLE IF EXISTS files;\n"
+            + SCHEMA
+            + "\nINSERT OR REPLACE INTO meta(key, value) VALUES('schema_version', '%s');" % SCHEMA_VERSION
+        )
+        self.stored_version = SCHEMA_VERSION
         self._migration_pending = False
 
     def close(self):
@@ -179,29 +220,32 @@ class Index:
                 self._reindex_file(source, path, mtime, size, stats, log)
 
             gone = set(known) - set(current)
-            for path in gone:
-                self._drop_path(path)
-                self.db.execute("DELETE FROM files WHERE path = ?", (path,))
-                stats["files_removed"] += 1
+            if gone:
+                with self._write():
+                    for path in gone:
+                        self._drop_path(path)
+                        self.db.execute("DELETE FROM files WHERE path = ?", (path,))
+                        stats["files_removed"] += 1
 
-        if stale:
-            # Old-shape rows outside any file range (or left by an interrupted
-            # write) are unreachable by the reindex above; drop them outright.
-            self.db.execute("DELETE FROM messages WHERE text IS NULL")
+        with self._write():
+            if stale:
+                # Old-shape rows outside any file range (or left by an interrupted
+                # write) are unreachable by the reindex above; drop them outright.
+                self.db.execute("DELETE FROM messages WHERE text IS NULL")
 
-        if stats["files_removed"]:
-            # Safety net for FTS rows left without a covering file_ranges row
-            # (interrupted reindex in older code): their hits would fail context.
+            if stats["files_removed"]:
+                # Safety net for FTS rows left without a covering file_ranges row
+                # (interrupted reindex in older code): their hits would fail context.
+                self.db.execute(
+                    "DELETE FROM messages WHERE rowid NOT IN"
+                    " (SELECT m.rowid FROM messages m"
+                    "  JOIN file_ranges fr ON m.rowid BETWEEN fr.lo AND fr.hi)"
+                )
+
             self.db.execute(
-                "DELETE FROM messages WHERE rowid NOT IN"
-                " (SELECT m.rowid FROM messages m"
-                "  JOIN file_ranges fr ON m.rowid BETWEEN fr.lo AND fr.hi)"
+                "INSERT OR REPLACE INTO meta(key, value) VALUES('last_sync', ?)",
+                (str(time.time()),),
             )
-
-        self.db.execute(
-            "INSERT OR REPLACE INTO meta(key, value) VALUES('last_sync', ?)",
-            (str(time.time()),),
-        )
         return stats
 
     def sync_if_stale(self, min_interval=SYNC_MIN_INTERVAL, logger=None):
@@ -226,14 +270,15 @@ class Index:
         except Exception as exc:  # corrupt or unexpected file: skip, don't crash sync
             log("skip %s: %s" % (path, exc))
             return
-        self._drop_path(path)
         if not msgs:
-            self.db.execute(
-                "INSERT OR REPLACE INTO"
-                " files(path, source, session_id, cwd, mtime, size, title, started_ts)"
-                " VALUES(?,?,?,?,?,?,?,?)",
-                (path, source.name, session_id, cwd, mtime, size, "", ""),
-            )
+            with self._write():
+                self._drop_path(path)
+                self.db.execute(
+                    "INSERT OR REPLACE INTO"
+                    " files(path, source, session_id, cwd, mtime, size, title, started_ts)"
+                    " VALUES(?,?,?,?,?,?,?,?)",
+                    (path, source.name, session_id, cwd, mtime, size, "", ""),
+                )
             return
         rows = []
         for lineno, msg in msgs:
@@ -253,28 +298,30 @@ class Index:
                     1 if msg.envelope else 0,
                 )
             )
-        self.db.execute("BEGIN")
-        lo = self.db.execute("SELECT COALESCE(MAX(rowid), 0) + 1 FROM messages").fetchone()[0]
-        self.db.executemany(
-            "INSERT INTO messages(body, text, grams, source, session_id, cwd, ts,"
-            " role, kind, path, lineno, envelope)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-            rows,
-        )
-        hi = lo + len(rows) - 1
-        self.db.execute(
-            "INSERT INTO file_ranges(path, lo, hi) VALUES(?,?,?)", (path, lo, hi)
-        )
-        self.db.execute(
-            "INSERT OR REPLACE INTO"
-            " files(path, source, session_id, cwd, mtime, size, title, started_ts)"
-            " VALUES(?,?,?,?,?,?,?,?)",
-            (
-                path, source.name, session_id, cwd, mtime, size,
-                make_title(msgs), first_ts(msgs),
-            ),
-        )
-        self.db.execute("COMMIT")
+        # Old rows out and new rows in, atomically: a crash between them would
+        # otherwise leave the session unindexed with its files row unchanged.
+        with self._write():
+            self._drop_path(path)
+            lo = self.db.execute("SELECT COALESCE(MAX(rowid), 0) + 1 FROM messages").fetchone()[0]
+            self.db.executemany(
+                "INSERT INTO messages(body, text, grams, source, session_id, cwd, ts,"
+                " role, kind, path, lineno, envelope)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                rows,
+            )
+            hi = lo + len(rows) - 1
+            self.db.execute(
+                "INSERT INTO file_ranges(path, lo, hi) VALUES(?,?,?)", (path, lo, hi)
+            )
+            self.db.execute(
+                "INSERT OR REPLACE INTO"
+                " files(path, source, session_id, cwd, mtime, size, title, started_ts)"
+                " VALUES(?,?,?,?,?,?,?,?)",
+                (
+                    path, source.name, session_id, cwd, mtime, size,
+                    make_title(msgs), first_ts(msgs),
+                ),
+            )
         stats["messages"] += len(rows)
 
     def _drop_path(self, path):
