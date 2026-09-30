@@ -4,6 +4,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+- Codex cancelled mnemo's tools in unattended runs (`codex exec`, where approvals are off and any tool not marked read-only needs one). The MCP tools now declare annotations: `search_sessions`, `get_context`, `get_session` and `list_recent_sessions` are marked `readOnlyHint`, so Codex no longer cancels them in unattended runs (`codex exec`, where approvals are off and any tool without the hint needs one). `reindex` is marked as a non-destructive write.
+
 ## [0.4.0] - 2026-09-30
 
 OpenCode joins Claude Code, Codex and Pi as a fourth source, and `mnemo setup` connects it. Upgrades now reach agent sessions that are already running, and the dashboard, without a restart. Concurrent syncs no longer fail on SQLite locks, and searches are about twice as fast on large indexes.
@@ -18,7 +21,6 @@ OpenCode joins Claude Code, Codex and Pi as a fourth source, and `mnemo setup` c
 - `mnemo upgrade` no longer lists processes that follow updates by themselves, and restarts links before listing the rest.
 
 ### Fixed
-- The MCP tools declare annotations. `search_sessions`, `get_context`, `get_session` and `list_recent_sessions` are marked `readOnlyHint`, so Codex no longer cancels them in unattended runs (`codex exec`, where approvals are off and any tool without the hint needs one). `reindex` is marked as a non-destructive write.
 - OpenCode's database is looked up under `$XDG_DATA_HOME/opencode` when that is set, as OpenCode itself does (default `~/.local/share/opencode`).
 - Concurrent syncs of one index could fail with "database is locked": index writes began with a deferred transaction that read first and then upgraded to a write lock, which SQLite refuses at once (without waiting) when another writer does the same, and the failed transaction kept its lock so the other writer then waited out the 10 s timeout. This hit whenever the MCP server, the CLI, the dashboard or a neighbor's relayed search synced at the same time, most on a fresh index, and made the multi-device test flaky. Writes now take the lock up front (`BEGIN IMMEDIATE`) and roll back on failure, and a session's old rows are replaced in the same transaction as its new ones.
 - pip/uv installs started their own subprocesses (link answers, tool calls, services) with `python -m mnemo`, which imports a `mnemo/` directory from the current working directory if there is one; they now import the installed package explicitly.
