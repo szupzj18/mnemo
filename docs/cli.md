@@ -69,7 +69,7 @@ Incremental sync of local session logs. Files whose size or mtime are unchanged 
 ## mnemo setup
 
 ```bash
-mnemo setup [--agent claude,codex,opencode,pi] [--dry-run]
+mnemo setup [--agent claude,codex,opencode,pi] [--dry-run] [--json]
 ```
 
 Connects every coding agent found on this machine and reports each step as added, fixed, ok, skipped or failed:
@@ -81,7 +81,30 @@ Connects every coding agent found on this machine and reports each step as added
 | OpenCode | adds `mcp.mnemo` to `opencode.json` (or an existing `opencode.jsonc`) under `$XDG_CONFIG_HOME/opencode`, default `~/.config/opencode` (backed up first). A `.jsonc` with comments is left alone, and the block to add is printed instead |
 | Pi | links the extension into `~/.pi/agent/extensions/mnemo.ts` |
 
-Idempotent: already-configured agents are left alone, stale symlinks are repaired, real files are never replaced. Restart running agent sessions afterwards.
+Idempotent: already-configured agents are left alone, stale symlinks are repaired, real files are never replaced.
+
+The output groups the steps by agent and ends with a summary and what to do next:
+
+```text
+mnemo setup · 4 agents found
+
+  Claude Code
+    ✓ MCP server   already registered
+    ✓ skill        ~/.claude/skills/mnemo
+  Codex
+    + MCP server   ~/.codex/config.toml
+                   backup: config.toml.bak-20260930-171203
+  OpenCode
+    · not installed
+  Pi
+    ↻ extension    ~/.pi/agent/extensions/mnemo.ts
+                   repaired link, was -> ~/old-checkout/integrations/pi/mnemo.ts
+
+  1 added · 1 repaired · 2 unchanged · 1 skipped
+  → Restart Codex and Pi sessions to load mnemo.
+```
+
+`+` added, `↻` repaired, `✓` unchanged, `·` skipped, `✗` failed (exit code 1). Colors appear on a terminal only and are disabled with `NO_COLOR`; terminals that aren't UTF-8 get ASCII marks (`+ ~ = - !`). `--json` prints the steps for scripts.
 
 ## mnemo upgrade
 

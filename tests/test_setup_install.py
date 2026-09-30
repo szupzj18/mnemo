@@ -186,6 +186,81 @@ class OpenCodeSetupTest(unittest.TestCase):
             self.assertFalse(os.path.exists(self.config(h)))
 
 
+class RenderTest(unittest.TestCase):
+    S = setup.Step
+
+    def render(self, steps, **kw):
+        kw.setdefault("home_dir", "/home/u")
+        return setup.render(steps, **kw)
+
+    def test_groups_by_agent_with_summary_and_next_step(self):
+        out = self.render([
+            self.S("claude", "MCP server", "already registered", "ok"),
+            self.S("claude", "skill", "/home/u/.claude/skills/mnemo", "ok"),
+            self.S("codex", "MCP server", "/home/u/.codex/config.toml (backup: /home/u/.codex/config.toml.bak-1)", "added"),
+            self.S("opencode", "detect", "not installed", "skipped"),
+            self.S("pi", "extension", "/home/u/.pi/agent/extensions/mnemo.ts (was -> /old/pi.ts)", "fixed"),
+        ])
+        self.assertEqual(out.splitlines(), [
+            "mnemo setup \u00b7 3 agents found",
+            "",
+            "  Claude Code",
+            "    \u2713 MCP server   already registered",
+            "    \u2713 skill        ~/.claude/skills/mnemo",
+            "  Codex",
+            "    + MCP server   ~/.codex/config.toml",
+            "                   backup: config.toml.bak-1",
+            "  OpenCode",
+            "    \u00b7 not installed",
+            "  Pi",
+            "    \u21bb extension    ~/.pi/agent/extensions/mnemo.ts",
+            "                   repaired link, was -> /old/pi.ts",
+            "",
+            "  1 added \u00b7 1 repaired \u00b7 2 unchanged \u00b7 1 skipped",
+            "  \u2192 Restart Codex and Pi sessions to load mnemo.",
+        ])
+        self.assertNotIn("\033", out, "no color unless asked")
+
+    def test_next_step_says_what_is_left(self):
+        ok = self.S("pi", "extension", "x", "ok")
+        cases = [
+            ([ok], {}, "Everything is already set up."),
+            ([self.S("pi", "extension", "x", "added")], {"dry_run": True}, "without --dry-run to apply"),
+            ([self.S("codex", "MCP server", "boom", "failed")], {}, "Fix the failed steps"),
+            ([self.S("opencode", "MCP server", "a\nb", "skipped")], {}, "Finish OpenCode by hand"),
+            ([self.S("pi", "detect", "not installed", "skipped")], {}, "No agents found"),
+        ]
+        for steps, kw, want in cases:
+            with self.subTest(want):
+                self.assertIn(want, self.render(steps, **kw).splitlines()[-1])
+        self.assertNotIn("already set up", self.render([ok, self.S("opencode", "MCP server", "a", "skipped")]))
+
+    def test_multi_line_details_stay_aligned(self):
+        out = self.render([self.S("opencode", "MCP server", "x.jsonc has comments\nadd this:\n\"mnemo\": {}", "skipped")])
+        lines = out.splitlines()
+        start = lines.index("    \u00b7 MCP server   x.jsonc has comments")
+        self.assertEqual(lines[start + 1:start + 3], ["                   add this:", '                   "mnemo": {}'])
+
+    def test_plain_ascii_and_color(self):
+        steps = [self.S("pi", "extension", "x", "added")]
+        ascii_out = self.render(steps, unicode=False)
+        self.assertTrue(all(ord(c) < 128 for c in ascii_out), ascii_out)
+        self.assertIn("-> Restart Pi sessions", ascii_out)
+        colored = self.render(steps, color=True)
+        self.assertIn("\033[34m+\033[0m", colored)
+        self.assertIn("\033[1mPi\033[0m", colored)
+
+    def test_cli_json(self):
+        with AgentHome(agents=("pi",)) as h:
+            p = subprocess.run([sys.executable, os.path.join(REPO, "bin", "mnemo"), "setup", "--json", "--dry-run"],
+                               capture_output=True, text=True, env=dict(os.environ, HOME=h.home))
+            self.assertEqual(p.returncode, 0, p.stderr)
+            data = json.loads(p.stdout)
+            self.assertTrue(data["dry_run"])
+            self.assertIn({"agent": "pi", "action": "extension", "status": "added",
+                           "detail": h.path(".pi", "agent", "extensions", "mnemo.ts")}, data["steps"])
+
+
 class InstallScriptTest(unittest.TestCase):
     """scripts/install.sh end to end, cloning this repository's HEAD."""
 
