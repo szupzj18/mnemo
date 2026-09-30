@@ -263,6 +263,21 @@ def cmd_mcp(args):
     return mcp_server.run()
 
 
+def cmd_doctor(args):
+    from . import doctor
+
+    checks = doctor.run(full=args.full, offline=args.offline)
+    failed = any(c.status == doctor.FAIL for c in checks)
+    if args.json:
+        print(json.dumps({"version": __version__, "checks": [c.to_dict() for c in checks]},
+                         ensure_ascii=False, indent=2))
+        return 1 if failed else 0
+    encoding = (getattr(sys.stdout, "encoding", "") or "").lower().replace("-", "")
+    print(doctor.render(checks, node_name=remote_mod.load_node()["name"], color=color_enabled(),
+                        unicode=encoding.startswith("utf")))
+    return 1 if failed else 0
+
+
 def cmd_setup(args):
     from . import setup as st
 
@@ -661,6 +676,12 @@ def main(argv=None):
                     help="drop the index and reparse every session from scratch")
     sp.add_argument("-v", "--verbose", action="store_true")
     sp.set_defaults(func=cmd_index)
+
+    sp = sub.add_parser("doctor", help="check the index, agents, devices and links, and say how to fix what is off")
+    sp.add_argument("--full", action="store_true", help="also verify the index file (takes a few seconds)")
+    sp.add_argument("--offline", action="store_true", help="skip the check for a newer mnemo on PyPI")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_doctor)
 
     sp = sub.add_parser("setup", help="connect Claude Code, Codex, OpenCode and Pi to mnemo (safe to re-run)")
     sp.add_argument("--agent", help="comma-separated subset of claude,codex,opencode,pi (default: every one detected)")
