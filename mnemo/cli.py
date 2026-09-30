@@ -18,6 +18,24 @@ BOLD = "\033[1m"
 DIM = "\033[2m"
 YELLOW = "\033[33m"
 RESET = "\033[0m"
+_ANSI = {"BOLD": BOLD, "DIM": DIM, "YELLOW": YELLOW, "RESET": RESET}
+
+
+def color_enabled(stream=None):
+    """Color only on a terminal, and never with NO_COLOR set (https://no-color.org) or TERM=dumb."""
+    stream = stream or sys.stdout
+    try:
+        tty = stream.isatty()
+    except (AttributeError, ValueError):
+        tty = False
+    return tty and not os.environ.get("NO_COLOR") and os.environ.get("TERM") != "dumb"
+
+
+def _set_color(on):
+    # The styles are module constants used across the commands; blank them once
+    # so piped or redirected output carries no escape codes.
+    for name, code in _ANSI.items():
+        globals()[name] = code if on else ""
 
 
 def _hl(text, use_color):
@@ -261,9 +279,8 @@ def cmd_setup(args):
             {"agent": s.agent, "action": s.action, "status": s.status, "detail": s.detail} for s in steps]},
             ensure_ascii=False, indent=2))
         return 1 if failed else 0
-    tty = sys.stdout.isatty()
     encoding = (getattr(sys.stdout, "encoding", "") or "").lower().replace("-", "")
-    print(st.render(steps, dry_run=args.dry_run, color=tty and not os.environ.get("NO_COLOR"),
+    print(st.render(steps, dry_run=args.dry_run, color=color_enabled(),
                     unicode=encoding.startswith("utf")))
     return 1 if failed else 0
 
@@ -321,7 +338,7 @@ def cmd_search(args):
     if not hits:
         print("no matches")
         return 1
-    color = sys.stdout.isatty()
+    color = color_enabled()
     for i, h in enumerate(hits, 1):
         print(
             "%s%d.%s %s[%s/%s]%s %s/%s  %s%s%s  %s%s%s"
@@ -491,7 +508,7 @@ def cmd_context(args):
     if args.json:
         print(json.dumps(rows, ensure_ascii=False, indent=2))
         return 0
-    color = sys.stdout.isatty()
+    color = color_enabled()
     for r in rows:
         mark = ">" if r["hit"] else " "
         line = "%s %s %s:%s %s %s" % (
@@ -645,7 +662,7 @@ def main(argv=None):
     sp.add_argument("-v", "--verbose", action="store_true")
     sp.set_defaults(func=cmd_index)
 
-    sp = sub.add_parser("setup", help="connect Claude Code, Codex and Pi to mnemo (safe to re-run)")
+    sp = sub.add_parser("setup", help="connect Claude Code, Codex, OpenCode and Pi to mnemo (safe to re-run)")
     sp.add_argument("--agent", help="comma-separated subset of claude,codex,opencode,pi (default: every one detected)")
     sp.add_argument("--dry-run", action="store_true", help="show what would change without changing anything")
     sp.add_argument("--json", action="store_true", help="machine-readable steps")
@@ -792,5 +809,6 @@ def main(argv=None):
     sp.add_argument("--no-open", action="store_true", help="do not open a browser")
     sp.set_defaults(func=cmd_dashboard)
 
+    _set_color(color_enabled())
     args = p.parse_args(argv)
     return args.func(args)

@@ -88,6 +88,8 @@ _XML_ENVELOPE_TAGS = (
     "command-args",
     "command-stdout",
     "command-stderr",
+    # Codex guardian (approval review) prompts: the tool descriptions under review.
+    "guardian_tool_descriptions",
 )
 
 
@@ -106,6 +108,13 @@ CODEX_EXTRA_PATTERNS = (
     r"The following is the Codex agent history\b.*?>>>\s*APPROVAL[A-Z ]*?END",
 )
 CODEX_EXTRA_RULES = tuple(re.compile(p, re.S) for p in CODEX_EXTRA_PATTERNS)
+
+CLAUDE_EXTRA_PATTERNS = (
+    # A skill's SKILL.md, injected as its own user message when the skill runs.
+    # (Only this isMeta message: /loop prompts are isMeta too, and are the task.)
+    r"\ABase directory for this skill:.*",
+)
+CLAUDE_EXTRA_RULES = tuple(re.compile(p, re.S) for p in CLAUDE_EXTRA_PATTERNS)
 
 
 def strip_envelopes(text, extra_rules=()):

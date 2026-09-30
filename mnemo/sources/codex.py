@@ -31,6 +31,7 @@ class CodexSource(Source):
         cwd = ""
         clipf = clip if clip_text else (lambda t: t)
         msgs = []
+        guardian = False
         for lineno, d in self.read_jsonl(path):
             t = d.get("type")
             ts = norm_ts(d.get("timestamp"))
@@ -38,6 +39,11 @@ class CodexSource(Source):
                 p = d.get("payload") or {}
                 sid = p.get("session_id") or p.get("id") or sid
                 cwd = p.get("cwd") or cwd
+                # An approval review Codex runs on its own before a risky command:
+                # every "user" message is generated (the history under review).
+                src = p.get("source")
+                guardian = guardian or (isinstance(src, dict) and isinstance(src.get("subagent"), dict)
+                                        and src["subagent"].get("other") == "guardian")
                 continue
             if t != "response_item":
                 continue
@@ -52,7 +58,9 @@ class CodexSource(Source):
                 if role not in ("user", "assistant"):
                     continue
                 raw0 = self._message_text(p.get("content"))
-                if role == "user":
+                if role == "user" and guardian:
+                    clean, stripped = "", bool(raw0.strip())
+                elif role == "user":
                     clean, stripped = strip_envelopes(raw0, CODEX_EXTRA_RULES)
                 else:
                     clean, stripped = raw0.strip(), False
