@@ -645,7 +645,7 @@ def main(argv=None):
     sp.set_defaults(func=cmd_index)
 
     sp = sub.add_parser("setup", help="connect Claude Code, Codex and Pi to mnemo (safe to re-run)")
-    sp.add_argument("--agent", help="comma-separated subset of claude,codex,pi (default: every one detected)")
+    sp.add_argument("--agent", help="comma-separated subset of claude,codex,opencode,pi (default: every one detected)")
     sp.add_argument("--dry-run", action="store_true", help="show what would change without changing anything")
     sp.set_defaults(func=cmd_setup)
 

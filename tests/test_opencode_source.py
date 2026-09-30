@@ -198,3 +198,49 @@ class OpenCodeTest(unittest.TestCase):
                     self.assertEqual(idx.counts()["opencode"]["files"], 2)
                 finally:
                     idx.close()
+
+
+class XdgDataHomeTest(unittest.TestCase):
+    """OpenCode stores its database under $XDG_DATA_HOME/opencode when that is set."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="mnemo-opencode-xdg-")
+        self.saved = {k: os.environ.get(k) for k in ("HOME", "XDG_DATA_HOME")}
+        self.home = os.path.join(self.root, "home")
+        self.xdg = os.path.join(self.root, "xdg-data")
+        os.makedirs(os.path.join(self.xdg, "opencode"))
+        os.makedirs(self.home)
+        test = OpenCodeTest("test_indexes_the_sessions_and_their_parts")
+        test.db_path = os.path.join(self.xdg, "opencode", "opencode.db")
+        test._write(test.fixture())
+
+    def tearDown(self):
+        for k, v in self.saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def sync(self, home=None):
+        idx = Index(os.path.join(self.root, "index-%s.db" % bool(home)))
+        try:
+            idx.sync(home=home)
+            return idx.counts().get("opencode", {}).get("files", 0)
+        finally:
+            idx.close()
+
+    def test_used_for_the_users_own_home(self):
+        os.environ["HOME"] = self.home
+        os.environ["XDG_DATA_HOME"] = self.xdg
+        self.assertEqual(self.sync(), 2)
+
+    def test_ignored_for_another_home(self):
+        os.environ["XDG_DATA_HOME"] = self.xdg
+        other = os.path.join(self.root, "other-home")
+        os.makedirs(other)
+        self.assertEqual(self.sync(home=other), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

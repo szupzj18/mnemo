@@ -35,6 +35,7 @@ mnemo/service.py             `mnemo link --install`: launchd / systemd user / ba
 scripts/release.py           changelog cuts, version bumps, release notes (release-pr.yml / release.yml)
 mnemo/link.py                `mnemo link`: inbound links for devices that cannot connect back; read-only allowlist
 mnemo/fingerprint.py         hash of the running code; devices compare it to find who is behind
+mnemo/xdg.py                 XDG base dirs as OpenCode resolves them (own home only)
 mnemo/integrations/          Pi extension + agent skill (package data; `integrations/` is a symlink)
 scripts/install.sh           curl | sh installer, served at szupzj18.github.io/mnemo/install.sh
 pyproject.toml               packaging for `uv tool install` / `pipx`

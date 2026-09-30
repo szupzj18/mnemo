@@ -9,6 +9,12 @@ if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
 
+# A developer's own XDG settings must not reach the throwaway HOMEs tests use
+# (here or in the mnemo subprocesses they start); tests of XDG set them explicitly.
+for _var in ("XDG_DATA_HOME", "XDG_CONFIG_HOME"):
+    os.environ.pop(_var, None)
+
+
 class DemoHome:
     """A throwaway HOME filled by scripts/make-demo-home.py (5 sessions, 45 messages)."""
 

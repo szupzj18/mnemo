@@ -4,6 +4,7 @@ Idempotent: anything already configured is left alone and reported as such,
 so it is safe to re-run after installing a new agent or upgrading mnemo.
 Config files are backed up before they are edited.
 """
+import json
 import os
 import shlex
 import shutil
@@ -16,7 +17,9 @@ INTEGRATIONS = os.path.join(PKG, "integrations")
 SKILL_SRC = os.path.join(INTEGRATIONS, "skills", "mnemo")
 PI_SRC = os.path.join(INTEGRATIONS, "pi", "mnemo.ts")
 
-AGENTS = ("claude", "codex", "pi")
+from . import xdg
+
+AGENTS = ("claude", "codex", "opencode", "pi")
 
 
 class Step:
@@ -53,6 +56,8 @@ def detect():
     return {
         "claude": bool(shutil.which("claude") or os.path.isdir(home(".claude"))),
         "codex": bool(shutil.which("codex") or os.path.isdir(home(".codex"))),
+        "opencode": bool(shutil.which("opencode") or os.path.isdir(os.path.join(xdg.config(), "opencode"))
+                         or os.path.isdir(os.path.join(xdg.data(), "opencode"))),
         "pi": bool(shutil.which("pi") or os.path.isdir(home(".pi", "agent"))),
     }
 
@@ -138,11 +143,47 @@ def setup_codex(cmd, dry_run):
     return [Step("codex", "MCP server", detail, "added")]
 
 
+def opencode_entry(cmd):
+    # The first start builds the index before answering; OpenCode's default is 5 s.
+    return {"type": "local", "command": cmd + ["mcp"], "enabled": True, "timeout": 120000}
+
+
+def setup_opencode(cmd, dry_run):
+    folder = os.path.join(xdg.config(), "opencode")
+    jsonc = os.path.join(folder, "opencode.jsonc")
+    config = jsonc if os.path.isfile(jsonc) else os.path.join(folder, "opencode.json")
+    snippet = json.dumps({"mcp": {"mnemo": opencode_entry(cmd)}}, indent=2)
+    data = {"$schema": "https://opencode.ai/config.json"}
+    if os.path.isfile(config):
+        with open(config, encoding="utf-8") as f:
+            text = f.read()
+        try:
+            data = json.loads(text) if text.strip() else data
+        except ValueError:
+            # JSONC with comments: rewriting it would drop them.
+            return [Step("opencode", "MCP server", "%s has comments; add under \"mcp\": %s"
+                         % (config, snippet), "skipped")]
+        if not isinstance(data, dict) or not isinstance(data.get("mcp", {}), dict):
+            return [Step("opencode", "MCP server", "%s is not a config object; left alone" % config, "skipped")]
+    if "mnemo" in data.get("mcp", {}):
+        return [Step("opencode", "MCP server", "%s already has mcp.mnemo" % config, "ok")]
+    data.setdefault("mcp", {})["mnemo"] = opencode_entry(cmd)
+    detail = config
+    if not dry_run:
+        os.makedirs(folder, exist_ok=True)
+        if os.path.isfile(config):
+            detail = "%s (backup: %s)" % (config, _backup(config))
+        with open(config, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+    return [Step("opencode", "MCP server", detail, "added")]
+
+
 def setup_pi(cmd, dry_run):
     return [_link("pi", "extension", PI_SRC, home(".pi", "agent", "extensions", "mnemo.ts"), dry_run)]
 
 
-SETUPS = {"claude": setup_claude, "codex": setup_codex, "pi": setup_pi}
+SETUPS = {"claude": setup_claude, "codex": setup_codex, "opencode": setup_opencode, "pi": setup_pi}
 
 
 def run(agents=None, dry_run=False):

@@ -4,6 +4,7 @@ import os
 import sqlite3
 from urllib.parse import quote
 
+from .. import xdg
 from ..model import Msg, clip, strip_envelopes
 from .base import Source, SourceUnavailable
 
@@ -25,7 +26,8 @@ class OpenCodeSource(Source):
     name = "opencode"
 
     def db_path(self):
-        return os.path.join(self.home, ".local", "share", "opencode", "opencode.db")
+        # OpenCode keeps its data under $XDG_DATA_HOME/opencode on every platform.
+        return os.path.join(xdg.data(self.home), "opencode", "opencode.db")
 
     def _connect(self, path):
         # Quoted: "#", "?" and "%" in the path are URI syntax otherwise.

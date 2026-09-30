@@ -69,7 +69,7 @@ Incremental sync of local session logs. Files whose size or mtime are unchanged 
 ## mnemo setup
 
 ```bash
-mnemo setup [--agent claude,codex,pi] [--dry-run]
+mnemo setup [--agent claude,codex,opencode,pi] [--dry-run]
 ```
 
 Connects every coding agent found on this machine and reports each step as added, fixed, ok, skipped or failed:
@@ -78,6 +78,7 @@ Connects every coding agent found on this machine and reports each step as added
 |---|---|
 | Claude Code | `claude mcp add --scope user mnemo -- <mnemo> mcp`, and links the skill into `~/.claude/skills/mnemo` |
 | Codex | appends `[mcp_servers.mnemo]` to `~/.codex/config.toml` (backed up first) |
+| OpenCode | adds `mcp.mnemo` to `opencode.json` (or an existing `opencode.jsonc`) under `$XDG_CONFIG_HOME/opencode`, default `~/.config/opencode` (backed up first). A `.jsonc` with comments is left alone, and the block to add is printed instead |
 | Pi | links the extension into `~/.pi/agent/extensions/mnemo.ts` |
 
 Idempotent: already-configured agents are left alone, stale symlinks are repaired, real files are never replaced. Restart running agent sessions afterwards.
