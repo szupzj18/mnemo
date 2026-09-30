@@ -124,6 +124,46 @@ The safe way to adopt a new index schema after updating Mnemo:
 
 `--remotes` instead rsyncs the code to every registered device and runs a full upgrade there, even on devices already current. `--restore` puts back a backup (the newest by default) after saving the current index as a `pre-restore` backup.
 
+## mnemo doctor
+
+```bash
+mnemo doctor [--full] [--offline] [--json]
+```
+
+Checks everything mnemo depends on and says how to fix what is off:
+
+```text
+mnemo doctor · laptop · mnemo 0.4.1
+
+  mnemo
+    ✓ version       0.4.1, the latest
+    ✓ index         ~/.mnemo/index.db, 834 sessions, 1.4 GB, synced 3 min ago
+    ✓ processes     none running old code
+  Agents
+    ✓ Claude Code   MCP server + skill
+    ! Codex         not connected: MCP server
+    · OpenCode      not installed
+    ✓ Pi            extension
+  Devices
+    ✓ devbox-109    reachable, 160 ms, same code, relay off
+    ! devbox-126    reachable, 169 ms, runs other code
+  Links
+    ✓ devbox-109    connected for 35 min
+
+  2 warnings
+  → mnemo setup
+  → mnemo remote upgrade
+```
+
+| Group | What it checks |
+|---|---|
+| mnemo | a newer release on PyPI (skip with `--offline`); the index opens, has the current schema and no rows from an older mnemo; no long-running mnemo process still runs old code. `--full` also runs SQLite's `quick_check` on the index (a few seconds on a large one) |
+| Agents | the same checks as `mnemo setup --dry-run` |
+| Devices | every device a search reaches, through relays too: reachable, same code, relay setting; a device that linked in is fine while asleep |
+| Links | each `mnemo link` service is connected |
+
+`✓` ok, `!` warning (works, worth fixing), `✗` problem, `·` does not apply. It exits 1 when there is a problem. `--json` for scripts.
+
 ## mnemo status
 
 ```bash

@@ -31,6 +31,7 @@ mnemo/web_dist/              committed static export of web/ (generated)
 mnemo/sources/{claude,codex,pi}.py   per-agent log adapters
 mnemo/setup.py               `mnemo setup`: wires Claude Code, Codex, Pi (idempotent)
 mnemo/upgrade.py             `mnemo upgrade`: backup, rebuild beside, verify, swap
+mnemo/doctor.py              `mnemo doctor`: health checks reusing setup, topology, link and upgrade logic
 mnemo/service.py             `mnemo link --install`: launchd / systemd user / background services for links
 scripts/release.py           changelog cuts, version bumps, release notes (release-pr.yml / release.yml)
 mnemo/link.py                `mnemo link`: inbound links for devices that cannot connect back; read-only allowlist

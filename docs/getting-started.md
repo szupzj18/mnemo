@@ -136,6 +136,8 @@ mnemo dashboard                             # browser UI
 
 ## Troubleshooting
 
+Start with `mnemo doctor`: it checks the index, each agent's connection, your devices and links, and prints the command that fixes each problem.
+
 | Symptom | Fix |
 |---|---|
 | `no matches` for something you know exists | Check `mnemo status` for the source and session counts. A session in a directory Mnemo doesn't scan (see *Where Mnemo looks*) is never indexed. |
