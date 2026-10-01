@@ -105,7 +105,8 @@ def main():
         out["incremental_sync_ms"] = median_ms(lambda: run(["index"], db), args.repeats)
 
         def mcp_ready():
-            proc = subprocess.Popen(MNEMO + ["mcp"], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+            # --db: without it the server syncs the live index, with this checkout's code.
+            proc = subprocess.Popen(MNEMO + ["--db", db, "mcp"], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                                     stderr=subprocess.PIPE, text=True)
             for line in proc.stderr:
                 if "ready" in line:
