@@ -6,9 +6,9 @@ export const PILLARS = {
     icon: Gauge,
     id: "speed",
     title: "Found in milliseconds",
-    stat: "~50 ms",
+    stat: "<100 ms",
     statLabel: "search, end to end",
-    body: "A ranked SQLite FTS5 index instead of scanning gigabytes of raw logs. Context around a hit in 7 ms, even in a 44k-line session.",
+    body: "A ranked SQLite FTS5 index instead of scanning gigabytes of raw logs. Context around a hit in 12 ms, even in a 27k-message session.",
   },
   topology: {
     icon: Waypoints,

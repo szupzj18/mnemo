@@ -28,10 +28,10 @@ const TOPOLOGY = [
 ]
 
 const STATS = [
-  ["~50 ms", "search, CLI end to end"],
-  ["7 ms", "context on a 44k-line session"],
+  ["<100 ms", "search, CLI end to end"],
+  ["12 ms", "context in a 27k-message session"],
   ["0.1 s", "incremental sync when idle"],
-  ["~3,200", "tokens for a top-20 result"],
+  ["~3,800", "tokens for a top-20 result"],
 ]
 
 function Themed({ light, dark, alt, className }: { light: string; dark: string; alt: string; className?: string }) {
@@ -134,7 +134,7 @@ export default function Home() {
         {/* retrieval efficiency */}
         <Section id="speed" eyebrow="Retrieval efficiency" title="Less digging, same answers." lead="Grep hands an agent gigabytes of unranked JSON to narrow down. Mnemo hands it the few messages that matter, ranked, with the agent, device and time attached.">
           <GrepVsMnemo />
-          <p className="mt-3 text-xs text-neutral-500">One common English term over 729 real session files (3.6 GB of logs).</p>
+          <p className="mt-3 text-xs text-neutral-500">One common English term over 729 real session files (3.6 GB of logs), measured 2026-09-24.</p>
           <div className="mt-16 grid gap-12 lg:grid-cols-[1.3fr_1fr] [&>*]:min-w-0">
             <div>
               <div className="mb-5 text-sm text-neutral-500">Fresh agents answered four real “what did we do back then” questions; both groups got every answer right.</div>

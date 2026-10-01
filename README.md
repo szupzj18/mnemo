@@ -72,7 +72,7 @@ Every lookup follows the same three steps, and each step reads more than the one
 
 ```text
 search_sessions ──▶ get_context ──▶ get_session
- ~1.6k–3.3k tokens   a few k tokens     only when the whole arc matters
+ ~1.8k–3.9k tokens   a few k tokens     only when the whole arc matters
  "where is it?"      "what happened?"   "walk me through it"
 ```
 
@@ -112,9 +112,9 @@ and say which session (agent, device, date) you are drawing on.
 
 - **Cross-agent.** A single index covers Claude Code, Codex (including archived sessions), OpenCode and Pi, all normalized to one message schema.
 - **Cross-device.** Queries fan out over SSH to your devboxes and merge by rank. Session bodies never leave the machine that produced them.
-- **Cheap for agents.** A search returns ranked snippets, not raw logs: ~1.6k tokens for 10 hits. In a controlled test, agents used 23% fewer tokens and 52% fewer tool calls than with grep ([benchmarks](#benchmarks)).
+- **Cheap for agents.** A search returns ranked snippets, not raw logs: ~1.9k tokens for 10 hits. In a controlled test, agents used 23% fewer tokens and 52% fewer tool calls than with grep ([benchmarks](#benchmarks)).
 - **Good at CJK.** English uses prefix matching and Chinese uses substring matching (unigram + bigram), all ranked with BM25.
-- **Fast and small.** Searches take about 50–100 ms, an idle incremental sync about 0.1 s, and the index is ~22% of raw log size.
+- **Fast.** Searches take about 60–100 ms on a 236k-message index and an idle incremental sync about 0.1 s. Opening a long session reads one page around the hit (133 KB) instead of the whole transcript (19 MB).
 - **Zero dependencies.** Mnemo needs only the Python 3.7+ standard library and SQLite FTS5. It installs with `git clone` and needs no daemon.
 - **A dashboard for humans.** A local browser UI to search, read sessions on a timeline and manage devices.
 
@@ -230,17 +230,20 @@ Details: [Multi-device](docs/multi-device.md).
 
 ## Benchmarks
 
-Measured on a real corpus of 730 sessions and 149,678 messages (3.6 GB of logs):
+Measured on 2026-10-01 (0.4.1 + current `main`) on a real corpus of 872 sessions and 235,602 messages (4.14 GB of logs):
 
 | | |
 |---|---|
-| Full index build | 28.9 s (one-time) |
-| Incremental sync, nothing changed | 0.07–0.13 s |
-| Search (CLI end-to-end) | 46–106 ms |
-| `context` lookup, largest session | 7 ms (vs 316 ms re-parsing JSONL) |
-| Index size | 784 MB (21.8% of raw) |
+| Full index build | 48.4 s (one-time) |
+| Incremental sync, nothing changed | 90 ms |
+| Search (CLI end-to-end) | 60–97 ms |
+| `context` lookup, largest session (27k messages) | 12.5 ms (vs 385 ms re-parsing the file) |
+| Opening that session in the dashboard | 26 ms, 133 KB (vs 62 ms, 19.3 MB for the whole transcript) |
+| Index size | 1.84 GB (44% of raw; one copy of text instead of two is on the roadmap) |
 
-In a controlled experiment, fresh agents answered four "what did we do back then" questions, once with Mnemo and once with only `grep`/`rg` over the raw logs. Both groups got every answer right. With Mnemo they used **23% fewer tokens, 52% fewer tool calls and 40% less wall time**. The gain grows with the size of the search space. When the answer sat in a small, guessable directory, plain grep was just as good. Methodology and caveats: [Benchmarks](docs/benchmarks.md).
+Reproduce on your own history with `python3 scripts/benchmark-real.py`. It prints no session text or paths.
+
+In a controlled experiment on 2026-09-24, fresh agents answered four "what did we do back then" questions, once with Mnemo and once with only `grep`/`rg` over the raw logs. Both groups got every answer right. With Mnemo they used **23% fewer tokens, 52% fewer tool calls and 40% less wall time**. The gain grows with the size of the search space. When the answer sat in a small, guessable directory, plain grep was just as good. Methodology and caveats: [Benchmarks](docs/benchmarks.md).
 
 ## Privacy & security
 

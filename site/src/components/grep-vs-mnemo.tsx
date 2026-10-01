@@ -1,5 +1,5 @@
 // grep vs. mnemo on the same query. Figures: docs/benchmarks.md, "Compared with grep"
-// (a common English term over 729 session files).
+// (a common English term over 729 session files, measured 2026-09-24).
 const NOISE = [
   '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_01H…',
   '{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_0…',
