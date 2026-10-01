@@ -232,7 +232,7 @@ flowchart LR
 | 搜索（CLI 端到端） | 60–97 ms |
 | 最大会话（2.7 万条消息）的 `context` 读取 | 12.5 ms（重新解析文件需 385 ms） |
 | 在面板中打开该会话 | 26 ms、133 KB（整段读取需 62 ms、19.3 MB） |
-| 索引体积 | 1.84 GB（原始日志的 44%；正文只存一份的优化已在路线图中） |
+| 索引体积 | 1.30 GB（原始日志的 31%；正文只存一份之前为 1.84 GB） |
 
 用 `python3 scripts/benchmark-real.py` 可以在你自己的会话上复现，输出不含任何会话内容和路径。
 
@@ -263,7 +263,8 @@ flowchart LR
 - [ ] 更多 Agent：Gemini CLI（正文存在 protobuf SQLite blob 中）、Cursor
 - [ ] 语义检索（`sqlite-vec` + 本地 embedding）与关键词检索混合
 - [ ] `context` 返回的 `tool_result` 加长度上限，控制单次 token 上界
-- [ ] external-content FTS 表 + 正文压缩（索引预计小 30–40%）
+- [x] 正文只存一份（上述语料上索引 1.84 → 1.30 GB）
+- [ ] 注入内容的原文压缩存储
 
 ## 参与贡献
 

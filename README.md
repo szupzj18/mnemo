@@ -239,7 +239,7 @@ Measured on 2026-10-01 (0.4.1 + current `main`) on a real corpus of 872 sessions
 | Search (CLI end-to-end) | 60–97 ms |
 | `context` lookup, largest session (27k messages) | 12.5 ms (vs 385 ms re-parsing the file) |
 | Opening that session in the dashboard | 26 ms, 133 KB (vs 62 ms, 19.3 MB for the whole transcript) |
-| Index size | 1.84 GB (44% of raw; one copy of text instead of two is on the roadmap) |
+| Index size | 1.30 GB (31% of raw; was 1.84 GB before message text was stored once) |
 
 Reproduce on your own history with `python3 scripts/benchmark-real.py`. It prints no session text or paths.
 
@@ -270,7 +270,8 @@ See [SECURITY.md](SECURITY.md) to report a vulnerability.
 - [ ] More agents: Gemini CLI (bodies live in protobuf SQLite blobs), Cursor
 - [ ] Hybrid semantic search (`sqlite-vec` + local embeddings) alongside keyword search
 - [ ] Length caps on `tool_result` in `context` responses to bound per-call token cost
-- [ ] External-content FTS table with compressed bodies (~30–40% smaller index)
+- [x] Store message text once (index 1.84 → 1.30 GB on the corpus above)
+- [ ] Compressed verbatim bodies for injected content
 
 ## Contributing
 

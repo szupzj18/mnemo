@@ -44,7 +44,19 @@ python3 scripts/benchmark-real.py --json /tmp/real.json   # your own history; pr
 | Raw log size | 4.14 GB |
 | Index size | 1.84 GB (44.4% of raw) |
 
-The index is a larger share of the logs than on 2026-09-24 (21.8%). Since 0.4, the Codex adapter reads completed turn items and inter-agent messages that were invisible before, and every message stores its searchable text beside its verbatim body, so most text is stored twice. An external-content table that keeps one copy is on the roadmap.
+The index is a larger share of the logs than on 2026-09-24 (21.8%). Since 0.4, the Codex adapter reads completed turn items and inter-agent messages that were invisible before, and every message stores its searchable text beside its verbatim body, so most text was stored twice.
+
+Schema v3 stores the verbatim body only when it differs from the searchable text (messages carrying injected envelopes); every other row keeps a single copy. Same corpus, same day, both builds back to back:
+
+| | Schema v2 (`v0.4.1-11`) | Schema v3 |
+|---|---|---|
+| Index size | 1.84 GB (44.5% of raw) | **1.30 GB (31.3% of raw)** |
+| Full build | 48.2 s | 44.6 s |
+| Search, four queries (CLI end to end) | 61–100 ms | 61–101 ms |
+| `context`, largest session | 12.5 ms | 9.4 ms |
+| First page / whole transcript, largest session | 22 / 62 ms | 16 / 49 ms |
+
+Search results and their token costs are unchanged apart from sessions that grew between the two runs.
 
 ### Indexing
 

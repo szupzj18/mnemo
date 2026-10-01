@@ -11,7 +11,7 @@ from .sources.base import SourceUnavailable
 
 DEFAULT_DB_PATH = os.path.expanduser("~/.mnemo/index.db")
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS files (
@@ -131,7 +131,7 @@ class Index:
 
         Runs at construction without dropping anything, so a read-only command
         like `status` keeps working on an old index until the next sync rebuilds
-        it. A freshly created (empty) v2 schema is stamped current immediately.
+        it. A freshly created (empty) schema is stamped current immediately.
         """
         row = self.db.execute(
             "SELECT value FROM meta WHERE key='schema_version'"
@@ -144,7 +144,7 @@ class Index:
             # still work, writes are refused in _check_writable().
             return False
         cols = {r["name"] for r in self.db.execute("PRAGMA table_info(files)")}
-        if "title" in cols:  # SCHEMA just created the current tables empty
+        if row is None and "title" in cols:  # SCHEMA just created the current tables empty
             self._set_version()
             return False
         return True
@@ -306,9 +306,13 @@ class Index:
             return
         rows = []
         for lineno, msg in msgs:
+            # body holds the verbatim message only when it differs from the
+            # cleaned text (injected envelopes); otherwise NULL, and readers
+            # fall back to text. Storing both doubled the index (schema v3).
+            stored = msg.stored
             rows.append(
                 (
-                    msg.stored,
+                    stored if stored != msg.text else None,
                     msg.text,
                     cjk_grams(msg.text),
                     source.name,

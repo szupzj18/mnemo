@@ -99,6 +99,23 @@ class UpgradeTest(unittest.TestCase):
         self.assertEqual(idx.db.execute("SELECT COUNT(*) FROM messages WHERE text IS NULL").fetchone()[0], 0)
         idx.close()
 
+    def test_a_v2_index_is_rebuilt_to_store_text_once(self):
+        idx = Index(self.demo.db)
+        # v2 stored every message's text twice: body beside text.
+        idx.db.execute("UPDATE meta SET value = '2' WHERE key = 'schema_version'")
+        idx.db.execute("UPDATE messages SET body = text WHERE body IS NULL")
+        idx.close()
+
+        idx = Index(self.demo.db)
+        self.assertTrue(idx._migration_pending)
+        self.assertFalse(upgrade.schema_current(self.demo.db))
+        idx.sync(home=self.demo.home)
+        self.assertEqual(idx.stored_version, "3")
+        self.assertEqual(idx.db.execute("SELECT COUNT(*) FROM messages WHERE body = text").fetchone()[0], 0)
+        self.assertEqual(sum(c["messages"] for c in idx.counts().values()), 45)
+        idx.close()
+        self.assertTrue(upgrade.schema_current(self.demo.db))
+
     def test_older_code_refuses_to_write_a_newer_index(self):
         idx = Index(self.demo.db)
         idx.db.execute("UPDATE meta SET value = '99' WHERE key = 'schema_version'")
