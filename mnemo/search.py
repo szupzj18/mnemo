@@ -1,3 +1,6 @@
+import base64
+import json
+
 from .model import CJK_RUN, has_cjk
 from .sources import SOURCES
 
@@ -137,41 +140,95 @@ def recent(index, sources=None, cwd=None, since=None, limit=25):
     return [dict(r) for r in index.db.execute(sql, params).fetchall()]
 
 
-def get_session(index, path):
-    rng = index.db.execute(
-        "SELECT lo, hi FROM file_ranges WHERE path = ?", (path,)
-    ).fetchone()
+def session_selection(count, signature, head=None, tail=None, limit=None, cursor=None, anchor=None):
+    """Validate a read and resolve its message offset; cursors reject reindexed files."""
+    if head and tail:
+        raise ValueError("head and tail are mutually exclusive")
+    if any(v is not None and int(v) < 0 for v in (head, tail)):
+        raise ValueError("head/tail must be nonnegative")
+    if (head or tail) and (limit is not None or cursor or anchor is not None):
+        raise ValueError("head/tail cannot be combined with pagination")
+    if (cursor or anchor is not None) and limit is None:
+        raise ValueError("limit is required with cursor/anchor_line")
+    if cursor and anchor is not None:
+        raise ValueError("cursor and anchor_line are mutually exclusive")
+    if limit is not None and not 1 <= int(limit) <= 500:
+        raise ValueError("limit must be between 1 and 500")
+    size = int(limit) if limit is not None else int(head or tail or count)
+    offset = max(0, count - size) if tail else 0
+    if anchor is not None:
+        offset = max(0, int(anchor) - size // 2)
+    if cursor:
+        try:
+            decoded = json.loads(base64.urlsafe_b64decode(cursor.encode("ascii")).decode("utf-8"))
+            if decoded["signature"] != signature:
+                raise ValueError("session changed; restart pagination")
+            offset = decoded["offset"]
+            if type(offset) is not int or not 0 <= offset < count:
+                raise ValueError("invalid session cursor offset")
+        except (KeyError, TypeError, UnicodeError, json.JSONDecodeError, base64.binascii.Error):
+            raise ValueError("invalid session cursor")
+    return min(offset, count), size
+
+
+def session_page(offset, size, count, signature):
+    def encode(position):
+        payload = json.dumps({"signature": signature, "offset": position}, separators=(",", ":"))
+        return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii")
+    return {
+        "offset": offset, "limit": size,
+        "next_cursor": encode(offset + size) if offset + size < count else None,
+        "previous_cursor": encode(max(0, offset - size)) if offset > 0 else None,
+    }
+
+
+def get_session(index, path, head=None, tail=None, limit=None, cursor=None, anchor_line=None):
+    # Sync can replace the file's rowid range between SELECTs. Metadata, cursor
+    # validation and bodies must refer to the same SQLite snapshot.
+    owns_transaction = not index.db.in_transaction
+    if owns_transaction:
+        index.db.execute("BEGIN")
+    try:
+        return _get_session(index, path, head, tail, limit, cursor, anchor_line)
+    finally:
+        if owns_transaction:
+            index.db.execute("ROLLBACK")
+
+
+def _get_session(index, path, head, tail, limit, cursor, anchor_line):
+    rng = index.db.execute("SELECT lo, hi FROM file_ranges WHERE path = ?", (path,)).fetchone()
     if not rng:
         return None
     lo, hi = rng["lo"], rng["hi"]
-
     meta = index.db.execute(
-        "SELECT source, session_id, cwd FROM files WHERE path = ?", (path,)
+        "SELECT source, session_id, cwd, mtime, size FROM files WHERE path = ?", (path,)
     ).fetchone()
+    count = hi - lo + 1
+    signature = [path, lo, hi, meta["mtime"], meta["size"]]
+    anchor = None
+    if anchor_line is not None:
+        row = index.db.execute(
+            "SELECT rowid FROM messages WHERE rowid BETWEEN ? AND ? AND lineno >= ? ORDER BY rowid LIMIT 1",
+            (lo, hi, int(anchor_line)),
+        ).fetchone()
+        anchor = row[0] - lo if row else count - 1
+    offset, size = session_selection(count, signature, head, tail, limit, cursor, anchor)
     span = index.db.execute(
-        "SELECT MIN(ts) AS started_at, MAX(ts) AS ended_at FROM messages"
-        " WHERE rowid BETWEEN ? AND ?",
+        "SELECT MIN(ts) AS started_at, MAX(ts) AS ended_at FROM messages WHERE rowid BETWEEN ? AND ?",
         (lo, hi),
     ).fetchone()
-
-    messages = [
-        _view_row(r)
-        for r in index.db.execute(
-            "SELECT lineno, ts, role, kind, body, text, envelope FROM messages"
-            " WHERE rowid BETWEEN ? AND ? ORDER BY rowid",
-            (lo, hi),
-        ).fetchall()
-    ]
-    return {
-        "path": path,
-        "source": meta["source"] if meta else None,
-        "session_id": meta["session_id"] if meta else None,
-        "cwd": meta["cwd"] if meta else None,
-        "started_at": span["started_at"],
-        "ended_at": span["ended_at"],
-        "count": len(messages),
-        "messages": messages,
+    messages = [_view_row(r) for r in index.db.execute(
+        "SELECT lineno, ts, role, kind, body, text, envelope FROM messages"
+        " WHERE rowid BETWEEN ? AND ? ORDER BY rowid",
+        (lo + offset, min(hi, lo + offset + size - 1)),
+    )]
+    result = {
+        "path": path, "source": meta["source"], "session_id": meta["session_id"], "cwd": meta["cwd"],
+        "started_at": span["started_at"], "ended_at": span["ended_at"], "count": count, "messages": messages,
     }
+    if limit is not None:
+        result["page"] = session_page(offset, size, count, signature)
+    return result
 
 
 def _source_for(index, path):
@@ -184,7 +241,7 @@ def _source_for(index, path):
     return cls() if cls else None
 
 
-def raw_session(index, path):
+def raw_session(index, path, head=None, tail=None, limit=None, cursor=None, anchor_line=None):
     """Read the full session straight from its JSONL file, no 20k cap."""
     source = _source_for(index, path)
     if source is None:
@@ -201,7 +258,7 @@ def raw_session(index, path):
         }
         for lineno, m in parsed
     ]
-    return {
+    result = {
         "path": path,
         "source": source.name,
         "session_id": sid,
@@ -212,6 +269,16 @@ def raw_session(index, path):
         "messages": messages,
         "raw": True,
     }
+    meta = index.db.execute("SELECT mtime, size FROM files WHERE path=?", (path,)).fetchone()
+    signature = [path, "raw", meta["mtime"], meta["size"]]
+    anchor = None
+    if anchor_line is not None:
+        anchor = next((i for i, m in enumerate(messages) if m["lineno"] >= int(anchor_line)), len(messages) - 1)
+    offset, size = session_selection(len(messages), signature, head, tail, limit, cursor, anchor)
+    result["messages"] = messages[offset:offset + size]
+    if limit is not None:
+        result["page"] = session_page(offset, size, len(messages), signature)
+    return result
 
 
 def raw_context(index, path, line, before=4, after=8):

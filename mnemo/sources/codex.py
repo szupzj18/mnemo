@@ -1,8 +1,23 @@
 import json
+import hashlib
 import os
+import shutil
+from collections import Counter
 
 from ..model import Msg, clip, norm_ts, strip_envelopes, CODEX_EXTRA_RULES
-from .base import Source
+from .base import Source, SourceUnavailable
+
+ADAPTER_VERSION = "3"
+
+
+def message_key(turn, msg):
+    return turn, msg.role, msg.kind, hashlib.sha256(msg.stored.encode("utf-8")).digest()
+
+
+def bound_message(msg):
+    msg.text = clip(msg.text)
+    if msg.raw is not None:
+        msg.raw = clip(msg.raw)
 
 SKIP_ROLES = {"developer", "system"}
 
@@ -25,16 +40,50 @@ class CodexSource(Source):
                 for n in names:
                     if n.endswith(".jsonl"):
                         yield os.path.join(dirpath, n)
+                    elif n.endswith(".jsonl.zst") and n[:-4] not in names:
+                        yield os.path.join(dirpath, n[:-4])
+
+    def records(self):
+        paths = list(self.files())
+        if any(not os.path.exists(p) for p in paths) and not shutil.which("zstd"):
+            raise SourceUnavailable("compressed Codex logs require the optional zstd executable; index retained")
+        for path in paths:
+            actual = path if os.path.exists(path) else path + ".zst"
+            try:
+                stat = os.stat(actual)
+            except OSError:
+                continue
+            yield path, stat.st_mtime, stat.st_size
 
     def parse(self, path, clip_text=True):
         sid = ""
         cwd = ""
-        clipf = clip if clip_text else (lambda t: t)
+        # Compare untruncated representations before clipping; different long outputs
+        # can share their first 20k characters.
+        clipf = lambda t: t
         msgs = []
+        completed = []
+        raw_keys = Counter()
+        raw_ids = set()
+        turn = ""
         guardian = False
         for lineno, d in self.read_jsonl(path):
             t = d.get("type")
             ts = norm_ts(d.get("timestamp"))
+            p = d.get("payload") or {}
+            if t == "turn_context":
+                turn = p.get("turn_id") or turn
+            if t == "event_msg":
+                if p.get("type") == "turn_started":
+                    turn = p.get("turn_id") or str(lineno)
+                elif p.get("type") == "item_completed":
+                    for msg in self._completed(p.get("item") or {}, ts, guardian):
+                        scope = p.get("turn_id") or turn
+                        key = message_key(scope, msg)
+                        if clip_text:
+                            bound_message(msg)
+                        completed.append((lineno, scope, (p.get("item") or {}).get("id"), key, msg))
+                continue
             if t == "session_meta":
                 p = d.get("payload") or {}
                 sid = p.get("session_id") or p.get("id") or sid
@@ -51,8 +100,9 @@ class CodexSource(Source):
             if not isinstance(p, dict):
                 continue
             pt = p.get("type")
-            if pt == "message":
-                role = p.get("role")
+            before = len(msgs)
+            if pt in ("message", "agent_message"):
+                role = "assistant" if pt == "agent_message" else p.get("role")
                 if role in SKIP_ROLES:
                     continue
                 if role not in ("user", "assistant"):
@@ -92,7 +142,64 @@ class CodexSource(Source):
                     out = json.dumps(out, ensure_ascii=False)
                 if out:
                     msgs.append((lineno, Msg(ts, "tool", "tool_result", clipf(out))))
+            for _, msg in msgs[before:]:
+                raw_keys[message_key(turn, msg)] += 1
+                item_id = p.get("id") or p.get("call_id")
+                if item_id:
+                    raw_ids.add((turn, item_id, msg.kind))
+                if clip_text:
+                    bound_message(msg)
+        # Paginated logs retain both model response items and completed display items.
+        # Consume duplicates within each turn, preserving genuinely repeated messages.
+        for lineno, scope, item_id, key, msg in completed:
+            if item_id and (scope, item_id, msg.kind) in raw_ids:
+                if raw_keys[key]:
+                    raw_keys[key] -= 1
+            elif raw_keys[key]:
+                raw_keys[key] -= 1
+            else:
+                msgs.append((lineno, msg))
+        msgs.sort(key=lambda pair: pair[0])
         return sid, cwd, msgs
+
+    @classmethod
+    def _completed(cls, item, ts, guardian):
+        kind = item.get("type")
+        if kind in ("UserMessage", "AgentMessage"):
+            text = cls._message_text(item.get("content"))
+            role = "user" if kind == "UserMessage" else "assistant"
+            clean, stripped = ("", bool(text.strip())) if guardian and role == "user" else (
+                strip_envelopes(text, CODEX_EXTRA_RULES) if role == "user" else (text.strip(), False))
+            if text.strip():
+                yield Msg(ts, role, "text", clean, raw=text.strip() if stripped else None, envelope=stripped)
+        elif kind == "Plan":
+            text = item.get("text") or ""
+            if text:
+                yield Msg(ts, "assistant", "summary", text)
+        elif kind == "Reasoning":
+            text = "\n".join(item.get("summary_text") or [])
+            if text:
+                yield Msg(ts, "assistant", "reasoning", text)
+        elif kind == "FunctionCallOutput":
+            output = item.get("output") or ""
+            text = cls._message_text(output) if isinstance(output, list) else output
+            if text:
+                yield Msg(ts, "tool", "tool_result", text)
+        elif kind == "CommandExecution":
+            command = item.get("command") or []
+            yield Msg(ts, "assistant", "tool_call", "exec_command(%s)" % json.dumps(command, ensure_ascii=False))
+            output = item.get("aggregated_output")
+            if output is None:
+                output = "\n".join(v for v in (item.get("stdout"), item.get("stderr")) if v)
+            if output:
+                yield Msg(ts, "tool", "tool_result", output)
+        elif kind == "McpToolCall":
+            name = "%s/%s" % (item.get("server", ""), item.get("tool", ""))
+            yield Msg(ts, "assistant", "tool_call", "%s(%s)" %
+                      (name, json.dumps(item.get("arguments"), ensure_ascii=False)))
+            result = item.get("result") or item.get("error")
+            if result:
+                yield Msg(ts, "tool", "tool_result", json.dumps(result, ensure_ascii=False))
 
     @staticmethod
     def _message_text(content):

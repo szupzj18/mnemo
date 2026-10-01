@@ -21,7 +21,7 @@ Do not use for the current conversation (that is already in context).
 Run the CLI with `--json` and parse the result:
 
 ```bash
-mnemo search "关键词" --json
+mnemo search "关键词" --json --coverage
 ```
 
 - Multiple keywords are AND-ed; English matches word prefixes, Chinese matches substrings (bigrams), so `订阅` matches `订阅支出` and `refact` matches `refactoring`.
@@ -35,8 +35,10 @@ mnemo search "关键词" --json
   - `--kind text,summary,tool_call,tool_result,reasoning` (default excludes reasoning; pass `--all-kinds` to include it)
   - `--include-injected` — also match injected boilerplate (workspace instructions, plugin suggestions, slash-command output, Codex approval-review wraps); hidden by default
 
+The response is `{hits, coverage, warnings}`. Inspect each device's status and index refresh; older devices report unknown freshness. Indexed bodies may stop at 20k characters, so zero hits do not establish that the original logs lack the text.
+
 Each hit contains: `host`, `source`, `cwd`, `ts`, `role`, `kind`, `snippet`, `path`, `lineno` (plus `envelope: 1` when the match is inside injected text). Injected boilerplate is kept verbatim but excluded from default search, so a keyword that only appears in the agent's `AGENTS.md` does not surface every session; genuine user replies inside such messages are still searchable.
-A warning on stderr lists devices that were unreachable; results from the others are still complete.
+Warnings list unreachable devices and incomplete index refreshes; results cover only the indexed content on devices that answered.
 
 ## Recalling recent sessions
 
@@ -61,10 +63,11 @@ Returns the N indexed messages before/after the hit (normalized role/kind/text) 
 To read the entire session a hit belongs to (the hit's `path` is one JSONL session file), ordered by time:
 
 ```bash
-mnemo session <path> --host <hit-host> --json [--head N] [--tail N]
+mnemo session <path> --host <hit-host> --json --limit 100 [--anchor-line <hit-line>]
+mnemo session <path> --host <hit-host> --json --limit 100 --cursor <page.next_cursor>
 ```
 
-MCP/Pi expose the same as `get_session` / `get_full_session`. A session can be long; prefer `context` for one detail and use `--head`/`--tail` to skim a long session before pulling all of it.
+MCP/Pi expose the same as `get_session` / `get_full_session`. Prefer `context` for one detail, or `limit=100` and `anchor_line` for a bounded first page. Follow `page.next_cursor`/`page.previous_cursor` only as needed. `count` is the whole-session count; `messages` is the returned page. Cursors expire after reindexing changes the session: restart without a cursor. `head`/`tail` remain available and cannot be mixed with pagination. Raw pages bound the response but still parse the original session on the holding device.
 
 Indexed message bodies are capped at 20k characters each (long tool outputs are clipped with a `…[truncated]` marker). To read the original full content straight from the session JSONL, add `--raw` to `context`/`session` (MCP/Pi: `raw: true`). Raw reads execute on the device that holds the file, so remote content still does not leave it except in the query response. Injected messages render their cleaned text by default; add `--show-envelope` to see the verbatim boilerplate (in JSON it is also returned as `body`).
 

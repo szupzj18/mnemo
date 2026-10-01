@@ -358,7 +358,7 @@ def _relabel(remote, hits):
 
 
 def _remote_search(remote, query, sources, kinds, cwd, since, limit, sync, include_injected,
-                   visited=(), ttl=0):
+                   visited=(), ttl=0, coverage=None):
     """Search one neighbor (and, if it relays, what lies behind it). Returns (hits, warnings)."""
     if sync:
         remote_exec(remote, ["index"], timeout=120)
@@ -377,8 +377,16 @@ def _remote_search(remote, query, sources, kinds, cwd, since, limit, sync, inclu
             if node.get("id"):
                 update_remote(remote["name"], node_id=node["id"], proto=2)
             warnings = ["via %s: %s" % (remote["name"], w) for w in env.get("warnings", [])]
+            if coverage is not None:
+                devices = env.get("coverage", [])
+                if devices:
+                    coverage.extend(_relabel(remote, devices))
+                else:
+                    coverage.append({"host": remote["name"], "status": "searched", "index_refresh": "unknown"})
             return _relabel(remote, env.get("hits", [])), warnings
     out = remote_exec(remote, search_argv(*args), timeout=30)
+    if coverage is not None:
+        coverage.append({"host": remote["name"], "status": "searched", "index_refresh": "unknown"})
     return _relabel(remote, json.loads(out)), []
 
 
@@ -417,20 +425,34 @@ def _rrf(per_host, limit):
 
 
 def _local_search(db_path, query, sources, kinds, cwd, since, limit,
-                  sync=False, warnings=None, include_injected=False):
+                  sync=False, warnings=None, include_injected=False, coverage=None):
     idx = Index(db_path)
+    refresh = "not_requested"
     try:
         if idx.too_new and warnings is not None:
+            refresh = "failed"
             warnings.append("local index is newer than this mnemo (restart this process to "
                             "pick up the upgrade); searching it read-only")
         elif sync:
             # A failed refresh must not cost the user their results: search
             # the index as it stands and say it may be stale.
             try:
-                idx.sync_if_stale()
+                stats = idx.sync_if_stale()
+                refresh = "synced" if stats is not None else "recent"
             except (sqlite3.Error, OSError, IndexTooNew) as exc:
+                refresh = "failed"
                 if warnings is not None:
                     warnings.append("local index not refreshed (%s); results may miss recent sessions" % exc)
+        index_warnings = []
+        for row in idx.db.execute("SELECT key, value FROM meta WHERE key LIKE 'sync_warnings:%'"):
+            if sources is None or row["key"].split(":", 1)[1] in sources:
+                index_warnings.extend(json.loads(row["value"]))
+        if warnings is not None:
+            warnings.extend("local index: " + warning for warning in index_warnings)
+        if coverage is not None:
+            coverage.append({"host": LOCAL, "status": "searched", "index_refresh": refresh,
+                             "last_sync": idx.last_sync(), "index_warnings": index_warnings,
+                             "body_char_limit": 20000, "bodies_may_be_truncated": True})
         return local_search(
             idx, query, sources=sources, kinds=kinds,
             cwd=cwd, since=since, limit=limit,
@@ -462,6 +484,7 @@ def fan_out_search(
     include_injected=False,
     visited=(),
     ttl=DEFAULT_TTL,
+    coverage=None,
 ):
     """Search the local index plus neighbors, and through relaying neighbors, beyond.
 
@@ -488,6 +511,9 @@ def fan_out_search(
         and (wanted is not None or _link_up(r))
     ]
     include_local = wanted is None or LOCAL in wanted
+    if coverage is not None:
+        coverage.extend({"host": r["name"], "status": "skipped", "reason": "link disconnected"}
+                        for r in remotes if wanted is None and not _link_up(r))
     # Neighbors asked directly in this call need not be reached again through each
     # other; ones left out by a host filter stay reachable through a relay.
     covered = upstream | {node["id"]} | {r["node_id"] for r in selected if r.get("node_id")}
@@ -499,11 +525,13 @@ def fan_out_search(
             jobs[pool.submit(
                 _local_search, index.db_path, query, sources, kinds, cwd, since, limit,
                 sync_local, warnings, include_injected,
+                coverage,
             )] = LOCAL
         for r in selected:
             jobs[pool.submit(
                 _remote_search, r, query, sources, kinds, cwd, since, limit,
                 sync_remotes, include_injected, covered - {r.get("node_id")}, max(ttl - 1, 0),
+                coverage,
             )] = r["name"]
         per_host = []
         for fut in concurrent.futures.as_completed(jobs):
@@ -512,6 +540,8 @@ def fan_out_search(
                 result = fut.result()
             except RemoteError as exc:
                 warnings.append(str(exc))
+                if coverage is not None:
+                    coverage.append({"host": name, "status": "failed", "error": str(exc)})
                 continue
             if name == LOCAL:
                 for h in result:
@@ -554,7 +584,8 @@ def _routed_exec(route, argv, timeout):
         return remote_exec(remote, hop, timeout=timeout)
 
 
-def remote_session(route, path, head=None, tail=None, raw=False, timeout=60):
+def remote_session(route, path, head=None, tail=None, raw=False, timeout=60,
+                   limit=None, cursor=None, anchor_line=None):
     """Read a session on the device at `route` (a neighbor name or neighbor/…/device)."""
     argv = ["session", path, "--json"]
     if head is not None:
@@ -563,6 +594,9 @@ def remote_session(route, path, head=None, tail=None, raw=False, timeout=60):
         argv += ["--tail", str(tail)]
     if raw:
         argv.append("--raw")
+    for flag, value in (("--limit", limit), ("--cursor", cursor), ("--anchor-line", anchor_line)):
+        if value is not None:
+            argv += [flag, str(value)]
     return json.loads(_routed_exec(route, argv, timeout))
 
 

@@ -54,7 +54,7 @@ CREATE TABLE file_ranges (path, lo, hi);   -- contiguous rowid range per file
 CREATE TABLE meta        (key PRIMARY KEY, value);
 ```
 
-**Incremental sync.** Mnemo stats every session file and compares its `(mtime, size)` with `files`. When a file changed, its rowid range is deleted and the file is re-inserted as one contiguous block, which is simple and correct for append-only JSONL. Deleted files are dropped. Searches call `sync_if_stale()`, which runs this sync unless one finished in the last 2 s; `busy_timeout` makes concurrent writers wait instead of failing.
+**Incremental sync.** Mnemo stats every session file and compares its `(mtime, size)` with `files`. When a file changed, its rowid range is deleted and the file is re-inserted as one contiguous block, which is simple and correct for append-only JSONL. Deleted files are dropped. Codex adapter-version metadata forces unchanged files to be reparsed after an adapter upgrade, without changing the SQLite schema. Sync failures are retained in per-source metadata for later coverage reports. Searches call `sync_if_stale()`, which runs this sync unless one finished in the last 2 s; `busy_timeout` makes concurrent writers wait instead of failing.
 
 **Context in O(1) of file size.** `file_ranges` maps a file to `[lo, hi]` rowids. A context window is a rowid range query, so it doesn't need to re-parse the file. On the largest session (44k lines), a lookup takes 7 ms compared with 316 ms for re-parsing.
 
@@ -100,7 +100,7 @@ The UI in `web/` is Next.js (App Router) with shadcn/ui on Base UI and Tailwind 
 
 Security is as before: bound to `127.0.0.1` (ports 7787–7796), a `secrets.token_urlsafe(16)` token required as `X-Dashboard-Token` on `/api/*`, and a local-`Host` allowlist on every request.
 
-Client state (device probes, search results, operation log) lives in one React context in the root layout, so navigating to a session and back keeps the results. The session view renders a window of 181 messages around the hit for sessions over 240 messages; windowing, match stepping, timeline rows and body tokenizing are pure functions in `web/src/lib/transcript.ts`.
+Client state (device probes, search results, operation log) lives in one React context in the root layout, so navigating to a session and back keeps the results. The session view requests at most 181 messages around the hit, then loads adjacent pages; matching applies only to loaded messages. Indexed head/tail/page reads restrict the body query to the selected rowid range. Raw reads still parse the original source. The session view renders a window of 181 messages around the hit for sessions over 240 messages; windowing, match stepping, timeline rows and body tokenizing are pure functions in `web/src/lib/transcript.ts`.
 
 ## Why Python and SQLite
 

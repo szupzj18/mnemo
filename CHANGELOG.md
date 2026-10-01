@@ -5,6 +5,10 @@ All notable changes to this project are documented here. The format follows [Kee
 ## [Unreleased]
 
 ### Added
+- Codex completed-item and `agent_message` parsing, plus `.jsonl.zst` reads using an optional device-local `zstd` executable. Plain/compressed siblings keep the same logical path and line anchors. Updating Mnemo automatically reparses unchanged Codex files with the new adapter.
+- Session pagination (`limit`, `cursor`, `anchor_line`) across CLI, MCP, Pi and routed remote reads. Indexed head/tail reads select bodies directly; the dashboard loads 181 messages around a hit and requests adjacent pages.
+- Structured device/index coverage for MCP/Pi searches and `mnemo search --json --coverage`. MCP search text now contains `{hits, coverage, warnings}`; plain CLI JSON remains an array. Restart agent sessions after updating tools.
+- Reproducible synthetic retrieval benchmark and format-recall evaluation, including a known miss beyond the 20k indexed-body cap.
 - `mnemo doctor`: one check of everything mnemo depends on (a newer release, the index, processes still running old code, each agent's connection, every reachable device and its code, link services), grouped like `setup` and printed group by group as each finishes, devices as a table (latency, code, relay), ending with the command that fixes each problem. Exits 1 on a problem; `--full` also verifies the index file, `--offline` skips the release check, `--json` for scripts.
 
 ### Changed

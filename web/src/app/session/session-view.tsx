@@ -34,7 +34,7 @@ interface View {
 
 function initView(data: Session, anchorLine: number, terms: string[], raw: boolean): View {
   const idx = anchorIndex(data.messages, anchorLine)
-  const win = initialWindow(data.count, idx)
+  const win = initialWindow(data.messages.length, idx)
   const matches = matchIndices(data.messages, terms)
   return { data, raw, ...win, matches, cur: firstMatch(matches, idx) }
 }
@@ -60,6 +60,7 @@ function SessionInner({ path, host, anchor, q }: { path: string; host: string; a
   const [view, setView] = React.useState<View | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [loadingRaw, setLoadingRaw] = React.useState(false)
+  const [loadingPage, setLoadingPage] = React.useState(false)
   const [expanded, setExpanded] = React.useState<Set<number>>(new Set())
   const [open, setOpen] = React.useState<Set<number>>(new Set())
   const [scroll, setScroll] = React.useState<{ mode: ScrollMode; seq: number }>({ mode: "anchor", seq: 0 })
@@ -67,11 +68,11 @@ function SessionInner({ path, host, anchor, q }: { path: string; host: string; a
 
   const fetchSession = React.useCallback(
     async (raw: boolean) => {
-      const r = await api.session(path, host, raw)
+      const r = await api.session(path, host, raw, { limit: 181, anchor_line: anchor })
       if (!r.ok) throw new Error(r.error)
       return r.session
     },
-    [path, host],
+    [path, host, anchor],
   )
 
   const apply = React.useCallback(
@@ -129,7 +130,7 @@ function SessionInner({ path, host, anchor, q }: { path: string; host: string; a
     if (!view || !view.matches.length) return
     const cur = stepMatch(view.matches, view.cur, dir)
     setOpen((s) => new Set(s).add(cur))
-    setView({ ...view, cur, ...ensureVisible(view, cur, view.data.count) })
+    setView({ ...view, cur, ...ensureVisible(view, cur, view.data.messages.length) })
     setScroll((s) => ({ mode: "match", seq: s.seq + 1 }))
   }
 
@@ -143,6 +144,37 @@ function SessionInner({ path, host, anchor, q }: { path: string; host: string; a
       toast.error("读取失败", { description: String((e as Error)?.message ?? e) })
     } finally {
       setLoadingRaw(false)
+    }
+  }
+
+  async function loadPage(older: boolean) {
+    if (!view || loadingPage || loadingRaw) return
+    const cursor = older ? view.data.page?.previous_cursor : view.data.page?.next_cursor
+    if (!cursor) return
+    setLoadingPage(true)
+    if (older) prevHeight.current = document.body.scrollHeight
+    try {
+      const response = await api.session(path, host, view.raw, { limit: 181, cursor })
+      if (!response.ok) throw new Error(response.error)
+      const page = response.session
+      const start = view.data.page?.offset ?? 0
+      const added = older ? page.messages.slice(0, start - (page.page?.offset ?? 0)) : page.messages
+      const messages = older ? [...added, ...view.data.messages] : [...view.data.messages, ...added]
+      const data = { ...view.data, messages, page: {
+        ...page.page!, offset: older ? page.page!.offset : start,
+        previous_cursor: older ? page.page!.previous_cursor : view.data.page!.previous_cursor,
+        next_cursor: older ? view.data.page!.next_cursor : page.page!.next_cursor,
+      } }
+      const shift = older ? added.length : 0
+      setView({ ...view, data, lo: older ? 0 : view.lo, hi: view.hi + added.length,
+        matches: matchIndices(messages, terms), cur: view.cur < 0 ? -1 : view.cur + shift })
+      setExpanded((values) => new Set([...values].map((i) => i + shift)))
+      setOpen((values) => new Set([...values].map((i) => i + shift)))
+      setScroll((value) => ({ mode: older ? "older" : "stay", seq: value.seq + 1 }))
+    } catch (e) {
+      toast.error("加载失败", { description: String((e as Error)?.message ?? e) })
+    } finally {
+      setLoadingPage(false)
     }
   }
 
@@ -179,6 +211,7 @@ function SessionInner({ path, host, anchor, q }: { path: string; host: string; a
             <span className="tabular">
               {s.count} 条消息 · {(s.started_at ?? "").slice(0, 16).replace("T", " ")} → {(s.ended_at ?? "").slice(11, 19)}
               {span != null && span >= 60 ? ` · 共 ${fmtDur(span)}` : ""}
+              {s.messages.length < s.count ? ` · 已读取 ${s.messages.length}/${s.count}（匹配仅限已读取消息）` : ""}
             </span>
             <span className={cn("rounded-full px-2 py-0.5", view?.raw ? "bg-warn-soft text-warn" : "bg-muted text-faint")}>
               {view?.raw ? "原始全文" : "索引版 · 单条≤20k"}
@@ -201,7 +234,7 @@ function SessionInner({ path, host, anchor, q }: { path: string; host: string; a
           <Button variant="ghost" size="icon-sm" disabled={!view?.matches.length} onClick={() => gotoMatch(1)} title="下一处匹配" data-testid="match-next">
             <ArrowDown />
           </Button>
-          <Button size="sm" variant={view?.raw ? "outline" : "default"} disabled={!view || loadingRaw} onClick={() => void toggleRaw()}>
+          <Button size="sm" variant={view?.raw ? "outline" : "default"} disabled={!view || loadingRaw || loadingPage} onClick={() => void toggleRaw()}>
             {loadingRaw ? <Loader2 className="animate-spin" /> : null}
             {view?.raw ? "返回索引版" : "读取全文"}
           </Button>
@@ -229,18 +262,20 @@ function SessionInner({ path, host, anchor, q }: { path: string; host: string; a
         </div>
       ) : (
         <div className="mx-auto flex w-full max-w-[836px] flex-col gap-4 py-6" data-testid="transcript">
-          {view.lo > 0 ? (
+          {view.lo > 0 || view.data.page?.previous_cursor ? (
             <div className="flex justify-center">
               <Button
                 variant="outline"
                 size="sm"
+                disabled={loadingPage || loadingRaw}
                 onClick={() => {
+                  if (view.lo === 0) { void loadPage(true); return }
                   prevHeight.current = document.body.scrollHeight
                   setView({ ...view, lo: Math.max(0, view.lo - PAGE_STEP) })
                   setScroll((x) => ({ mode: "older", seq: x.seq + 1 }))
                 }}
               >
-                ↑ 加载更早 {Math.min(PAGE_STEP, view.lo)} 条
+                ↑ 加载更早 {view.lo ? Math.min(PAGE_STEP, view.lo) : "一页"}{view.lo ? " 条" : ""}
               </Button>
             </div>
           ) : null}
@@ -273,14 +308,18 @@ function SessionInner({ path, host, anchor, q }: { path: string; host: string; a
               />
             ),
           )}
-          {view.hi < view.data.count ? (
+          {view.hi < view.data.messages.length || view.data.page?.next_cursor ? (
             <div className="flex justify-center">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setView({ ...view, hi: Math.min(view.data.count, view.hi + PAGE_STEP) })}
+                disabled={loadingPage || loadingRaw}
+                onClick={() => {
+                  if (view.hi === view.data.messages.length) { void loadPage(false); return }
+                  setView({ ...view, hi: Math.min(view.data.messages.length, view.hi + PAGE_STEP) })
+                }}
               >
-                加载更晚 {Math.min(PAGE_STEP, view.data.count - view.hi)} 条 ↓
+                加载更晚 {view.hi < view.data.messages.length ? `${Math.min(PAGE_STEP, view.data.messages.length - view.hi)} 条` : "一页"} ↓
               </Button>
             </div>
           ) : null}

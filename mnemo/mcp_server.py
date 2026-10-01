@@ -30,6 +30,8 @@ def build_tools():
                 " tool calls and tool results. Each hit gives host, source, cwd, timestamp, a snippet,"
                 " and file:line for get_context (pass the hit's host to get_context); pass the hit's path alone to get_session for the whole session file."
                 " Supports English (prefix) and Chinese (substring via bigrams)."
+                " Returns {hits, coverage, warnings}; coverage reports searched/failed devices,"
+                " index refresh status and the 20k indexed-body cap. Zero hits are not proof of absence."
             ),
             "inputSchema": {
                 "type": "object",
@@ -88,6 +90,9 @@ def build_tools():
                     "host": {"type": "string", "description": "device or route holding the session, copied from the search result (default: local)"},
                     "head": {"type": "integer", "description": "only return the first N messages"},
                     "tail": {"type": "integer", "description": "only return the last N messages"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 500, "description": "page size; prefer 100 for long sessions"},
+                    "cursor": {"type": "string", "description": "page.next_cursor or page.previous_cursor from the last response"},
+                    "anchor_line": {"type": "integer", "description": "center first page around this source line; requires limit"},
                     "raw": {"type": "boolean", "description": "read full untruncated bodies straight from the original session JSONL"},
                 },
                 "required": ["path"],
@@ -147,6 +152,7 @@ def handle_call(name, args, index):
         kinds = args.get("kinds")
         host = args.get("host")
         hosts = [h.strip() for h in host.split(",")] if host else None
+        coverage = []
         hits, warnings = fan_out_search(
             index,
             query,
@@ -157,13 +163,10 @@ def handle_call(name, args, index):
             limit=min(int(args.get("limit", 20)), 100),
             hosts=hosts,
             include_injected=bool(args.get("include_injected")),
+            coverage=coverage,
         )
-        text = json.dumps(hits, ensure_ascii=False, indent=2)
-        if warnings:
-            text += "\n\nunreachable devices (excluded from results):\n" + "\n".join(
-                "- " + w for w in warnings
-            )
-        return {"content": [{"type": "text", "text": text}]}
+        result = {"hits": hits, "coverage": coverage, "warnings": warnings}
+        return dict(_text_result(result), structuredContent=result)
     if name == "get_context":
         host = args.get("host") or LOCAL
         raw = bool(args.get("raw"))
@@ -187,17 +190,18 @@ def handle_call(name, args, index):
         host = args.get("host") or LOCAL
         raw = bool(args.get("raw"))
         head, tail = args.get("head"), args.get("tail")
+        page = {key: args.get(key) for key in ("limit", "cursor", "anchor_line")}
         if host == LOCAL:
-            sess = raw_session(index, args["path"]) if raw else get_session(index, args["path"])
+            reader = raw_session if raw else get_session
+            sess = reader(index, args["path"], head=head, tail=tail, **page)
         else:
             sess = remote_session(
                 host, args["path"],
                 head=head, tail=tail, raw=raw,
+                **page
             )
         if sess is None:
             raise ValueError("path not in index; run reindex")
-        if host == LOCAL and (head or tail):
-            sess["messages"] = sess["messages"][:head] if head else sess["messages"][-tail:]
         return _text_result(sess)
     if name == "list_recent_sessions":
         sources = args.get("source")
