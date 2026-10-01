@@ -178,3 +178,33 @@ class PipedOutputTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SingleCopyStorageTest(unittest.TestCase):
+    setUp, tearDown = SessionTitleTest.setUp, SessionTitleTest.tearDown
+    write, index = SessionTitleTest.write, SessionTitleTest.index
+
+    def test_plain_messages_store_their_text_once(self):
+        self.write(".claude/projects/-w/one.jsonl", [
+            claude_line("user", "Base directory for this skill: /u/.claude/skills/x\n\n# x\nverbatim pelican",
+                        isMeta=True),
+            claude_line("user", "find the walrus notes"),
+            claude_line("assistant", "The walrus notes are in docs/."),
+        ])
+        idx = self.index()
+        try:
+            from mnemo.search import get_session, search
+            plain = idx.db.execute("SELECT body FROM messages WHERE text LIKE '%walrus%'").fetchall()
+            self.assertEqual([r["body"] for r in plain], [None, None], "no duplicate copy")
+            env = idx.db.execute("SELECT body FROM messages WHERE envelope = 1").fetchone()
+            self.assertIn("verbatim pelican", env["body"])
+            # Search, injected search and reads behave as before.
+            self.assertEqual(len(search(idx, "walrus")), 2)
+            self.assertEqual(len(search(idx, "walrus", include_injected=True)), 2)
+            self.assertEqual(len(search(idx, "pelican", include_injected=True)), 1)
+            path = idx.db.execute("SELECT path FROM files").fetchone()["path"]
+            texts = [m["text"] for m in get_session(idx, path)["messages"]]
+            self.assertIn("find the walrus notes", texts)
+            self.assertTrue(any("verbatim pelican" in t for t in texts))
+        finally:
+            idx.close()
