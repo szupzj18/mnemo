@@ -7,14 +7,17 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Added
 - Codex completed-item and `agent_message` parsing, plus `.jsonl.zst` reads using an optional device-local `zstd` executable. Plain/compressed siblings keep the same logical path and line anchors. Updating Mnemo automatically reparses unchanged Codex files with the new adapter.
 - Session pagination (`limit`, `cursor`, `anchor_line`) across CLI, MCP, Pi and routed remote reads. Indexed head/tail reads select bodies directly; the dashboard loads 181 messages around a hit and requests adjacent pages.
-- Structured device/index coverage for MCP/Pi searches and `mnemo search --json --coverage`. MCP search text now contains `{hits, coverage, warnings}`; plain CLI JSON remains an array. Restart agent sessions after updating tools.
+- Structured device/index coverage for MCP/Pi searches and `mnemo search --json --coverage`.
 - Reproducible synthetic retrieval benchmark and format-recall evaluation, including a known miss beyond the 20k indexed-body cap.
 - `mnemo doctor`: one check of everything mnemo depends on (a newer release, the index, processes still running old code, each agent's connection, every reachable device and its code, link services), grouped like `setup` and printed group by group as each finishes, devices as a table (latency, code, relay), ending with the command that fixes each problem. Exits 1 on a problem; `--full` also verifies the index file, `--offline` skips the release check, `--json` for scripts.
 
 ### Changed
+- **Breaking:** MCP `search_sessions` text responses now contain `{hits, coverage, warnings}` instead of a hit array; callers that parse the previous shape must read `hits`. Plain CLI JSON remains an array unless `--coverage` is requested. Restart agent sessions after updating tools.
 - `mnemo setup` output is grouped by agent with status marks (`+` added, `↻` repaired, `✓` unchanged, `·` skipped, `✗` failed), puts backups and repaired links on their own lines, and ends with a summary and the next step (which sessions to restart, or what to finish by hand). Colors on a terminal only, `NO_COLOR` honoured, ASCII marks on non-UTF-8 terminals; `--json` for scripts.
 
 ### Fixed
+- Missing optional `zstd` skips only the compressed files that need reading and retains their indexed rows; new and changed plain Codex sessions continue syncing.
+- A peer rejecting session pagination keeps its relay protocol unchanged and returns an upgrade hint. Only rejection of `--relay` downgrades a direct peer to the legacy protocol.
 - `search`, `recent`, `context` and `session` wrote terminal escape codes even when piped or redirected; styles are now off unless stdout is a terminal, and `NO_COLOR` and `TERM=dumb` turn them off everywhere.
 - Session titles (`recent`, `list_recent_sessions`, the dashboard) no longer show injected text: a Claude Code skill's body ("Base directory for this skill: …") is treated as injected boilerplate like other envelopes, and Codex's approval-review ("guardian") sessions, whose user turns are all generated, no longer appear as sessions of their own; the reviewer's replies stay searchable. `/loop` prompts, also marked as meta, still title their sessions. Also treated as injected: Claude Code's background-task notices (`<task-notification>`) and worker-fork instructions (`<fork-boilerplate>`, so the fork's directive becomes its title), and Codex's attached-file header ahead of "## My request:" (the request itself is kept). A session started with a slash command or skill and never typed into is titled by that command (`/disk-scan`) instead of being left out. Existing sessions pick up the new titles after `mnemo upgrade`.
 

@@ -144,7 +144,8 @@ class RetrievalTest(unittest.TestCase):
         self.assertEqual(get_session(self.index, self.path), before)
         self.assertEqual(raw_session(self.index, self.path)["messages"], before["messages"])
         self.assertEqual(len([p for p in CodexSource(self.demo.home).files() if "paging" in p]), 1)
-        with patch("mnemo.sources.codex.shutil.which", return_value=None):
+        self.index.db.execute("DELETE FROM meta WHERE key=?", ("adapter:codex:" + self.path,))
+        with patch("mnemo.sources.base.shutil.which", return_value=None):
             self.index.sync(home=self.demo.home)
         self.assertEqual(get_session(self.index, self.path), before)
         coverage = []
@@ -152,6 +153,43 @@ class RetrievalTest(unittest.TestCase):
         self.assertTrue(hits)
         self.assertTrue(warnings)
         self.assertIn("zstd", coverage[0]["index_warnings"][0])
+
+    def test_missing_decoder_skips_only_compressed_file_and_keeps_old_rows(self):
+        before = get_session(self.index, self.path)
+        os.remove(self.path)
+        with open(self.path + ".zst", "wb") as stream:
+            stream.write(b"synthetic compressed representation; decoder unavailable")
+        plain = self.demo.path(".codex", "sessions", "new-plain.jsonl")
+        write_log(plain, [response("plainpelicanneedle")])
+        with patch("mnemo.sources.base.shutil.which", return_value=None):
+            self.index.sync(home=self.demo.home)
+        self.assertEqual(len(search(self.index, "plainpelicanneedle")), 1)
+        self.assertEqual(get_session(self.index, self.path), before)
+        coverage = []
+        remote.fan_out_search(self.index, "plainpelicanneedle", hosts=["local"], coverage=coverage)
+        self.assertEqual(len(coverage[0]["index_warnings"]), 1)
+        self.assertIn(self.path, coverage[0]["index_warnings"][0])
+
+    def test_paging_rejection_preserves_relay_protocol(self):
+        remote.save_remotes([{"name": "old", "host": "local:old", "proto": 2}])
+        for flag, kwargs in (("--limit", {"limit": 10}),
+                             ("--cursor", {"limit": 10, "cursor": "opaque"}),
+                             ("--anchor-line", {"limit": 10, "anchor_line": 10})):
+            with self.subTest(flag=flag), patch("mnemo.remote.remote_exec", side_effect=remote.RemoteError(
+                    "old: mnemo: error: unrecognized arguments: " + flag + " 10")) as execute:
+                with self.assertRaisesRegex(remote.RemoteError, "without paged reads"):
+                    remote.remote_session("old", "/synthetic", **kwargs)
+                self.assertEqual(remote.get_remote("old")["proto"], 2)
+                self.assertEqual(execute.call_count, 1)
+
+    def test_only_relay_rejection_downgrades_an_old_peer(self):
+        remote.save_remotes([{"name": "old", "host": "local:old", "proto": 2}])
+        with patch("mnemo.remote.remote_exec", side_effect=[remote.RemoteError(
+                "old: mnemo: error: unrecognized arguments: --relay"), "{\"count\": 1}"]) as execute:
+            self.assertEqual(remote.remote_session("old", "/synthetic"), {"count": 1})
+            self.assertEqual(remote.get_remote("old")["proto"], 1)
+            self.assertEqual(execute.call_count, 2)
+            self.assertNotIn("--relay", execute.call_args[0][1])
 
     def test_adapter_upgrade_reparses_unchanged_codex_files(self):
         self.index.db.execute("DELETE FROM meta WHERE key=?", ("adapter:codex:" + self.path,))

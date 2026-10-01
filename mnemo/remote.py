@@ -578,7 +578,8 @@ def _routed_exec(route, argv, timeout):
     try:
         return remote_exec(remote, hop + ["--relay"], timeout=timeout)
     except RemoteError as exc:
-        if rest or "unrecognized arguments" not in str(exc):
+        unknown = str(exc).split("unrecognized arguments:", 1)
+        if rest or len(unknown) != 2 or "--relay" not in unknown[1].split():
             raise
         update_remote(first, proto=1)
         return remote_exec(remote, hop, timeout=timeout)
@@ -597,7 +598,15 @@ def remote_session(route, path, head=None, tail=None, raw=False, timeout=60,
     for flag, value in (("--limit", limit), ("--cursor", cursor), ("--anchor-line", anchor_line)):
         if value is not None:
             argv += [flag, str(value)]
-    return json.loads(_routed_exec(route, argv, timeout))
+    try:
+        return json.loads(_routed_exec(route, argv, timeout))
+    except RemoteError as exc:
+        unknown = str(exc).split("unrecognized arguments:", 1)
+        if len(unknown) == 2 and any(flag in unknown[1].split()
+                                   for flag in ("--limit", "--cursor", "--anchor-line")):
+            raise RemoteError("%s runs an older mnemo without paged reads; run mnemo remote upgrade (%s)" %
+                              (route, exc))
+        raise
 
 
 def remote_context(route, path, line, before, after, raw=False, timeout=30):

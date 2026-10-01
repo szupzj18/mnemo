@@ -79,7 +79,7 @@ search_sessions ──▶ get_context ──▶ get_session
 2. **`get_context`**：读命中点前后的消息：引出它的提问、中间的工具调用和结果、最后的结论。Agent 把命中的 `host` 传回来，读取就在那台设备上执行。
 3. **`get_session`**：用 `limit`、`cursor`、`anchor_line` 分页读取，也支持整段读取。`head`/`tail` 只读取选中的索引正文；索引里的正文超过 20k 字符会被截断，这时用 `raw: true` 读原始 JSONL。
 
-支持 Codex 完成事件和 `.jsonl.zst` 压缩日志。压缩读取要求持有日志的设备安装可选的 `zstd` 命令；缺少解码器时保留已有 Codex 索引并报告覆盖警告。见[分页与搜索覆盖](docs/retrieval.md)。
+支持 Codex 完成事件和 `.jsonl.zst` 压缩日志。压缩读取要求持有日志的设备安装可选的 `zstd` 命令；缺少解码器时逐文件跳过压缩日志、保留其已有索引并报告覆盖警告，普通日志仍继续同步。见[分页与搜索覆盖](docs/retrieval.md)。
 
 片段刻意做得很短。技能要求 Agent 在引用或复用命中内容之前，先调用 `get_context` 读上下文。
 
