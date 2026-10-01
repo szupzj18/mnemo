@@ -8,7 +8,7 @@ Raw/completed mirrors are deduplicated within a turn by item ID and message kind
 
 Plain `.jsonl` and `.jsonl.zst` siblings share the logical `.jsonl` path. The plain sibling wins when both exist. Compressed reads stream through the optional device-local `zstd -dc` executable; line numbers refer to decompressed JSONL. Python has no third-party dependencies.
 
-Without `zstd`, Codex sync retains the existing source index and reports a source warning. Other sources still sync. Existing indexed context remains readable; raw reads need the decoder. Per-file adapter metadata binds to the file modification signature and rowid range. Updating the adapter reparses unchanged Codex files on the next sync; rows replaced by older writers are reparsed when their signature no longer matches. Run `mnemo upgrade` to update devices and restart agent sessions that still run older code.
+Without `zstd`, files that require decompression are skipped individually when reindexing is needed, retaining their previous indexed rows and reporting a file warning. New and changed plain Codex files and other sources still sync. Existing indexed context remains readable; raw reads need the decoder. Per-file adapter metadata binds to the file modification signature and rowid range. Updating the adapter reparses unchanged Codex files on the next sync; rows replaced by older writers are reparsed when their signature no longer matches. Run `mnemo upgrade` to update devices and restart agent sessions that still run older code.
 
 ## Bounded session reads
 

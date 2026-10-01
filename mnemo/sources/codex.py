@@ -1,11 +1,10 @@
 import json
 import hashlib
 import os
-import shutil
 from collections import Counter
 
 from ..model import Msg, clip, norm_ts, strip_envelopes, CODEX_EXTRA_RULES
-from .base import Source, SourceUnavailable
+from .base import Source
 
 ADAPTER_VERSION = "3"
 
@@ -44,10 +43,7 @@ class CodexSource(Source):
                         yield os.path.join(dirpath, n[:-4])
 
     def records(self):
-        paths = list(self.files())
-        if any(not os.path.exists(p) for p in paths) and not shutil.which("zstd"):
-            raise SourceUnavailable("compressed Codex logs require the optional zstd executable; index retained")
-        for path in paths:
+        for path in self.files():
             actual = path if os.path.exists(path) else path + ".zst"
             try:
                 stat = os.stat(actual)

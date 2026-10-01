@@ -94,7 +94,7 @@ Snippets are deliberately short. The skill tells the agent to call `get_context`
 
 Parameters, output shapes and token costs: [Agent tools](docs/agent-tools.md).
 
-Codex completed-item events and compressed `.jsonl.zst` rollouts are supported. Compressed reads require the optional `zstd` executable on the device holding the file; missing decoders preserve the existing Codex index and report a coverage warning. See [bounded retrieval](docs/retrieval.md).
+Codex completed-item events and compressed `.jsonl.zst` rollouts are supported. Compressed reads require the optional `zstd` executable on the device holding the file; missing decoders preserve existing rows for affected compressed files and report a coverage warning while plain sessions still sync. See [bounded retrieval](docs/retrieval.md).
 
 ### Make it a habit
 
