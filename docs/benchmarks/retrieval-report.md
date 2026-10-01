@@ -5,7 +5,7 @@ Current Codex log support increases exact source-line recall from 4/11 to 10/11 
 ## Revisions and environment
 
 - Baseline: `5780bba6b8c35708981303b0e0381e9adcc2a910`.
-- Candidate: `250ea0466ac6bf4a35d4485c8db42531c40bc15b`.
+- Candidate: `1e79df8d29f6291bfe9453dd690dbef69a6fee9b`.
 Both working trees were clean. The following documentation commit does not alter the measured implementation.
 - Python 3.9.6; SQLite 3.51.0; macOS-26.5.1-arm64-arm-64bit.
 - Corpus: 10,000-message Claude session and Codex format fixtures; SHA-256 `65e8b1f9ee440d9d98df62f2e7e2315f743948cfc654badc44fb775ca4b10c6c`.
@@ -16,10 +16,10 @@ Nine warm-index samples per read, with warm-up excluded. Times include normalize
 
 | Operation | Baseline p50 / p95 (ms) | Candidate p50 / p95 (ms) | Python peak, baseline → candidate (MB) | JSON bytes, baseline → candidate | Messages, baseline → candidate |
 |---|---:|---:|---:|---:|---:|
-| Full session | 60.51 / 63.53 | 54.84 / 60.99 | 84.92 → 84.72 | 11,528,106 → 11,528,106 | 10,000 → 10,000 |
-| Head 100 | 32.24 / 34.88 | 9.59 / 10.46 | 50.03 → 0.84 | 115,188 → 115,188 | 100 → 100 |
-| Tail 100 | 34.09 / 37.22 | 10.22 / 15.23 | 50.03 → 0.85 | 115,607 → 115,607 | 100 → 100 |
-| Web initial read | 65.34 / 66.80 | 15.52 / 18.58 | 84.91 → 1.54 | 11,528,106 → 209,593 | 10,000 → 181 |
+| Full session | 66.07 / 69.71 | 54.86 / 60.21 | 84.92 → 84.72 | 11,528,106 → 11,528,106 | 10,000 → 10,000 |
+| Head 100 | 33.56 / 35.91 | 9.54 / 10.62 | 50.03 → 0.84 | 115,188 → 115,188 | 100 → 100 |
+| Tail 100 | 34.85 / 37.30 | 8.81 / 9.36 | 50.03 → 0.85 | 115,607 → 115,607 | 100 → 100 |
+| Web initial read | 67.12 / 72.79 | 12.95 / 13.45 | 84.91 → 1.54 | 11,528,106 → 209,593 | 10,000 → 181 |
 
 The baseline Web path retrieves the entire session before rendering a window. The candidate reads 181 messages around the hit and loads adjacent pages on demand. Head/tail bodies and the anchored page match slices from the full-session oracle.
 
@@ -36,13 +36,13 @@ The baseline Web path retrieves the entire session before rendering a window. Th
 
 Every answered query returns exactly its gold source line, with no extra hits. Precision is 1.0 for answered queries; zero-hit cases have precision 0 in the JSON. The clipped-tail case is an expected miss, making the indexing limit visible rather than implying complete coverage.
 
-Full indexing: baseline 1053.2 ms, candidate 1033.0 ms (one run each). A representative warm FTS query has p50 12.44 → 13.75 ms. The change does not claim faster search ranking.
+Full indexing: baseline 1071.0 ms, candidate 1084.6 ms (one run each). A representative warm FTS query has p50 12.03 → 12.64 ms. The change does not claim faster search ranking.
 
 ## Reproduction and acceptance
 
 ```bash
 git worktree add --detach /tmp/mnemo-baseline 5780bba6b8c35708981303b0e0381e9adcc2a910
-git worktree add --detach /tmp/mnemo-candidate 250ea0466ac6bf4a35d4485c8db42531c40bc15b
+git worktree add --detach /tmp/mnemo-candidate 1e79df8d29f6291bfe9453dd690dbef69a6fee9b
 python3 /tmp/mnemo-candidate/scripts/benchmark-retrieval.py \
   --baseline /tmp/mnemo-baseline --candidate /tmp/mnemo-candidate \
   --messages 10000 --repeats 9 --check --output /tmp/retrieval.json
