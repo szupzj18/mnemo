@@ -1,4 +1,5 @@
 import contextlib
+import json
 import os
 import re
 import sqlite3
@@ -167,7 +168,18 @@ class Index:
         Pre-v2 writers insert files rows without a title (and messages without
         the v2 columns); v2 always writes a title, even an empty one.
         """
-        return [r["path"] for r in self.db.execute("SELECT path FROM files WHERE title IS NULL")]
+        paths = [r["path"] for r in self.db.execute("SELECT path FROM files WHERE title IS NULL")]
+        from .sources.codex import ADAPTER_VERSION
+        for row in self.db.execute(
+            "SELECT f.path, f.mtime, f.size, fr.lo, fr.hi FROM files f"
+            " LEFT JOIN file_ranges fr ON fr.path=f.path WHERE f.source='codex'"
+        ):
+            marker = self.db.execute("SELECT value FROM meta WHERE key=?",
+                                     ("adapter:codex:" + row["path"],)).fetchone()
+            expected = json.dumps([ADAPTER_VERSION, row["mtime"], row["size"], row["lo"], row["hi"]])
+            if not marker or marker[0] != expected:
+                paths.append(row["path"])
+        return paths
 
     def _apply_schema(self):
         """Drop and recreate tables for the current schema (full reparse next)."""
@@ -199,10 +211,18 @@ class Index:
             log("repairing %d file(s) written by an older mnemo" % len(stale))
 
         for source in sources:
+            warnings = []
+            def source_log(message):
+                log(message)
+                if message.startswith("skip "):
+                    warnings.append(message)
             try:
                 current = {path: (mtime, size) for path, mtime, size in source.records()}
             except SourceUnavailable as exc:
-                log("skip %s: %s" % (source.name, exc))
+                source_log("skip %s: %s" % (source.name, exc))
+                with self._write():
+                    self.db.execute("INSERT OR REPLACE INTO meta VALUES(?,?)",
+                                    ("sync_warnings:" + source.name, json.dumps(warnings)))
                 continue
 
             rows = self.db.execute(
@@ -217,7 +237,7 @@ class Index:
                     stats["files_updated"] += 1
                 else:
                     continue
-                self._reindex_file(source, path, mtime, size, stats, log)
+                self._reindex_file(source, path, mtime, size, stats, source_log)
 
             gone = set(known) - set(current)
             if gone:
@@ -226,6 +246,9 @@ class Index:
                         self._drop_path(path)
                         self.db.execute("DELETE FROM files WHERE path = ?", (path,))
                         stats["files_removed"] += 1
+            with self._write():
+                self.db.execute("INSERT OR REPLACE INTO meta VALUES(?,?)",
+                                ("sync_warnings:" + source.name, json.dumps(warnings)))
 
         with self._write():
             if stale:
@@ -279,6 +302,7 @@ class Index:
                     " VALUES(?,?,?,?,?,?,?,?)",
                     (path, source.name, session_id, cwd, mtime, size, "", ""),
                 )
+                self._stamp_adapter(source, path, mtime, size, None, None)
             return
         rows = []
         for lineno, msg in msgs:
@@ -322,6 +346,7 @@ class Index:
                     make_title(msgs), first_ts(msgs),
                 ),
             )
+            self._stamp_adapter(source, path, mtime, size, lo, hi)
         stats["messages"] += len(rows)
 
     def _drop_path(self, path):
@@ -330,6 +355,13 @@ class Index:
         ).fetchall():
             self.db.execute("DELETE FROM messages WHERE rowid BETWEEN ? AND ?", (r["lo"], r["hi"]))
         self.db.execute("DELETE FROM file_ranges WHERE path = ?", (path,))
+        self.db.execute("DELETE FROM meta WHERE key=?", ("adapter:codex:" + path,))
+
+    def _stamp_adapter(self, source, path, mtime, size, lo, hi):
+        if source.name == "codex":
+            from .sources.codex import ADAPTER_VERSION
+            self.db.execute("INSERT OR REPLACE INTO meta VALUES(?,?)", (
+                "adapter:codex:" + path, json.dumps([ADAPTER_VERSION, mtime, size, lo, hi])))
 
     # ------------------------------------------------------------------ info
 

@@ -76,9 +76,9 @@ search_sessions ──▶ get_context ──▶ get_session
  "where is it?"      "what happened?"   "walk me through it"
 ```
 
-1. **`search_sessions`** returns ranked hits. Each hit carries `host`, `source`, `cwd`, `ts`, `role`, `kind`, a snippet with the matched terms marked, and `path` + `lineno`. Keywords are ANDed, and filters narrow by agent, device, directory, date or message kind.
+1. **`search_sessions`** returns `{hits, coverage, warnings}`. Coverage reports device failures, index refresh and the indexed-body cap. Each hit carries `host`, `source`, `cwd`, `ts`, `role`, `kind`, a snippet with the matched terms marked, and `path` + `lineno`. Keywords are ANDed, and filters narrow by agent, device, directory, date or message kind.
 2. **`get_context`** reads the messages around a hit: the prompt that led up to it, the tool calls and results, and the conclusion. The agent passes back the hit's `host`, and the read runs on that device.
-3. **`get_session`** reads the whole session. `head`/`tail` skim a long one, and `raw: true` reads the original JSONL when an indexed body was truncated at 20k characters.
+3. **`get_session`** reads a session in pages (`limit`, `cursor`, `anchor_line`) or as a whole. `head`/`tail` fetch only the selected indexed bodies, and `raw: true` reads the original JSONL when an indexed body was truncated at 20k characters.
 
 Snippets are deliberately short. The skill tells the agent to call `get_context` before quoting or reusing anything from a hit.
 
@@ -93,6 +93,8 @@ Snippets are deliberately short. The skill tells the agent to call `get_context`
 | `reindex` | — | `mnemo index` | Incremental sync of local logs |
 
 Parameters, output shapes and token costs: [Agent tools](docs/agent-tools.md).
+
+Codex completed-item events and compressed `.jsonl.zst` rollouts are supported. Compressed reads require the optional `zstd` executable on the device holding the file; missing decoders preserve the existing Codex index and report a coverage warning. See [bounded retrieval](docs/retrieval.md).
 
 ### Make it a habit
 

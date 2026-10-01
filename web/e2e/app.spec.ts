@@ -196,3 +196,31 @@ test.describe("chrome", () => {
     await expect(page.getByTestId("logbox")).toContainText("搜索「backoff」")
   })
 })
+
+test("long session reads bounded pages around a hit and loads both directions", async ({ page }) => {
+  const requests: { limit: number; cursor?: string; anchor_line?: number }[] = []
+  const messages = Array.from({ length: 450 }, (_, i) => ({ lineno: i + 1, role: "user", kind: "text",
+    text: `Synthetic message ${i + 1}`, ts: "2026-10-01T00:00:00Z" }))
+  await page.route("**/api/session", async (route) => {
+    const body = route.request().postDataJSON()
+    requests.push(body)
+    const offset = body.cursor ? Number(body.cursor) : 90
+    const end = Math.min(450, offset + 181)
+    await route.fulfill({ json: { ok: true, session: { path: "/synthetic/long.jsonl", source: "codex", session_id: "synthetic",
+      cwd: "/synthetic", count: 450, started_at: messages[0].ts, ended_at: messages[0].ts,
+      messages: messages.slice(offset, end), page: { offset, limit: 181,
+        previous_cursor: offset ? String(Math.max(0, offset - 181)) : null,
+        next_cursor: end < 450 ? String(end) : null } } } })
+  })
+  await page.goto("/session/?path=%2Fsynthetic%2Flong.jsonl&line=181")
+  await expect(page.getByTestId("session-meta")).toContainText("已读取 181/450")
+  expect(requests[0]).toMatchObject({ limit: 181, anchor_line: 181 })
+  await expect(page).toHaveScreenshot("session-paged.png", { mask: [page.getByTestId("app-version")] })
+  await page.getByRole("button", { name: /加载更早/ }).click()
+  await expect(page.getByTestId("session-meta")).toContainText("已读取 271/450")
+  await page.getByRole("button", { name: /加载更晚/ }).click()
+  await expect(page.getByTestId("session-meta")).toContainText("450 条消息")
+  await expect(page.getByTestId("session-meta")).not.toContainText("已读取")
+  expect(requests.map((r) => r.limit)).toEqual([181, 181, 181])
+  await expect(page.locator('[data-i="449"]')).toContainText("Synthetic message 450")
+})

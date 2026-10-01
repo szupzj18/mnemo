@@ -1,5 +1,33 @@
 # Benchmarks
 
+## Reproducible retrieval comparison
+
+The synthetic benchmark compares a clean baseline checkout with the candidate on identical logs, in separate Python workers and SQLite indexes. It measures normalized full/head/tail/Web-first-page reads, and evaluates top-20 recall against explicit source-line answers. It never uses real session history or registered devices.
+
+```bash
+git worktree add --detach /tmp/mnemo-baseline 5780bba6b8c35708981303b0e0381e9adcc2a910
+python3 scripts/benchmark-retrieval.py --baseline /tmp/mnemo-baseline \
+  --messages 10000 --repeats 9 --output /tmp/retrieval.json
+```
+
+The default corpus contains a 10,000-message Claude session plus legacy, completed-item, inter-agent and compressed Codex logs. Eleven fixed queries have source-line ground truth; one deliberately places its answer beyond the 20k body cap. Use `zstd` on the benchmark machine to generate compressed fixtures. The raw JSON records the corpus SHA-256, Python/SQLite/platform versions, revisions, dirty flags, indexing time, per-query results and read metrics.
+
+| Measurement | Method | Acceptance criterion |
+|---|---|---|
+| Format coverage | Correct `(path, lineno)` in top 20 for each gold query | All ten in-cap cases; clipped-tail case reported as a miss |
+| Returned-hit precision | Exact gold line / returned hits for each query | No extra hits for these unique-answer queries |
+| Read correctness | Compare selected messages against a full-session oracle | Head/tail/page equality; no message loss |
+| Latency | Warm-up excluded; 9 warm-index runs, read plus JSON serialization | Report p50/p95; no fixed cross-machine timing gate |
+| Memory | One separate `tracemalloc` run per operation | Report Python allocation peak; indexed selection must not load all bodies |
+| Payload | UTF-8 JSON bytes | Web initial read bounded to 181 messages |
+| Federation correctness | Hermetic two-hop local-process tests plus offline-device cases | Cursors/routes preserved; failed devices not reported as successful zero-hit searches |
+
+Index build timing is a single run per variant; baseline runs first. Latency includes local read/serialization and excludes process startup, SSH/network, index sync and agent reasoning. Memory excludes SQLite/native allocations and total RSS. Raw pagination is not benchmarked as an optimization because it still parses the original file. This is a format/read regression suite, not an estimate of real-world answer accuracy.
+
+Measured results are in [the retrieval report](benchmarks/retrieval-report.md). CI runs a smaller correctness smoke test; timing remains informational.
+
+## Historical real-session measurements
+
 Measured on 2026-09-24 against Mnemo v0.1.0 (then named *agentsearch*) on one developer's real session history. The machine was macOS with the system Python 3.9 and SQLite 3.51. These are single-machine numbers. Federated search adds one SSH round-trip per device (about 300–450 ms in practice to a remote devbox, with connections reused after the first query).
 
 ## Corpus

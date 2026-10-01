@@ -43,7 +43,8 @@ export default function (pi) {
       "Finds user prompts, assistant replies, summaries, tool calls and tool results. " +
       "Each hit includes host, source, cwd, timestamp, snippet, and path+line for get_session_context " +
       "(pass the hit's host there); pass the hit's path alone to get_full_session for the whole session file. " +
-      "Supports English (prefix) and Chinese (substring).",
+      "Supports English (prefix) and Chinese (substring). Returns {hits, coverage, warnings}; " +
+      "check device failures, index refresh and body limits before treating zero hits as absence.",
     parameters: Type.Object({
       query: Type.String({
         description: "keywords separated by whitespace; all must match",
@@ -64,7 +65,7 @@ export default function (pi) {
       limit: Type.Optional(Type.Number({ description: "max hits, default 20" })),
     }),
     async execute(_toolCallId, params) {
-      const args = ["search", params.query, "--json", "--limit", String(params.limit ?? 20)];
+      const args = ["search", params.query, "--json", "--coverage", "--limit", String(params.limit ?? 20)];
       if (params.source) args.push("--source", params.source);
       if (params.cwd) args.push("--cwd", params.cwd);
       if (params.since) args.push("--since", params.since);
@@ -123,6 +124,9 @@ export default function (pi) {
       ),
       head: Type.Optional(Type.Number({ description: "only the first N messages" })),
       tail: Type.Optional(Type.Number({ description: "only the last N messages" })),
+      limit: Type.Optional(Type.Number({ minimum: 1, maximum: 500, description: "page size; prefer 100" })),
+      cursor: Type.Optional(Type.String({ description: "page.next_cursor or page.previous_cursor" })),
+      anchor_line: Type.Optional(Type.Number({ description: "center first page around this line; requires limit" })),
       raw: Type.Optional(
         Type.Boolean({ description: "read full untruncated bodies straight from the original session JSONL" })
       ),
@@ -133,6 +137,9 @@ export default function (pi) {
       if (params.tail) args.push("--tail", String(params.tail));
       if (params.host) args.push("--host", params.host);
       if (params.raw) args.push("--raw");
+      for (const key of ["limit", "cursor", "anchor_line"] as const) {
+        if (params[key] != null) args.push("--" + key.replace("_", "-"), String(params[key]));
+      }
       const text = await run(args, 60000);
       return { content: [{ type: "text", text }], details: {} };
     },

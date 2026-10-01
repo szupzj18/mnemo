@@ -11,7 +11,7 @@ The same tools are exposed over MCP (`mnemo mcp`), as a Pi extension, and as CLI
 
 | MCP | Pi | CLI |
 |---|---|---|
-| `search_sessions` | `search_sessions` | `mnemo search … --json` |
+| `search_sessions` | `search_sessions` | `mnemo search … --json --coverage` |
 | `get_context` | `get_session_context` | `mnemo context <path> <line> --json` |
 | `get_session` | `get_full_session` | `mnemo session <path> --json` |
 | `list_recent_sessions` | — | `mnemo recent --json` |
@@ -20,6 +20,8 @@ The same tools are exposed over MCP (`mnemo mcp`), as a Pi extension, and as CLI
 Over MCP, `search_sessions`, `get_context`, `get_session` and `list_recent_sessions` are annotated `readOnlyHint: true`, so clients that ask before running a tool (Codex does) skip the prompt for them; that is what lets an unattended run such as `codex exec`, where approvals are off and a prompt cancels the call, search past sessions. `reindex` writes the local index and is annotated as a non-destructive write.
 
 ## search_sessions
+
+Returns `{hits, coverage, warnings}` over MCP/Pi. `coverage` lists devices with `status` (`searched`, `failed`, `skipped`), refresh state (`synced`, `recent`, `not_requested`, `failed`, `unknown`), device-local sync warnings and the indexed-body cap. A searched device can have an incomplete index refresh; older devices report unknown freshness. Plain CLI `--json` remains an array unless `--coverage` is added.
 
 Full-text search over user prompts, assistant replies, summaries, tool calls and tool results, across every agent on every registered device.
 
@@ -55,7 +57,7 @@ Each hit:
 
 `envelope` is `1` only when the matched text is injected boilerplate (possible with `include_injected`); the snippet then shows cleaned text and the verbatim body is available under `body`.
 
-Matched terms are wrapped in `[[…]]`. Results from several devices are merged by Reciprocal Rank Fusion. If a device is unreachable, the response ends with an `unreachable devices` note, and hits from the other devices are still complete.
+Matched terms are wrapped in `[[…]]`. Results from several devices are merged by Reciprocal Rank Fusion. If a device is unreachable, `warnings` and its `coverage` entry report the failure. Answering devices cover their indexed bodies and filters; source warnings, unknown freshness and clipped tails limit absence claims.
 
 ## get_context
 
@@ -79,6 +81,8 @@ Returns the indexed messages around one hit. Every message in the window has the
 Messages whose body contained injected boilerplate carry `"envelope": 1`. A mixed message (boilerplate plus a real reply) shows the cleaned `text` and also exposes the verbatim original under `body`; a boilerplate-only message renders its verbatim text as-is. The CLI `--show-envelope` flag prints verbatim bodies in text mode.
 
 ## get_session
+
+Use `limit` (1–500, typically 100) with optional `anchor_line` for the first page, then pass `page.next_cursor` or `page.previous_cursor` as `cursor`. `count` remains the total; `messages` contains only the page. `head`/`tail` are mutually exclusive and cannot be combined with pagination. Raw paging limits returned messages but still parses the full source. See [retrieval](retrieval.md) for cursor and coverage semantics.
 
 Returns every indexed message of the session file, ordered by time, along with session metadata.
 

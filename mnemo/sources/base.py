@@ -1,5 +1,9 @@
 import json
 import os
+import contextlib
+import shutil
+import subprocess
+import tempfile
 
 from ..model import Msg, clip, norm_ts
 
@@ -44,7 +48,7 @@ class Source:
 
     @staticmethod
     def read_jsonl(path):
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
+        with open_jsonl(path) as f:
             for lineno, line in enumerate(f, 1):
                 line = line.strip()
                 if not line:
@@ -53,6 +57,38 @@ class Source:
                     yield lineno, json.loads(line)
                 except (ValueError, UnicodeDecodeError):
                     continue
+
+
+@contextlib.contextmanager
+def open_jsonl(path):
+    # Codex changes a cold rollout's representation without changing its logical path.
+    compressed = path.endswith(".jsonl.zst")
+    if not compressed and not os.path.exists(path) and os.path.exists(path + ".zst"):
+        path += ".zst"
+        compressed = True
+    if not compressed:
+        with open(path, "r", encoding="utf-8", errors="replace") as stream:
+            yield stream
+        return
+    binary = shutil.which("zstd")
+    if not binary:
+        raise SourceUnavailable("compressed Codex logs require the optional zstd executable")
+    # stderr goes to a file so a corrupt stream cannot fill a pipe and deadlock stdout.
+    with tempfile.TemporaryFile() as errors:
+        process = subprocess.Popen([binary, "-dc", "--", path], stdout=subprocess.PIPE,
+                                   stderr=errors, universal_newlines=True, encoding="utf-8",
+                                   errors="replace")
+        try:
+            yield process.stdout
+            if process.wait():
+                errors.seek(0)
+                raise SourceUnavailable("cannot decompress %s: %s" %
+                                        (path, errors.read(2048).decode("utf-8", "replace")))
+        finally:
+            process.stdout.close()
+            if process.poll() is None:
+                process.terminate()
+            process.wait()
 
 
 def decode_cwd_dir(name):

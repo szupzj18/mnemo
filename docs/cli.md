@@ -29,6 +29,7 @@ Alias: `mnemo query`.
 | `--no-sync` | off | Skip the local incremental sync (remotes still sync) |
 | `--include-injected` | off | Also match injected boilerplate bodies (workspace instructions, plugin suggestions, approval-review wraps) that are kept but hidden from search |
 | `--json` | off | JSON array of hits |
+| `--coverage` | off | With `--json`, return `{hits, coverage, warnings}` |
 
 Every device, local and remote, syncs its index incrementally before it is searched, so sessions from a minute ago are found. Warnings about unreachable devices, or a local index that couldn't be refreshed, go to stderr and don't fail the command.
 
@@ -53,8 +54,11 @@ Prints the messages around a hit. `--host` must be the hit's `host` for remote h
 ## mnemo session
 
 ```bash
-mnemo session <path> [--head N] [--tail N] [--host H] [--raw] [--show-envelope] [--json]
+mnemo session <path> [--head N | --tail N] [--host H] [--raw] [--show-envelope] [--json]
+mnemo session <path> --limit 100 [--anchor-line LINE | --cursor CURSOR] [--host H] [--raw] --json
 ```
+
+Indexed `head`/`tail` reads load only selected bodies. Pagination returns `page.offset`, `page.next_cursor`, `page.previous_cursor` and the whole-session `count`; page sizes are 1–500. Cursors bind to the indexed file version and fail explicitly after reindexing changes it. Remote pagination requires updated Mnemo on every route hop. Raw pages limit the response but still parse the source file. See [retrieval](retrieval.md).
 
 Prints every message of one session file in time order. `--show-envelope` shows verbatim injected bodies (otherwise the cleaned text); each envelope message is flagged and its original is available in the JSON as `body`.
 

@@ -13,6 +13,7 @@ from .fingerprint import code_fingerprint
 from .remote import LOCAL, RemoteError, fan_out_search, remote_context, remote_session
 from .search import DEFAULT_KINDS, get_context, get_session, raw_context, raw_session, recent
 from .sources import SOURCES
+from .sources.base import SourceUnavailable
 
 BOLD = "\033[1m"
 DIM = "\033[2m"
@@ -340,6 +341,7 @@ def cmd_search(args):
     else:
         kinds = DEFAULT_KINDS
     hosts = [h.strip() for h in args.host.split(",")] if args.host else None
+    coverage = [] if args.coverage else None
     if args.relay:
         return _relay_search(args, idx, kinds)
     try:
@@ -354,6 +356,7 @@ def cmd_search(args):
             hosts=hosts,
             sync_local=not args.no_sync,
             include_injected=args.include_injected,
+            coverage=coverage,
         )
     except RemoteError as exc:
         print("error: %s" % exc, file=sys.stderr)
@@ -361,7 +364,8 @@ def cmd_search(args):
     for w in warnings:
         print("warning: %s" % w, file=sys.stderr)
     if args.json:
-        print(json.dumps(hits, ensure_ascii=False, indent=2))
+        result = {"hits": hits, "coverage": coverage, "warnings": warnings} if args.coverage else hits
+        print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     if not hits:
         print("no matches")
@@ -387,7 +391,7 @@ def _relay_search(args, idx, kinds):
     """Answer a search forwarded by a neighbor (protocol 2): an envelope, never an error."""
     node = remote_mod.load_node()
     visited = set(filter(None, (args.visited or "").split(",")))
-    hits, warnings = [], []
+    hits, warnings, coverage = [], [], []
     if node["id"] not in visited:
         relay = node["forward"] and args.ttl > 0
         try:
@@ -404,11 +408,12 @@ def _relay_search(args, idx, kinds):
                 include_injected=args.include_injected,
                 visited=visited,
                 ttl=args.ttl,
+                coverage=coverage,
             )
         except RemoteError as exc:
             warnings.append(str(exc))
     print(json.dumps({"node": {"id": node["id"], "name": node["name"]}, "hits": hits,
-                      "warnings": warnings}, ensure_ascii=False))
+                      "warnings": warnings, "coverage": coverage}, ensure_ascii=False))
     return 0
 
 
@@ -451,14 +456,6 @@ def cmd_node(args):
     return 0
 
 
-def _slice(messages, head, tail):
-    if head:
-        messages = messages[:head]
-    elif tail:
-        messages = messages[-tail:]
-    return messages
-
-
 def _print_messages(path, rows, full_text=False, show_envelope=False):
     for r in rows:
         env = " env" if r.get("envelope") else ""
@@ -481,20 +478,24 @@ def cmd_session(args):
         _check_forward(args, host)
         if host == LOCAL:
             idx = Index(args.db)
-            sess = raw_session(idx, args.path) if args.raw else get_session(idx, args.path)
+            try:
+                reader = raw_session if args.raw else get_session
+                sess = reader(idx, args.path, head=args.head, tail=args.tail, limit=args.limit,
+                              cursor=args.cursor, anchor_line=args.anchor_line)
+            finally:
+                idx.close()
         else:
             sess = remote_session(
                 host, args.path,
                 head=args.head, tail=args.tail, raw=args.raw,
+                limit=args.limit, cursor=args.cursor, anchor_line=args.anchor_line,
             )
-    except RemoteError as exc:
+    except (RemoteError, ValueError, OSError, SourceUnavailable) as exc:
         print("error: %s" % exc, file=sys.stderr)
         return 1
     if sess is None:
         print("not in index; run `mnemo index`", file=sys.stderr)
         return 1
-    if host == LOCAL:
-        sess["messages"] = _slice(sess["messages"], args.head, args.tail)
     if args.json:
         print(json.dumps(sess, ensure_ascii=False, indent=2))
         return 0
@@ -721,6 +722,7 @@ def main(argv=None):
     sp.set_defaults(func=cmd_upgrade)
 
     sp = sub.add_parser("search", aliases=["query"], help="full-text search")
+    sp.add_argument("--coverage", action="store_true", help="include device/index coverage in JSON results")
     sp.add_argument("query", nargs="+")
     sp.add_argument("--source", help="comma-separated source filter")
     sp.add_argument("--kind", help="comma-separated kinds: text,summary,tool_call,tool_result,reasoning")
@@ -760,6 +762,9 @@ def main(argv=None):
     sp.add_argument("--relay", action="store_true", help=argparse.SUPPRESS)
     sp.add_argument("--head", type=int, default=0, help="only first N messages")
     sp.add_argument("--tail", type=int, default=0, help="only last N messages")
+    sp.add_argument("--limit", type=int, help="page size, 1–500 messages")
+    sp.add_argument("--cursor", help="opaque cursor from a previous session page")
+    sp.add_argument("--anchor-line", type=int, help="center the first page around this source line")
     sp.add_argument("--raw", action="store_true", help="read full bodies from the original session file (no 20k cap)")
     sp.add_argument("--show-envelope", action="store_true",
                     help="show verbatim bodies including stripped boilerplate instead of cleaned text")

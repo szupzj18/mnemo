@@ -82,6 +82,22 @@ class MeshTest(unittest.TestCase):
     def routes(self, word, **kw):
         return sorted({h["host"] for h in self.search(word, **kw)[0]})
 
+    def test_coverage_and_pages_follow_two_hop_routes(self):
+        self.link_a(self.b)
+        self.b.node(forward=True)
+        self.b.link(self.c)
+        coverage = []
+        hits, warnings = self.search("wordC", coverage=coverage)
+        self.assertFalse(warnings)
+        self.assertEqual({r["host"] for r in coverage}, {"local", "B", "B/C"})
+        self.assertTrue(all(r["status"] == "searched" for r in coverage))
+        hit = hits[0]
+        first = remote.remote_session(hit["host"], hit["path"], limit=1)
+        self.assertEqual(len(first["messages"]), 1)
+        second = remote.remote_session(hit["host"], hit["path"], limit=1, cursor=first["page"]["next_cursor"])
+        whole = remote.remote_session(hit["host"], hit["path"])
+        self.assertEqual(first["messages"] + second["messages"], whole["messages"])
+
     # ---------------------------------------------------------------- routing
 
     def test_direct_neighbors_behave_as_before(self):

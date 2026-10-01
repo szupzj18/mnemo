@@ -91,6 +91,7 @@ export interface Session {
   ended_at: string | null
   count: number
   messages: Message[]
+  page?: { offset: number; limit: number; next_cursor: string | null; previous_cursor: string | null }
 }
 
 export interface SyncStats {
@@ -197,6 +198,6 @@ export const api = {
     call<Ok<{ results: DeviceUpgrade[]; warnings: string[] }>>("/api/upgrade-devices", routes ? { routes } : {}),
   search: (query: string, limit: number, hosts: string[] | null) =>
     call<SearchResponse>("/api/search", { query, limit, hosts }),
-  session: (path: string, host: string, raw: boolean) =>
-    call<Ok<{ session: Session }>>("/api/session", { path, host, raw }),
+  session: (path: string, host: string, raw: boolean, page?: { limit: number; cursor?: string; anchor_line?: number }) =>
+    call<Ok<{ session: Session }>>("/api/session", { path, host, raw, ...page }),
 }

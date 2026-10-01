@@ -14,6 +14,7 @@ from .index import DEFAULT_DB_PATH, Index, IndexTooNew
 from .remote import LOCAL, RemoteError
 from .search import DEFAULT_KINDS, get_session, raw_session
 from .sources import SOURCES
+from .sources.base import SourceUnavailable
 
 DEFAULT_PORT = 7787
 
@@ -58,10 +59,11 @@ def local_sync():
         idx.close()
 
 
-def local_session(path, raw=False):
+def local_session(path, raw=False, **selection):
     idx = Index(DEFAULT_DB_PATH)
     try:
-        return raw_session(idx, path) if raw else get_session(idx, path)
+        reader = raw_session if raw else get_session
+        return reader(idx, path, **selection)
     finally:
         idx.close()
 
@@ -97,19 +99,19 @@ def diagnose_search(query, hosts, limit):
     include_local = wanted is None or LOCAL in wanted
     covered = {node["id"]} | {r["node_id"] for r in selected if r.get("node_id")}
     kinds = list(DEFAULT_KINDS)
-    per_host, warnings, payload = [], [], []
+    per_host, warnings, payload, coverage = [], [], [], []
 
     jobs = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(selected) + 1) as pool:
         if include_local:
             jobs[pool.submit(_time, lambda: (remote_mod._local_search(
                 DEFAULT_DB_PATH, query, None, kinds, None, None, limit,
-                True, warnings), []))] = LOCAL
+                True, warnings, coverage=coverage), []))] = LOCAL
         for r in selected:
             def run_remote(r=r):
                 return remote_mod._remote_search(
                     r, query, None, kinds, None, None, limit, True, False,
-                    covered - {r.get("node_id")}, remote_mod.DEFAULT_TTL - 1)
+                    covered - {r.get("node_id")}, remote_mod.DEFAULT_TTL - 1, coverage)
             jobs[pool.submit(_time, run_remote)] = r["name"]
         for fut in concurrent.futures.as_completed(jobs):
             name = jobs[fut]
@@ -118,6 +120,7 @@ def diagnose_search(query, hosts, limit):
             except RemoteError as exc:
                 per_host.append({"host": name, "ok": False, "error": str(exc)})
                 warnings.append(str(exc))
+                coverage.append({"host": name, "status": "failed", "error": str(exc)})
                 continue
             if name == LOCAL:
                 for h in rows:
@@ -128,7 +131,7 @@ def diagnose_search(query, hosts, limit):
             payload.append((name, rows))
 
     merged = remote_mod._rrf(remote_mod._dedupe(payload), limit)
-    return {"per_host": per_host, "merged": merged, "warnings": warnings}
+    return {"per_host": per_host, "merged": merged, "warnings": warnings, "coverage": coverage}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -348,17 +351,14 @@ class Handler(BaseHTTPRequestHandler):
                 host = data.get("host") or LOCAL
                 raw = bool(data.get("raw"))
                 head, tail = data.get("head"), data.get("tail")
+                page = {key: data.get(key) for key in ("limit", "cursor", "anchor_line")}
                 if host == LOCAL:
-                    value = local_session(path_value, raw)
-                    if value and (head or tail):
-                        if head:
-                            value["messages"] = value["messages"][: int(head)]
-                        else:
-                            value["messages"] = value["messages"][-int(tail):]
+                    value = local_session(path_value, raw, head=head, tail=tail, **page)
                 else:
                     value = remote_mod.remote_session(
                         host, path_value,
                         head=head, tail=tail, raw=raw, timeout=180,
+                        **page
                     )
                 if value is None:
                     self._json({"ok": False, "error": "path not in index; sync first"}, 404)
@@ -366,7 +366,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"ok": True, "session": value})
             else:
                 self._json({"error": "not found"}, 404)
-        except (RemoteError, ValueError, KeyError, IndexTooNew) as exc:
+        except (RemoteError, ValueError, KeyError, IndexTooNew, OSError, SourceUnavailable) as exc:
             self._json({"ok": False, "error": str(exc)}, 400)
 
 
