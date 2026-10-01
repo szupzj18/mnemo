@@ -26,6 +26,54 @@ Index build timing is a single run per variant; baseline runs first. Latency inc
 
 Measured results are in [the retrieval report](benchmarks/retrieval-report.md). CI runs a smaller correctness smoke test; timing remains informational.
 
+## Real-session measurements, 2026-10-01
+
+Mnemo 0.4.1 plus 10 commits (`v0.4.1-10-g9b718a3`, with the current Codex adapter and paged reads) on one developer's real session history, on macOS 26.5 with the system Python 3.9.6 and SQLite 3.51.0. Everything was built into a throwaway index; the published numbers are aggregates only.
+
+```bash
+python3 scripts/benchmark-real.py --json /tmp/real.json   # your own history; prints no session text or paths
+```
+
+### Corpus
+
+| | |
+|---|---|
+| Sources | Claude Code 139, Codex 644, Pi 89 sessions |
+| Session files | 872 |
+| Indexed messages | 235,602 (Codex 153,920, Claude Code 67,544, Pi 14,138) |
+| Raw log size | 4.14 GB |
+| Index size | 1.84 GB (44.4% of raw) |
+
+The index is a larger share of the logs than on 2026-09-24 (21.8%). Since 0.4, the Codex adapter reads completed turn items and inter-agent messages that were invisible before, and every message stores its searchable text beside its verbatim body, so most text is stored twice. An external-content table that keeps one copy is on the roadmap.
+
+### Indexing
+
+| Operation | Time |
+|---|---|
+| Full build, 872 files / 236k messages | 48.4 s (first run only) |
+| Incremental sync, nothing changed (CLI end to end) | 90 ms |
+| MCP server start to ready, including sync | 89 ms |
+
+### Query latency and cost
+
+End-to-end CLI times with `--host local --no-sync`, Python start-up included; median of 5. Tokens use the same heuristic as below (CJK ≈ 0.75 tok/char, other ≈ 0.28).
+
+| Query | Time | Tokens, 10 hits | Tokens, 20 hits |
+|---|---|---|---|
+| English, one word | 97 ms | ~2,000 | ~3,880 |
+| English, two words | 66 ms | ~1,770 | ~3,630 |
+| Chinese, two words | 62 ms | ~1,880 | ~3,880 |
+| Mixed Chinese + English | 60 ms | ~1,800 | ~3,810 |
+
+### Reading the largest session (27,196 messages)
+
+| Read | Time | Response |
+|---|---|---|
+| `context` around a hit (index rowid range) | 12.5 ms | |
+| Re-parsing the session file instead | 385 ms | |
+| Whole session (`get_session`) | 62 ms | 19.3 MB |
+| First page as the dashboard opens it (181 messages around the hit) | 26 ms | 133 KB |
+
 ## Historical real-session measurements
 
 Measured on 2026-09-24 against Mnemo v0.1.0 (then named *agentsearch*) on one developer's real session history. The machine was macOS with the system Python 3.9 and SQLite 3.51. These are single-machine numbers. Federated search adds one SSH round-trip per device (about 300–450 ms in practice to a remote devbox, with connections reused after the first query).

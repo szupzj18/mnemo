@@ -34,6 +34,7 @@ mnemo/upgrade.py             `mnemo upgrade`: backup, rebuild beside, verify, sw
 mnemo/doctor.py              `mnemo doctor`: health checks reusing setup, topology, link and upgrade logic
 mnemo/service.py             `mnemo link --install`: launchd / systemd user / background services for links
 scripts/release.py           changelog cuts, version bumps, release notes (release-pr.yml / release.yml)
+scripts/benchmark-real.py    real-session timings on your own history (aggregates only; docs/benchmarks.md)
 mnemo/link.py                `mnemo link`: inbound links for devices that cannot connect back; read-only allowlist
 mnemo/fingerprint.py         hash of the running code; devices compare it to find who is behind
 mnemo/xdg.py                 XDG base dirs as OpenCode resolves them (own home only)
