@@ -48,7 +48,7 @@ export default function DashboardPage() {
         </div>
         <div>
           <div className="text-xs text-faint">上次同步</div>
-          <div className="font-medium" suppressHydrationWarning data-testid="last-sync">
+          <div className="min-w-56 font-medium tabular-nums" suppressHydrationWarning data-testid="last-sync">
             {fmtTs(status.last_sync)}
           </div>
         </div>
