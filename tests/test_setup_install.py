@@ -241,6 +241,18 @@ class RenderTest(unittest.TestCase):
         start = lines.index("    \u00b7 MCP server   x.jsonc has comments")
         self.assertEqual(lines[start + 1:start + 3], ["                   add this:", '                   "mnemo": {}'])
 
+    def test_home_shortened_only_as_a_whole_path_prefix(self):
+        # devboxes: $HOME=/home/u is a symlink to /data00/home/u
+        out = self.render([
+            self.S("claude", "MCP server", "claude mcp add --scope user mnemo -- /data00/home/u/mnemo/bin/mnemo mcp", "added"),
+            self.S("claude", "skill", "/home/u/.claude/skills/mnemo (was -> /home/u2/x)", "fixed"),
+        ])
+        self.assertIn("-- /data00/home/u/mnemo/bin/mnemo mcp", out)
+        self.assertNotIn("/data00~", out)
+        self.assertIn("~/.claude/skills/mnemo", out)
+        self.assertIn("was -> /home/u2/x", out)
+        self.assertEqual(setup.tilde('"/home/u" /home/u', "/home/u"), '"~" ~')
+
     def test_plain_ascii_and_color(self):
         steps = [self.S("pi", "extension", "x", "added")]
         ascii_out = self.render(steps, unicode=False)

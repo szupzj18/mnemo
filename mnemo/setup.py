@@ -6,6 +6,7 @@ Config files are backed up before they are edited.
 """
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -49,6 +50,18 @@ def shown(argv):
 
 def home(*parts):
     return os.path.join(os.path.expanduser("~"), *parts)
+
+
+def tilde(text, home_dir=None):
+    """Show home_dir as ~, only where it is a whole path prefix.
+
+    A plain replace turned /data00/home/u/x into /data00~/x on machines whose
+    $HOME (/home/u) is a symlink into another tree.
+    """
+    home_dir = (home_dir or os.path.expanduser("~")).rstrip("/")
+    if not home_dir:
+        return text
+    return re.sub(r"(?<![^\s\"'(=])%s(?=[/\s\"')]|$)" % re.escape(home_dir), "~", text, flags=re.M)
 
 
 def detect():
@@ -224,7 +237,7 @@ def render(steps, dry_run=False, color=False, unicode=True, home_dir=None):
         return "\033[%sm%s\033[0m" % (code, text) if color else text
 
     def tidy(text):
-        return text.replace(home_dir, "~")
+        return tilde(text, home_dir)
 
     agents = [a for a in AGENTS if any(s.agent == a for s in steps)]
     found = [a for a in agents if not any(s.agent == a and s.action == "detect" for s in steps)]

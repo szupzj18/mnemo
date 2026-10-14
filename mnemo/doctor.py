@@ -65,8 +65,7 @@ def _version_tuple(v):
 
 def _upgrade_hint():
     if os.path.isdir(os.path.join(link.REPO, ".git")):
-        return "git -C %s pull && mnemo upgrade (or re-run the installer)" % link.REPO.replace(
-            os.path.expanduser("~"), "~")
+        return "git -C %s pull && mnemo upgrade (or re-run the installer)" % st.tilde(link.REPO)
     return "uv tool upgrade mnemo-search (or pipx upgrade mnemo-search), then mnemo upgrade"
 
 
@@ -109,7 +108,7 @@ def _latest_on_pypi():
 
 def check_index(db_path=None, full=False, now=None):
     db_path = db_path or DEFAULT_DB_PATH
-    shown = db_path.replace(os.path.expanduser("~"), "~")
+    shown = st.tilde(db_path)
     if not os.path.isfile(db_path):
         return [Check(MACHINE, "index", FAIL, "no index at %s yet" % shown, "mnemo index")]
     checks = []
@@ -180,7 +179,7 @@ def check_agents(steps=None):
             out.append(Check("Agents", name, WARN, "not connected: %s" % ", ".join(todo), "mnemo setup"))
         elif any(s.status == "skipped" for s in mine):
             first = next(s.detail for s in mine if s.status == "skipped").split("\n")[0]
-            out.append(Check("Agents", name, WARN, first.replace(os.path.expanduser("~"), "~"),
+            out.append(Check("Agents", name, WARN, st.tilde(first),
                              "mnemo setup --agent %s (it shows what to add by hand)" % agent))
         else:
             out.append(Check("Agents", name, OK, " + ".join(s.action for s in mine)))

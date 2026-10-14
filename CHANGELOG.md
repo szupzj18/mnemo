@@ -4,6 +4,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+- `mnemo setup` and `mnemo doctor` shorten the home directory to `~` only where it starts a path. Where `$HOME` is a symlink (such as `/home/u` pointing to `/data00/home/u`), a path like `/data00/home/u/mnemo/bin/mnemo` was shown as `/data00~/mnemo/bin/mnemo`. This only affected the display; the config that was written was correct.
+
 ## [0.5.0] - 2026-10-12
 
 ### Added
