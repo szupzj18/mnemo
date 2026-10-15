@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+- Searches leave out the calling agent's own session, which otherwise answers any query about what was just said. The id comes from `CLAUDE_CODE_SESSION_ID` (Claude Code), the MCP request's `_meta.threadId`/`sessionId` or `CODEX_THREAD_ID`/`CODEX_SESSION_ID` (Codex), and the Pi extension. `--include-current` / `include_current_session` keeps it; `--exclude-session` / `exclude_session_ids` leaves out others. Responses with coverage list `excluded_sessions`.
+- `mnemo context --max-chars N` and `max_chars` on `get_context` (MCP, Pi) clip each message, marked `… [+N chars]`, so skimming a window doesn't pull in 20k-character tool results. Default output is unchanged.
+
 ### Fixed
 - `mnemo setup` and `mnemo doctor` shorten the home directory to `~` only where it starts a path. Where `$HOME` is a symlink (such as `/home/u` pointing to `/data00/home/u`), a path like `/data00/home/u/mnemo/bin/mnemo` was shown as `/data00~/mnemo/bin/mnemo`. This only affected the display; the config that was written was correct.
 

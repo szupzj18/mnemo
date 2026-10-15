@@ -11,7 +11,8 @@ from .index import DEFAULT_DB_PATH, SCHEMA_VERSION, Index, IndexTooNew
 from . import remote as remote_mod
 from .fingerprint import code_fingerprint
 from .remote import LOCAL, RemoteError, fan_out_search, remote_context, remote_session
-from .search import DEFAULT_KINDS, get_context, get_session, raw_context, raw_session, recent
+from .search import (DEFAULT_KINDS, caller_session_ids, clip_bodies, get_context, get_session,
+                     raw_context, raw_session, recent, split_ids)
 from .sources import SOURCES
 from .sources.base import SourceUnavailable
 
@@ -344,6 +345,9 @@ def cmd_search(args):
     coverage = [] if args.coverage else None
     if args.relay:
         return _relay_search(args, idx, kinds)
+    excluded = split_ids(args.exclude_session)
+    current = [] if args.include_current else caller_session_ids()
+    excluded += [sid for sid in current if sid not in excluded]
     try:
         hits, warnings = fan_out_search(
             idx,
@@ -357,6 +361,7 @@ def cmd_search(args):
             sync_local=not args.no_sync,
             include_injected=args.include_injected,
             coverage=coverage,
+            exclude_sessions=excluded,
         )
     except RemoteError as exc:
         print("error: %s" % exc, file=sys.stderr)
@@ -364,7 +369,9 @@ def cmd_search(args):
     for w in warnings:
         print("warning: %s" % w, file=sys.stderr)
     if args.json:
-        result = {"hits": hits, "coverage": coverage, "warnings": warnings} if args.coverage else hits
+        result = hits
+        if args.coverage:
+            result = {"hits": hits, "coverage": coverage, "warnings": warnings, "excluded_sessions": excluded}
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     if not hits:
@@ -534,6 +541,7 @@ def cmd_context(args):
     if rows is None:
         print("not in index; run `mnemo index`", file=sys.stderr)
         return 1
+    clip_bodies(rows, args.max_chars)
     if args.json:
         print(json.dumps(rows, ensure_ascii=False, indent=2))
         return 0
@@ -740,6 +748,11 @@ def main(argv=None):
                     help="skip the incremental local index sync before searching")
     sp.add_argument("--include-injected", action="store_true",
                     help="also match boilerplate/envelope bodies that are hidden by default")
+    sp.add_argument("--exclude-session", action="append", metavar="ID",
+                    help="leave out this session id (repeatable or comma-separated)")
+    sp.add_argument("--include-current", action="store_true",
+                    help="keep the calling agent's own session, which is left out by default "
+                         "when CLAUDE_CODE_SESSION_ID, CODEX_THREAD_ID or CODEX_SESSION_ID is set")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_search)
 
@@ -753,6 +766,8 @@ def main(argv=None):
     sp.add_argument("--raw", action="store_true", help="read full bodies from the original session file (no 20k cap)")
     sp.add_argument("--show-envelope", action="store_true",
                     help="show verbatim bodies including stripped boilerplate instead of cleaned text")
+    sp.add_argument("--max-chars", type=int, metavar="N",
+                    help="clip each message to N characters (default: whole bodies)")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_context)
 

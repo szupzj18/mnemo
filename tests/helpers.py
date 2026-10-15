@@ -36,8 +36,11 @@ class DemoHome:
         """Point HOME and the remote registry at the demo so nothing touches the
         real ~/.claude, ~/.codex, ~/.pi or SSHes to registered devices."""
         from mnemo import remote
+        from mnemo.search import CALLER_SESSION_ENV
 
         self._saved = (os.environ.get("HOME"), remote.CONFIG_DIR, remote.CONFIG_PATH)
+        # Tests run inside agents too; their session ids would filter results.
+        self._saved_caller = {k: os.environ.pop(k) for k in CALLER_SESSION_ENV if k in os.environ}
         os.environ["HOME"] = self.home
         remote.CONFIG_DIR = os.path.join(self.root, "mnemo-config")
         remote.CONFIG_PATH = os.path.join(remote.CONFIG_DIR, "remotes.json")
@@ -46,6 +49,7 @@ class DemoHome:
         from mnemo import remote
 
         home, remote.CONFIG_DIR, remote.CONFIG_PATH = self._saved
+        os.environ.update(self._saved_caller)
         if home is None:
             os.environ.pop("HOME", None)
         else:

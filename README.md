@@ -80,7 +80,7 @@ search_sessions ──▶ get_context ──▶ get_session
 2. **`get_context`** reads the messages around a hit: the prompt that led up to it, the tool calls and results, and the conclusion. The agent passes back the hit's `host`, and the read runs on that device.
 3. **`get_session`** reads a session in pages (`limit`, `cursor`, `anchor_line`) or as a whole. `head`/`tail` fetch only the selected indexed bodies, and `raw: true` reads the original JSONL when an indexed body was truncated at 20k characters.
 
-Snippets are deliberately short. The skill tells the agent to call `get_context` before quoting or reusing anything from a hit.
+Snippets are deliberately short. The skill tells the agent to call `get_context` before quoting or reusing anything from a hit, with `max_chars` to skim long tool output. A search leaves out the agent's own session, so it doesn't spend a call finding the conversation it is in.
 
 ### Tools
 

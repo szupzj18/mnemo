@@ -1,10 +1,38 @@
 import base64
 import json
+import os
 
 from .model import CJK_RUN, has_cjk
 from .sources import SOURCES
 
 DEFAULT_KINDS = ("text", "summary", "tool_call", "tool_result")
+
+# Session ids the calling agent exports to the commands it runs. Claude Code sets
+# CLAUDE_CODE_SESSION_ID for shell commands and MCP servers; Codex sets
+# CODEX_THREAD_ID (this thread) and CODEX_SESSION_ID (its root session) for shell
+# commands, and sends the same pair as threadId/sessionId in an MCP call's _meta.
+CALLER_SESSION_ENV = ("CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "CODEX_SESSION_ID")
+CALLER_SESSION_META = ("threadId", "sessionId")
+
+
+def caller_session_ids(env=None, meta=None):
+    """Ids of the session running this search, so its own messages can be left out."""
+    env = os.environ if env is None else env
+    found = [env.get(k) for k in CALLER_SESSION_ENV]
+    if isinstance(meta, dict):
+        found += [meta.get(k) for k in CALLER_SESSION_META]
+    return split_ids(v for v in found if isinstance(v, str))
+
+
+def split_ids(values):
+    """Flatten comma-separated id lists, dropping blanks and duplicates, keeping order."""
+    out = []
+    for value in values or ():
+        for sid in str(value).split(","):
+            sid = sid.strip()
+            if sid and sid not in out:
+                out.append(sid)
+    return out
 
 
 def _phrase(token):
@@ -72,6 +100,7 @@ def search(
     since=None,
     limit=20,
     include_injected=False,
+    exclude_sessions=None,
 ):
     where = ["messages MATCH ?"]
     params = [build_match(query, include_injected=include_injected)]
@@ -89,6 +118,9 @@ def search(
     if since:
         where.append("ts >= ?")
         params.append(since)
+    if exclude_sessions:
+        where.append("session_id NOT IN (%s)" % ",".join("?" * len(exclude_sessions)))
+        params.extend(exclude_sessions)
     params.append(limit)
 
     rows = [dict(r) for r in index.db.execute(search_sql(where), params).fetchall()]
@@ -114,6 +146,22 @@ def _view_row(r, hit=None):
     if hit is not None:
         out["hit"] = hit
     return out
+
+
+def clip_bodies(rows, max_chars):
+    """Shorten each message's text to max_chars, saying how much was left out.
+
+    The hit itself is clipped too: its full body stays one get_session/raw read away.
+    """
+    if not max_chars or rows is None:
+        return rows
+    for r in rows:
+        for key in ("text", "body"):
+            value = r.get(key)
+            if isinstance(value, str) and len(value) > max_chars:
+                r[key] = value[:max_chars] + " … [+%d chars]" % (len(value) - max_chars)
+                r["clipped"] = True
+    return rows
 
 
 def recent(index, sources=None, cwd=None, since=None, limit=25):

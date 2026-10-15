@@ -43,7 +43,9 @@ export default function (pi) {
       "Finds user prompts, assistant replies, summaries, tool calls and tool results. " +
       "Each hit includes host, source, cwd, timestamp, snippet, and path+line for get_session_context " +
       "(pass the hit's host there); pass the hit's path alone to get_full_session for the whole session file. " +
-      "Supports English (prefix) and Chinese (substring). Returns {hits, coverage, warnings}; " +
+      "Supports English (prefix) and Chinese (substring). Hits carry a short snippet, not the message body. " +
+      "This pi session is left out by default (include_current_session keeps it). " +
+      "Returns {hits, coverage, warnings, excluded_sessions}; " +
       "check device failures, index refresh and body limits before treating zero hits as absence.",
     parameters: Type.Object({
       query: Type.String({
@@ -63,13 +65,26 @@ export default function (pi) {
         })
       ),
       limit: Type.Optional(Type.Number({ description: "max hits, default 20" })),
+      exclude_session_ids: Type.Optional(
+        Type.Array(Type.String(), { description: "session ids to leave out of the results" })
+      ),
+      include_current_session: Type.Optional(
+        Type.Boolean({ description: "keep hits from this pi session (left out by default)" })
+      ),
     }),
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const args = ["search", params.query, "--json", "--coverage", "--limit", String(params.limit ?? 20)];
       if (params.source) args.push("--source", params.source);
       if (params.cwd) args.push("--cwd", params.cwd);
       if (params.since) args.push("--since", params.since);
       if (params.host) args.push("--host", params.host);
+      const excluded = [...(params.exclude_session_ids ?? [])];
+      if (params.include_current_session) args.push("--include-current");
+      else {
+        const current = ctx?.sessionManager?.getSessionId?.();
+        if (current) excluded.push(current);
+      }
+      for (const id of excluded) args.push("--exclude-session", id);
       const text = await run(args);
       return { content: [{ type: "text", text }], details: {} };
     },
@@ -91,6 +106,9 @@ export default function (pi) {
       raw: Type.Optional(
         Type.Boolean({ description: "read full untruncated bodies from the original session file" })
       ),
+      max_chars: Type.Optional(
+        Type.Number({ description: "clip each message to this many characters (default: whole bodies)" })
+      ),
     }),
     async execute(_toolCallId, params) {
       const args = [
@@ -105,6 +123,7 @@ export default function (pi) {
       ];
       if (params.host) args.push("--host", params.host);
       if (params.raw) args.push("--raw");
+      if (params.max_chars) args.push("--max-chars", String(params.max_chars));
       const text = await run(args);
       return { content: [{ type: "text", text }], details: {} };
     },

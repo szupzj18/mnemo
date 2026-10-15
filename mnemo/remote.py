@@ -425,7 +425,8 @@ def _rrf(per_host, limit):
 
 
 def _local_search(db_path, query, sources, kinds, cwd, since, limit,
-                  sync=False, warnings=None, include_injected=False, coverage=None):
+                  sync=False, warnings=None, include_injected=False, coverage=None,
+                  exclude_sessions=None):
     idx = Index(db_path)
     refresh = "not_requested"
     try:
@@ -457,6 +458,7 @@ def _local_search(db_path, query, sources, kinds, cwd, since, limit,
             idx, query, sources=sources, kinds=kinds,
             cwd=cwd, since=since, limit=limit,
             include_injected=include_injected,
+            exclude_sessions=exclude_sessions,
         )
     finally:
         idx.close()
@@ -485,6 +487,7 @@ def fan_out_search(
     visited=(),
     ttl=DEFAULT_TTL,
     coverage=None,
+    exclude_sessions=None,
 ):
     """Search the local index plus neighbors, and through relaying neighbors, beyond.
 
@@ -492,6 +495,10 @@ def fan_out_search(
     hosts: optional subset of routes ("local", "devbox-109", "devbox-109/devbox-126");
       None means everything reachable.
     visited: node ids already covered upstream (set when this call relays).
+    exclude_sessions: session ids to leave out, typically the caller's own session.
+      The local index drops them in SQL; neighbors are not told (older builds would
+      reject the flag), so their rows are filtered here and a neighbor may return
+      fewer than `limit`.
     Returns (hits, warnings); each hit's host is its route from this device.
     """
     node = load_node()
@@ -525,7 +532,7 @@ def fan_out_search(
             jobs[pool.submit(
                 _local_search, index.db_path, query, sources, kinds, cwd, since, limit,
                 sync_local, warnings, include_injected,
-                coverage,
+                coverage, exclude_sessions,
             )] = LOCAL
         for r in selected:
             jobs[pool.submit(
@@ -551,6 +558,8 @@ def fan_out_search(
             else:
                 rows, remote_warnings = result
                 warnings.extend(remote_warnings)
+                if exclude_sessions:
+                    rows = [x for x in rows if x.get("session_id") not in exclude_sessions]
                 per_host.append((name, rows))
 
     per_host = _dedupe(per_host)

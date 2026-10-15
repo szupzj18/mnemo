@@ -21,7 +21,7 @@ Over MCP, `search_sessions`, `get_context`, `get_session` and `list_recent_sessi
 
 ## search_sessions
 
-Returns `{hits, coverage, warnings}` over MCP/Pi. `coverage` lists devices with `status` (`searched`, `failed`, `skipped`), refresh state (`synced`, `recent`, `not_requested`, `failed`, `unknown`), device-local sync warnings and the indexed-body cap. A searched device can have an incomplete index refresh; older devices report unknown freshness. Plain CLI `--json` remains an array unless `--coverage` is added.
+Returns `{hits, coverage, warnings, excluded_sessions}` over MCP/Pi. `coverage` lists devices with `status` (`searched`, `failed`, `skipped`), refresh state (`synced`, `recent`, `not_requested`, `failed`, `unknown`), device-local sync warnings and the indexed-body cap. A searched device can have an incomplete index refresh; older devices report unknown freshness. Plain CLI `--json` remains an array unless `--coverage` is added.
 
 Full-text search over user prompts, assistant replies, summaries, tool calls and tool results, across every agent on every registered device.
 
@@ -35,6 +35,20 @@ Full-text search over user prompts, assistant replies, summaries, tool calls and
 | `host` | string | all devices | Comma-separated. The MCP tool description lists the registered device names. |
 | `limit` | integer | 20 | Capped at 100 over MCP |
 | `include_injected` | boolean | false | Also match injected boilerplate (workspace instructions, plugin suggestions, slash-command output, Codex approval-review wraps). See [Message schema](#message-schema). |
+| `exclude_session_ids` | string[] | — | Session ids to leave out. CLI: `--exclude-session ID` (repeatable or comma-separated). |
+| `include_current_session` | boolean | false | Keep hits from the session making the call, which are left out by default (see below). CLI: `--include-current`. |
+
+**The caller's own session is left out.** Otherwise a search for something just said in the conversation returns that conversation. Mnemo takes the caller's session id from what each agent provides:
+
+| Agent | Where the id comes from |
+|---|---|
+| Claude Code | `CLAUDE_CODE_SESSION_ID`, set for shell commands and MCP servers |
+| Codex | `threadId`/`sessionId` in each MCP call's `_meta`; `CODEX_THREAD_ID`/`CODEX_SESSION_ID` for shell commands. `CODEX_SESSION_ID` is the root session, so a subagent's search also leaves out its parent thread. |
+| Pi | the extension passes its current session id |
+
+`excluded_sessions` in the response lists what was left out. Claude Code's MCP servers keep the id they were started with, so after `/clear` the earlier conversation is excluded instead of the new one; pass `exclude_session_ids` when that matters. Neighbors are not sent the ids (older builds would reject them); their hits are filtered on return, so a device can contribute fewer than `limit`.
+
+Hits carry a short snippet (about 18 tokens around the match), never the message body; read bodies with `get_context`/`get_session`.
 
 Each hit:
 
@@ -70,6 +84,7 @@ Returns the indexed messages around one hit. Every message in the window has the
 | `host` | string | `local` | **Pass the hit's `host`.** The read runs on that device. |
 | `before` / `after` | integer | 4 / 8 | Window size in messages |
 | `raw` | boolean | false | Read the original JSONL instead of the index (no 20k cap) |
+| `max_chars` | integer | whole bodies | Clip each message to this many characters, ending in `… [+N chars]` and setting `clipped: true`. A window can hold a 20k-character tool result; `max_chars: 1500` cut one real 14-message window from 31k to 7.8k characters. Re-read without it (or with `get_session`) for a full body. |
 
 ```json
 [

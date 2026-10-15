@@ -6,7 +6,8 @@ from . import __version__
 from .index import Index, IndexTooNew
 from . import remote as remote_mod
 from .remote import LOCAL, fan_out_search, remote_context, remote_session
-from .search import DEFAULT_KINDS, get_context, get_session, raw_context, raw_session, recent
+from .search import (DEFAULT_KINDS, caller_session_ids, clip_bodies, get_context, get_session,
+                     raw_context, raw_session, recent, split_ids)
 
 
 # Tool annotations tell an MCP client whether a call needs the user's approval. Codex skips its
@@ -30,7 +31,9 @@ def build_tools():
                 " tool calls and tool results. Each hit gives host, source, cwd, timestamp, a snippet,"
                 " and file:line for get_context (pass the hit's host to get_context); pass the hit's path alone to get_session for the whole session file."
                 " Supports English (prefix) and Chinese (substring via bigrams)."
-                " Returns {hits, coverage, warnings}; coverage reports searched/failed devices,"
+                " Hits carry a short snippet, not the message body; read bodies with get_context/get_session."
+                " The calling agent's own session is left out by default (include_current_session=true keeps it)."
+                " Returns {hits, coverage, warnings, excluded_sessions}; coverage reports searched/failed devices,"
                 " index refresh status and the 20k indexed-body cap. Zero hits are not proof of absence."
             ),
             "inputSchema": {
@@ -49,6 +52,15 @@ def build_tools():
                     "include_injected": {
                         "type": "boolean",
                         "description": "also match injected boilerplate/envelope bodies (AGENTS.md, plugin suggestions, approval-review wraps) hidden from search by default",
+                    },
+                    "exclude_session_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "session ids to leave out of the results",
+                    },
+                    "include_current_session": {
+                        "type": "boolean",
+                        "description": "keep hits from the session making this call (left out by default)",
                     },
                 },
                 "required": ["query"],
@@ -69,6 +81,7 @@ def build_tools():
                     "before": {"type": "integer", "description": "messages before the hit (default 4)"},
                     "after": {"type": "integer", "description": "messages after the hit (default 8)"},
                     "raw": {"type": "boolean", "description": "read full untruncated bodies from the original session file"},
+                    "max_chars": {"type": "integer", "minimum": 1, "description": "clip each message to this many characters (default: whole bodies); try 1500 to skim"},
                 },
                 "required": ["path", "line"],
             },
@@ -142,8 +155,18 @@ def _since(value):
     return value
 
 
+def _excluded_sessions(args, meta):
+    ids = args.get("exclude_session_ids")
+    excluded = split_ids([ids] if isinstance(ids, str) else ids)
+    if not args.get("include_current_session"):
+        excluded += [sid for sid in caller_session_ids(meta=meta) if sid not in excluded]
+    return excluded
+
+
 def handle_call(name, args, index):
-    args = args or {}
+    args = dict(args or {})
+    # The client's request _meta (Codex sends threadId/sessionId), forwarded by run().
+    meta = args.pop("_meta", None)
     if name == "search_sessions":
         query = args.get("query", "").strip()
         if not query:
@@ -152,6 +175,7 @@ def handle_call(name, args, index):
         kinds = args.get("kinds")
         host = args.get("host")
         hosts = [h.strip() for h in host.split(",")] if host else None
+        excluded = _excluded_sessions(args, meta)
         coverage = []
         hits, warnings = fan_out_search(
             index,
@@ -164,8 +188,9 @@ def handle_call(name, args, index):
             hosts=hosts,
             include_injected=bool(args.get("include_injected")),
             coverage=coverage,
+            exclude_sessions=excluded,
         )
-        result = {"hits": hits, "coverage": coverage, "warnings": warnings}
+        result = {"hits": hits, "coverage": coverage, "warnings": warnings, "excluded_sessions": excluded}
         return dict(_text_result(result), structuredContent=result)
     if name == "get_context":
         host = args.get("host") or LOCAL
@@ -185,7 +210,8 @@ def handle_call(name, args, index):
             )
         if rows is None:
             raise ValueError("path not in index; run reindex")
-        return _text_result(rows)
+        max_chars = args.get("max_chars")
+        return _text_result(clip_bodies(rows, int(max_chars) if max_chars else None))
     if name == "get_session":
         host = args.get("host") or LOCAL
         raw = bool(args.get("raw"))
@@ -221,6 +247,15 @@ def handle_call(name, args, index):
             raise ValueError(str(exc))
         return _text_result(stats)
     raise ValueError("unknown tool: %s" % name)
+
+
+def call_arguments(params):
+    """A tools/call's arguments plus the request's _meta, which the tool process needs
+    to know which session is calling (Codex puts threadId/sessionId there)."""
+    arguments = params.get("arguments")
+    if isinstance(params.get("_meta"), dict):
+        arguments = dict(arguments or {}, _meta=params["_meta"])
+    return arguments
 
 
 def call_fresh(name, args, timeout=900):
@@ -307,7 +342,7 @@ def run():
             resp = {"jsonrpc": "2.0", "id": rid, "result": {"tools": tools}}
         elif method == "tools/call":
             params = req.get("params") or {}
-            result = call_fresh(params.get("name"), params.get("arguments"))
+            result = call_fresh(params.get("name"), call_arguments(params))
             resp = {"jsonrpc": "2.0", "id": rid, "result": result}
         elif method == "ping":
             resp = {"jsonrpc": "2.0", "id": rid, "result": {}}

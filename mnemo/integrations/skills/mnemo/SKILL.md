@@ -34,8 +34,10 @@ mnemo search "关键词" --json --coverage
   - `--limit N` (default 20)
   - `--kind text,summary,tool_call,tool_result,reasoning` (default excludes reasoning; pass `--all-kinds` to include it)
   - `--include-injected` — also match injected boilerplate (workspace instructions, plugin suggestions, slash-command output, Codex approval-review wraps); hidden by default
+  - `--exclude-session <id>` — leave out a session (repeatable)
+- Your own session is left out automatically (Claude Code and Codex export its id), so hits are about other sessions. Pass `--include-current` (MCP: `include_current_session: true`) only when you want to search this conversation too.
 
-The response is `{hits, coverage, warnings}`. Inspect each device's status and index refresh; older devices report unknown freshness. Indexed bodies may stop at 20k characters, so zero hits do not establish that the original logs lack the text.
+The response is `{hits, coverage, warnings, excluded_sessions}`. Inspect each device's status and index refresh; older devices report unknown freshness. Indexed bodies may stop at 20k characters, so zero hits do not establish that the original logs lack the text.
 
 Each hit contains: `host`, `source`, `cwd`, `ts`, `role`, `kind`, `snippet`, `path`, `lineno` (plus `envelope: 1` when the match is inside injected text). Injected boilerplate is kept verbatim but excluded from default search, so a keyword that only appears in the agent's `AGENTS.md` does not surface every session; genuine user replies inside such messages are still searchable.
 Warnings list unreachable devices and incomplete index refreshes; results cover only the indexed content on devices that answered.
@@ -59,6 +61,8 @@ mnemo context <path> <lineno> --host <hit-host> --json [--before 4] [--after 8]
 ```
 
 Returns the N indexed messages before/after the hit (normalized role/kind/text) read straight from the index. Read the relevant hits rather than dumping whole sessions into context.
+
+A window can hold tool results up to 20k characters each. To skim first, add `--max-chars 1500` (MCP/Pi: `max_chars: 1500`): every message is clipped and marked `… [+N chars]`; re-read the one you need without it.
 
 To read the entire session a hit belongs to (the hit's `path` is one JSONL session file), ordered by time:
 

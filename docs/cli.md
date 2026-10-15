@@ -28,8 +28,10 @@ Alias: `mnemo query`.
 | `--limit` | 20 | Max hits after merging |
 | `--no-sync` | off | Skip the local incremental sync (remotes still sync) |
 | `--include-injected` | off | Also match injected boilerplate bodies (workspace instructions, plugin suggestions, approval-review wraps) that are kept but hidden from search |
+| `--exclude-session ID` | — | Leave out this session; repeatable or comma-separated |
+| `--include-current` | off | Keep the calling agent's own session. It is left out by default when `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID` or `CODEX_SESSION_ID` is set, so a search run by an agent doesn't return the conversation running it. |
 | `--json` | off | JSON array of hits |
-| `--coverage` | off | With `--json`, return `{hits, coverage, warnings}` |
+| `--coverage` | off | With `--json`, return `{hits, coverage, warnings, excluded_sessions}` |
 
 Every device, local and remote, syncs its index incrementally before it is searched, so sessions from a minute ago are found. Warnings about unreachable devices, or a local index that couldn't be refreshed, go to stderr and don't fail the command.
 
@@ -46,10 +48,10 @@ Lists the most recently started sessions, newest first, each with its first real
 ## mnemo context
 
 ```bash
-mnemo context <path> <line> [--before 4] [--after 8] [--host H] [--raw] [--show-envelope] [--json]
+mnemo context <path> <line> [--before 4] [--after 8] [--host H] [--raw] [--show-envelope] [--max-chars N] [--json]
 ```
 
-Prints the messages around a hit. `--host` must be the hit's `host` for remote hits. `--raw` reads the original JSONL with untruncated bodies. By default injected messages render their cleaned text; `--show-envelope` shows the verbatim body instead. Envelope messages are marked `env`.
+Prints the messages around a hit. `--max-chars N` clips each message to N characters (marked `… [+M chars]`, `"clipped": true` in JSON); without it, JSON carries whole bodies. `--host` must be the hit's `host` for remote hits. `--raw` reads the original JSONL with untruncated bodies. By default injected messages render their cleaned text; `--show-envelope` shows the verbatim body instead. Envelope messages are marked `env`.
 
 ## mnemo session
 
