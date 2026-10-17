@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-17
+
 ### Added
 - Searches leave out the calling agent's own session, which otherwise answers any query about what was just said. The id comes from `CLAUDE_CODE_SESSION_ID` (Claude Code), the MCP request's `_meta.threadId`/`sessionId` or `CODEX_THREAD_ID`/`CODEX_SESSION_ID` (Codex), and the Pi extension. `--include-current` / `include_current_session` keeps it; `--exclude-session` / `exclude_session_ids` leaves out others. Responses with coverage list `excluded_sessions`.
 - `mnemo context` and `get_context` (MCP, Pi) clip each message at 2,000 characters by default, so a window that lands on 20k-character tool results no longer floods the caller's context. A clipped message ends in `… [clipped: 2000 of N chars; --full for the whole message]` and carries `"clipped": true` and `"chars": N`. `--full` / `full: true` returns whole bodies, and so does `--raw` / `raw: true`. `--max-chars N` / `max_chars` sets another length, with `0` meaning whole bodies. On 300 random windows from a real index, the median window shrank from 30k to 7.5k characters.
@@ -128,7 +130,8 @@ First public release, as *agentsearch* (renamed to **Mnemo** the same day).
 - Local dashboard: search with per-device diagnostics, click-through to a chat-style session transcript with match navigation, device management, and a token-gated `127.0.0.1` API.
 - Agent skill in `integrations/skills/mnemo`.
 
-[Unreleased]: https://github.com/szupzj18/mnemo/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/szupzj18/mnemo/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/szupzj18/mnemo/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/szupzj18/mnemo/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/szupzj18/mnemo/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/szupzj18/mnemo/compare/v0.3.0...v0.4.0
