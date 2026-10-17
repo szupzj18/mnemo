@@ -62,7 +62,7 @@ mnemo context <path> <lineno> --host <hit-host> --json [--before 4] [--after 8]
 
 Returns the N indexed messages before/after the hit (normalized role/kind/text) read straight from the index. Read the relevant hits rather than dumping whole sessions into context.
 
-A window can hold tool results up to 20k characters each. To skim first, add `--max-chars 1500` (MCP/Pi: `max_chars: 1500`): every message is clipped and marked `… [+N chars]`; re-read the one you need without it.
+Each message in the window is clipped at 2000 characters, so a 20k-character tool result doesn't flood your context. A clipped message ends in `… [clipped: 2000 of N chars; …]` and has `"clipped": true`. When you need the whole body, re-read with `--full` (MCP/Pi: `full: true`), with a narrow `--before`/`--after` around the message you want.
 
 To read the entire session a hit belongs to (the hit's `path` is one JSONL session file), ordered by time:
 

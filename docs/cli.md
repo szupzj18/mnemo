@@ -48,10 +48,10 @@ Lists the most recently started sessions, newest first, each with its first real
 ## mnemo context
 
 ```bash
-mnemo context <path> <line> [--before 4] [--after 8] [--host H] [--raw] [--show-envelope] [--max-chars N] [--json]
+mnemo context <path> <line> [--before 4] [--after 8] [--host H] [--raw] [--show-envelope] [--max-chars N] [--full] [--json]
 ```
 
-Prints the messages around a hit. `--max-chars N` clips each message to N characters (marked `… [+M chars]`, `"clipped": true` in JSON); without it, JSON carries whole bodies. `--host` must be the hit's `host` for remote hits. `--raw` reads the original JSONL with untruncated bodies. By default injected messages render their cleaned text; `--show-envelope` shows the verbatim body instead. Envelope messages are marked `env`.
+Prints the messages around a hit. Each message is clipped at 2,000 characters and ends in `… [clipped: 2000 of N chars; --full for the whole message]`; in JSON the row also has `"clipped": true` and `"chars": N`. `--full` prints whole bodies, and `--max-chars N` sets another length (`0` means whole bodies). `--raw` implies `--full`. `--host` must be the hit's `host` for remote hits. `--raw` reads the original JSONL with untruncated bodies. By default injected messages render their cleaned text; `--show-envelope` shows the verbatim body instead. Envelope messages are marked `env`.
 
 ## mnemo session
 

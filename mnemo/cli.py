@@ -11,8 +11,8 @@ from .index import DEFAULT_DB_PATH, SCHEMA_VERSION, Index, IndexTooNew
 from . import remote as remote_mod
 from .fingerprint import code_fingerprint
 from .remote import LOCAL, RemoteError, fan_out_search, remote_context, remote_session
-from .search import (DEFAULT_KINDS, caller_session_ids, clip_bodies, get_context, get_session,
-                     raw_context, raw_session, recent, split_ids)
+from .search import (CONTEXT_MAX_CHARS, DEFAULT_KINDS, caller_session_ids, clip_bodies, context_max_chars,
+                     get_context, get_session, raw_context, raw_session, recent, split_ids)
 from .sources import SOURCES
 from .sources.base import SourceUnavailable
 
@@ -541,7 +541,8 @@ def cmd_context(args):
     if rows is None:
         print("not in index; run `mnemo index`", file=sys.stderr)
         return 1
-    clip_bodies(rows, args.max_chars)
+    if not args.relay:  # a neighbor's request: it clips (or not) on its own side
+        clip_bodies(rows, context_max_chars(args.max_chars, args.full, args.raw), hint="--full")
     if args.json:
         print(json.dumps(rows, ensure_ascii=False, indent=2))
         return 0
@@ -561,8 +562,6 @@ def cmd_context(args):
             BOLD if r["hit"] else DIM, args.path, r["lineno"], RESET,
             DIM, r["role"], r["kind"], env, RESET))
         text = (r.get("body") or r["text"]) if args.show_envelope else r["text"]
-        if len(text) > 2000:
-            text = text[:2000] + " …[truncated]"
         for ln in text.splitlines():
             print("    " + ln)
         print()
@@ -767,7 +766,10 @@ def main(argv=None):
     sp.add_argument("--show-envelope", action="store_true",
                     help="show verbatim bodies including stripped boilerplate instead of cleaned text")
     sp.add_argument("--max-chars", type=int, metavar="N",
-                    help="clip each message to N characters (default: whole bodies)")
+                    help="clip each message to N characters (default: %d; 0 = whole bodies)" % CONTEXT_MAX_CHARS)
+    sp.add_argument("--full", action="store_true",
+                    help="print whole message bodies instead of clipping each at %d characters"
+                         " (implied by --raw)" % CONTEXT_MAX_CHARS)
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_context)
 

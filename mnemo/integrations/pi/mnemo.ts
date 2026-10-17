@@ -94,7 +94,8 @@ export default function (pi) {
     name: "get_session_context",
     label: "Get session context",
     description:
-      "Fetch surrounding messages of a search_sessions hit (path + line) so the hit can be read in context.",
+      "Fetch surrounding messages of a search_sessions hit (path + line) so the hit can be read in context." +
+      " Each message is clipped at 2000 characters, ending in a marker with its full length; pass full=true to read whole bodies.",
     parameters: Type.Object({
       path: Type.String(),
       line: Type.Number(),
@@ -104,10 +105,13 @@ export default function (pi) {
       before: Type.Optional(Type.Number()),
       after: Type.Optional(Type.Number()),
       raw: Type.Optional(
-        Type.Boolean({ description: "read full untruncated bodies from the original session file" })
+        Type.Boolean({ description: "read full untruncated bodies from the original session file (implies full)" })
+      ),
+      full: Type.Optional(
+        Type.Boolean({ description: "return whole message bodies instead of clipping each at 2000 characters" })
       ),
       max_chars: Type.Optional(
-        Type.Number({ description: "clip each message to this many characters (default: whole bodies)" })
+        Type.Number({ description: "clip each message to this many characters instead (default 2000; 0 = whole bodies)" })
       ),
     }),
     async execute(_toolCallId, params) {
@@ -123,7 +127,8 @@ export default function (pi) {
       ];
       if (params.host) args.push("--host", params.host);
       if (params.raw) args.push("--raw");
-      if (params.max_chars) args.push("--max-chars", String(params.max_chars));
+      if (params.full) args.push("--full");
+      if (params.max_chars !== undefined) args.push("--max-chars", String(params.max_chars));
       const text = await run(args);
       return { content: [{ type: "text", text }], details: {} };
     },

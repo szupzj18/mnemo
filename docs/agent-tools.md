@@ -83,8 +83,11 @@ Returns the indexed messages around one hit. Every message in the window has the
 | `line` | integer | required | The hit's `lineno` |
 | `host` | string | `local` | **Pass the hit's `host`.** The read runs on that device. |
 | `before` / `after` | integer | 4 / 8 | Window size in messages |
-| `raw` | boolean | false | Read the original JSONL instead of the index (no 20k cap) |
-| `max_chars` | integer | whole bodies | Clip each message to this many characters, ending in `… [+N chars]` and setting `clipped: true`. A window can hold a 20k-character tool result; `max_chars: 1500` cut one real 14-message window from 31k to 7.8k characters. Re-read without it (or with `get_session`) for a full body. |
+| `raw` | boolean | false | Read the original JSONL instead of the index (no 20k cap). Implies `full`. |
+| `full` | boolean | false | Return whole message bodies instead of clipping them |
+| `max_chars` | integer | 2000 | Clip each message to this many characters; `0` returns whole bodies. Takes precedence over `full` and `raw`. |
+
+Each message body longer than 2,000 characters is clipped and ends in `… [clipped: 2000 of N chars; full=true for the whole message]`. The row also gets `"clipped": true` and `"chars": N` (`body_chars` for a mixed envelope's verbatim `body`). Pass `full: true` to read the whole window, or read one session with `get_session`. On 300 random windows from a real index, the default cut the median window from 30k to 7.5k characters and the 90th percentile from 71k to 11k. Messages under the limit, including about 99% of user and assistant text, are returned unchanged.
 
 ```json
 [
@@ -178,4 +181,4 @@ Measured on a real corpus (see [Benchmarks](benchmarks.md)):
 | MCP tool schemas (always loaded) | ~500 |
 | Skill description (always loaded) / full skill (on trigger) | ~130 / ~755 |
 
-A `context` window that lands on a large tool output can reach ~18k tokens. In that case use smaller `before`/`after` values.
+With the default clipping, a 13-message `context` window holds at most about 26k characters, and the median on a real index is 7.5k. With `full: true`, a window that lands on large tool output can reach ~18k tokens or more, so use smaller `before`/`after` values.

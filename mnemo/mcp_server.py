@@ -6,8 +6,8 @@ from . import __version__
 from .index import Index, IndexTooNew
 from . import remote as remote_mod
 from .remote import LOCAL, fan_out_search, remote_context, remote_session
-from .search import (DEFAULT_KINDS, caller_session_ids, clip_bodies, get_context, get_session,
-                     raw_context, raw_session, recent, split_ids)
+from .search import (CONTEXT_MAX_CHARS, DEFAULT_KINDS, caller_session_ids, clip_bodies, context_max_chars,
+                     get_context, get_session, raw_context, raw_session, recent, split_ids)
 
 
 # Tool annotations tell an MCP client whether a call needs the user's approval. Codex skips its
@@ -71,6 +71,8 @@ def build_tools():
             "annotations": READ_ONLY,
             "description": (
                 "Fetch surrounding messages of a search hit (same normalized format) so a hit can be read in context."
+                " Each message is clipped at %d characters, ending in a marker with its full length;"
+                " pass full=true to read whole bodies." % CONTEXT_MAX_CHARS
             ),
             "inputSchema": {
                 "type": "object",
@@ -80,8 +82,9 @@ def build_tools():
                     "host": {"type": "string", "description": "device or route holding the hit, copied from the search result (default: local)"},
                     "before": {"type": "integer", "description": "messages before the hit (default 4)"},
                     "after": {"type": "integer", "description": "messages after the hit (default 8)"},
-                    "raw": {"type": "boolean", "description": "read full untruncated bodies from the original session file"},
-                    "max_chars": {"type": "integer", "minimum": 1, "description": "clip each message to this many characters (default: whole bodies); try 1500 to skim"},
+                    "raw": {"type": "boolean", "description": "read full untruncated bodies from the original session file (implies full)"},
+                    "full": {"type": "boolean", "description": "return whole message bodies; by default each is clipped at %d characters and marked clipped" % CONTEXT_MAX_CHARS},
+                    "max_chars": {"type": "integer", "minimum": 0, "description": "clip each message to this many characters instead (default %d; 0 = whole bodies)" % CONTEXT_MAX_CHARS},
                 },
                 "required": ["path", "line"],
             },
@@ -210,8 +213,8 @@ def handle_call(name, args, index):
             )
         if rows is None:
             raise ValueError("path not in index; run reindex")
-        max_chars = args.get("max_chars")
-        return _text_result(clip_bodies(rows, int(max_chars) if max_chars else None))
+        limit = context_max_chars(args.get("max_chars"), bool(args.get("full")), raw)
+        return _text_result(clip_bodies(rows, limit))
     if name == "get_session":
         host = args.get("host") or LOCAL
         raw = bool(args.get("raw"))

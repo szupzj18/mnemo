@@ -6,7 +6,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 - Searches leave out the calling agent's own session, which otherwise answers any query about what was just said. The id comes from `CLAUDE_CODE_SESSION_ID` (Claude Code), the MCP request's `_meta.threadId`/`sessionId` or `CODEX_THREAD_ID`/`CODEX_SESSION_ID` (Codex), and the Pi extension. `--include-current` / `include_current_session` keeps it; `--exclude-session` / `exclude_session_ids` leaves out others. Responses with coverage list `excluded_sessions`.
-- `mnemo context --max-chars N` and `max_chars` on `get_context` (MCP, Pi) clip each message, marked `… [+N chars]`, so skimming a window doesn't pull in 20k-character tool results. Default output is unchanged.
+- `mnemo context` and `get_context` (MCP, Pi) clip each message at 2,000 characters by default, so a window that lands on 20k-character tool results no longer floods the caller's context. A clipped message ends in `… [clipped: 2000 of N chars; --full for the whole message]` and carries `"clipped": true` and `"chars": N`. `--full` / `full: true` returns whole bodies, and so does `--raw` / `raw: true`. `--max-chars N` / `max_chars` sets another length, with `0` meaning whole bodies. On 300 random windows from a real index, the median window shrank from 30k to 7.5k characters.
+
+### Changed
+- `get_context` output is clipped by default, as above. Scripts that relied on `mnemo context --json` returning whole bodies should add `--full`. Relayed reads (`--relay`) stay unclipped, so the device that asked does the clipping, and devices on older code keep working.
 
 ### Fixed
 - `mnemo setup` and `mnemo doctor` shorten the home directory to `~` only where it starts a path. Where `$HOME` is a symlink (such as `/home/u` pointing to `/data00/home/u`), a path like `/data00/home/u/mnemo/bin/mnemo` was shown as `/data00~/mnemo/bin/mnemo`. This only affected the display; the config that was written was correct.

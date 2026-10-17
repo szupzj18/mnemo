@@ -148,10 +148,25 @@ def _view_row(r, hit=None):
     return out
 
 
-def clip_bodies(rows, max_chars):
-    """Shorten each message's text to max_chars, saying how much was left out.
+# Default per-message cap for context windows. Claude Code cuts Read lines at the
+# same length; on a real index it clips ~1% of text messages and ~44% of tool results.
+CONTEXT_MAX_CHARS = 2000
 
-    The hit itself is clipped too: its full body stays one get_session/raw read away.
+
+def context_max_chars(max_chars=None, full=False, raw=False):
+    """Clip length for a context read: explicit max_chars wins, full/raw mean whole bodies."""
+    if max_chars is not None:
+        return int(max_chars) or None  # 0 means whole bodies
+    if full or raw:
+        return None
+    return CONTEXT_MAX_CHARS
+
+
+def clip_bodies(rows, max_chars, hint="full=true"):
+    """Shorten each message's text to max_chars, saying how long it was and how to get it all.
+
+    Clipped rows get clipped: true plus chars (and body_chars) with the original length.
+    The hit itself is clipped too: its full body stays one re-read away.
     """
     if not max_chars or rows is None:
         return rows
@@ -159,8 +174,10 @@ def clip_bodies(rows, max_chars):
         for key in ("text", "body"):
             value = r.get(key)
             if isinstance(value, str) and len(value) > max_chars:
-                r[key] = value[:max_chars] + " … [+%d chars]" % (len(value) - max_chars)
+                r[key] = value[:max_chars] + " … [clipped: %d of %d chars; %s for the whole message]" % (
+                    max_chars, len(value), hint)
                 r["clipped"] = True
+                r["chars" if key == "text" else "body_chars"] = len(value)
     return rows
 
 

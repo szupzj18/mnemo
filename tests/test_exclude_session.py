@@ -1,4 +1,4 @@
-"""Searches leave out the calling agent's own session; context reads can be clipped."""
+"""Searches leave out the calling agent's own session; context reads take a clip length."""
 import contextlib
 import io
 import json
@@ -150,10 +150,10 @@ class ExcludeSessionTest(unittest.TestCase):
         self.assertGreater(longest, 40)
         clipped = clip_bodies(get_context(self.index, self.hit["path"], self.hit["lineno"], 4, 8), 40)
         for r in clipped:
-            head = r["text"].split(" … [+", 1)[0]
+            head = r["text"].split(" … [clipped: ", 1)[0]
             self.assertLessEqual(len(head), 40)
         self.assertTrue(any(r.get("clipped") for r in clipped))
-        self.assertTrue(any("[+%d chars]" % (longest - 40) in r["text"] for r in clipped))
+        self.assertTrue(any("[clipped: 40 of %d chars;" % longest in r["text"] for r in clipped))
 
     def test_context_without_max_chars_is_unchanged(self):
         rows = get_context(self.index, self.hit["path"], self.hit["lineno"])
