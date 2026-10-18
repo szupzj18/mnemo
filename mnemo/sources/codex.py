@@ -23,33 +23,23 @@ SKIP_ROLES = {"developer", "system"}
 
 class CodexSource(Source):
     name = "codex"
+    # ~/.codex, one ~/.codex-<name> per extra account, and $CODEX_HOME.
+    CONFIG_DIR = ".codex"
+    CONFIG_ENV = "CODEX_HOME"
+    LOG_DIRS = ("sessions", "archived_sessions")
+    MULTI_ACCOUNT = True
 
-    def roots(self):
-        base = os.path.join(self.home, ".codex")
-        return [
-            os.path.join(base, "sessions"),
-            os.path.join(base, "archived_sessions"),
-        ]
+    def walk(self, root):
+        for dirpath, dirs, names in os.walk(root):
+            dirs.sort()
+            for n in sorted(names):
+                if n.endswith(".jsonl"):
+                    yield os.path.join(dirpath, n)
+                elif n.endswith(".jsonl.zst") and n[:-4] not in names:
+                    yield os.path.join(dirpath, n[:-4])
 
-    def files(self):
-        for root in self.roots():
-            if not os.path.isdir(root):
-                continue
-            for dirpath, _dirs, names in os.walk(root):
-                for n in names:
-                    if n.endswith(".jsonl"):
-                        yield os.path.join(dirpath, n)
-                    elif n.endswith(".jsonl.zst") and n[:-4] not in names:
-                        yield os.path.join(dirpath, n[:-4])
-
-    def records(self):
-        for path in self.files():
-            actual = path if os.path.exists(path) else path + ".zst"
-            try:
-                stat = os.stat(actual)
-            except OSError:
-                continue
-            yield path, stat.st_mtime, stat.st_size
+    def actual(self, path):
+        return path if os.path.exists(path) else path + ".zst"
 
     def parse(self, path, clip_text=True):
         sid = ""

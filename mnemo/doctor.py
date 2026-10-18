@@ -13,6 +13,7 @@ import time
 import urllib.request
 
 from . import __version__, fingerprint, link, service, upgrade
+from . import archive as archive_mod
 from . import remote as remote_mod
 from . import setup as st
 from .index import DEFAULT_DB_PATH, SCHEMA_VERSION, Index, IndexTooNew
@@ -136,6 +137,7 @@ def check_index(db_path=None, full=False, now=None):
         if stale_rows:
             checks.append(Check(MACHINE, "old rows", WARN, "%d sessions were written by an older mnemo" % stale_rows,
                                 "mnemo index"))
+        checks.append(check_archive(idx))
     finally:
         idx.close()
     if full:
@@ -150,6 +152,17 @@ def check_index(db_path=None, full=False, now=None):
             checks.append(Check(MACHINE, "integrity", FAIL, "quick_check: %s" % result,
                                 "mnemo upgrade --restore (or mnemo index --rebuild)"))
     return checks
+
+
+def check_archive(idx):
+    from .search import archived_count
+
+    files, size = idx.archive.usage()
+    if not archive_mod.enabled():
+        return Check(MACHINE, "archive", SKIP, "off: sessions leave the index when their agent deletes the log"
+                     + (" (%s copies kept)" % "{:,}".format(files) if files else ""), "mnemo node --archive on")
+    return Check(MACHINE, "archive", OK, "%s session files · %s · %s kept after their logs were deleted" % (
+        "{:,}".format(files), _size(size), "{:,}".format(archived_count(idx))))
 
 
 def check_processes():

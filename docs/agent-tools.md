@@ -56,6 +56,7 @@ Each hit:
 {
   "host": "local",
   "source": "codex",
+  "account": ".codex",
   "cwd": "/home/alex/relay",
   "ts": "2026-09-24T07:40:26Z",
   "role": "assistant",
@@ -65,9 +66,12 @@ Each hit:
   "lineno": 11,
   "session_id": "923bbc54-87c7-4d09-b28d-6854976be73c",
   "envelope": 0,
-  "rank": -3.747
+  "rank": -3.747,
+  "archived": false
 }
 ```
+
+`account` is the agent config dir the session came from (`.claude`, `.claude-work`, `.codex-team`, …; `null` for OpenCode). `archived` is `true` when the agent has deleted the original log and Mnemo reads its archived copy; `get_context` and `get_session` work on it the same way, with the hit's `path`.
 
 `envelope` is `1` only when the matched text is injected boilerplate (possible with `include_injected`); the snippet then shows cleaned text and the verbatim body is available under `body`.
 
@@ -116,9 +120,12 @@ Returns every indexed message of the session file, ordered by time, along with s
   "path": "…", "source": "codex", "session_id": "…", "cwd": "/home/alex/relay",
   "started_at": "2026-09-24T07:40:00Z", "ended_at": "2026-09-24T07:40:26Z",
   "count": 10,
+  "account": ".codex", "archived": false,
   "messages": [{"lineno": 2, "ts": "…", "role": "user", "kind": "text", "text": "…"}]
 }
 ```
+
+An archived session also gives `archive_path`, the copy that `raw` reads.
 
 ## list_recent_sessions
 

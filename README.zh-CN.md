@@ -108,7 +108,8 @@ search_sessions ──▶ get_context ──▶ get_session
 
 ## 特性
 
-- **跨 Agent**：Claude Code、Codex（含归档会话）、OpenCode、Pi 统一进一个索引，归一成同一套消息结构。
+- **跨 Agent**：Claude Code、Codex（含归档会话）、OpenCode、Pi 统一进一个索引，归一成同一套消息结构；所有账号目录都会被索引（`~/.claude-*`、`$CLAUDE_CONFIG_DIR`、`~/.codex-*`、`$CODEX_HOME`）。
+- **Agent 删了也还在**：Mnemo 把每个会话日志复制一份到 `~/.mnemo/archive`，Claude Code 30 天自动清理或删掉的 Codex 线程之后，会话照样能搜、能读（不需要可以 `mnemo node --archive off` 关闭）。
 - **跨设备**：查询经 SSH 并行扇出到各台 devbox，按排名融合；会话正文不离开产生它的机器。
 - **对 Agent 省 token**：搜索返回的是排序后的片段而不是原始日志，10 条命中约 1.9k token。对照实验中，Agent 比用 grep 少用 23% 的 token、少调用 52% 的工具（见[评测](#评测)）。
 - **中英文都能搜**：英文前缀匹配，中文子串匹配（unigram + bigram），BM25 排序。
@@ -243,7 +244,7 @@ flowchart LR
 - 全部在本地运行；除了 SSH 到你自己注册的设备，没有任何网络请求。
 - 会话正文在产生它的设备上读取；跨设备查询只返回命中结果和你明确要读的消息。
 - 面板只监听 `127.0.0.1`，API 需要每次启动随机生成的 token，并校验 `Host` 头。
-- `~/.mnemo/index.db` 以明文保存会话内容，请像对待原始日志一样对待它。
+- `~/.mnemo/index.db` 以明文保存会话内容，`~/.mnemo/archive` 保存每个会话日志的副本（仅本人可读），请像对待原始日志一样对待它们。
 
 漏洞报告见 [SECURITY.md](SECURITY.md)。
 

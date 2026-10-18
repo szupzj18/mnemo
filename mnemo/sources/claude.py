@@ -7,18 +7,11 @@ from .base import Source, decode_cwd_dir
 
 class ClaudeSource(Source):
     name = "claude"
-
-    def root(self):
-        return os.path.join(self.home, ".claude", "projects")
-
-    def files(self):
-        root = self.root()
-        if not os.path.isdir(root):
-            return
-        for dirpath, _dirs, names in os.walk(root):
-            for n in names:
-                if n.endswith(".jsonl"):
-                    yield os.path.join(dirpath, n)
+    # ~/.claude, one ~/.claude-<name> per extra account, and $CLAUDE_CONFIG_DIR.
+    CONFIG_DIR = ".claude"
+    CONFIG_ENV = "CLAUDE_CONFIG_DIR"
+    LOG_DIRS = ("projects",)
+    MULTI_ACCOUNT = True
 
     def parse(self, path, clip_text=True):
         sid = os.path.splitext(os.path.basename(path))[0]

@@ -7,12 +7,14 @@ import sys
 import time
 
 from . import __version__
+from . import archive as archive_mod
 from .index import DEFAULT_DB_PATH, SCHEMA_VERSION, Index, IndexTooNew
 from . import remote as remote_mod
 from .fingerprint import code_fingerprint
 from .remote import LOCAL, RemoteError, fan_out_search, remote_context, remote_session
-from .search import (CONTEXT_MAX_CHARS, DEFAULT_KINDS, caller_session_ids, clip_bodies, context_max_chars,
-                     get_context, get_session, raw_context, raw_session, recent, split_ids)
+from .search import (CONTEXT_MAX_CHARS, DEFAULT_KINDS, archived_count, caller_session_ids, clip_bodies,
+                     context_max_chars, get_context, get_session, origin, raw_context, raw_session, recent,
+                     split_ids)
 from .sources import SOURCES
 from .sources.base import SourceUnavailable
 
@@ -329,6 +331,7 @@ def cmd_index(args):
     print(
         "indexed: +{files_new} new, {files_updated} updated, {files_removed} removed,"
         " {messages} messages".format(**stats)
+        + (", {files_archived} copied to the archive".format(**stats) if stats.get("files_archived") else "")
     )
     return 0
 
@@ -380,18 +383,27 @@ def cmd_search(args):
     color = color_enabled()
     for i, h in enumerate(hits, 1):
         print(
-            "%s%d.%s %s[%s/%s]%s %s/%s  %s%s%s  %s%s%s"
+            "%s%d.%s %s[%s/%s%s]%s %s/%s  %s%s%s  %s%s%s"
             % (
                 BOLD, i, RESET,
-                BOLD, h.get("host", LOCAL), h["source"], RESET,
+                BOLD, h.get("host", LOCAL), h["source"], _account(h), RESET,
                 h["role"], h["kind"],
                 DIM, h["ts"][:16].replace("T", " "), RESET,
                 DIM, h["cwd"], RESET,
             )
         )
         print("   " + _hl(h["snippet"], color))
-        print("   %s→ %s:%d%s" % (DIM, h["path"], h["lineno"], RESET))
+        print("   %s→ %s:%d%s%s" % (DIM, h["path"], h["lineno"], "  (archived)" if h.get("archived") else "", RESET))
     return 0
+
+
+def _account(row):
+    """' .claude-work' for a session from an extra account; nothing for the default config dir."""
+    account = row.get("account")
+    cls = SOURCES.get(row.get("source"))
+    if not account or (cls is not None and account == cls.CONFIG_DIR):
+        return ""
+    return " " + account
 
 
 def _relay_search(args, idx, kinds):
@@ -446,18 +458,27 @@ def cmd_node(args):
             return 1
     if args.forward:
         node["forward"] = args.forward == "on"
-    if args.name is not None or args.forward:
+    if args.archive:
+        node["archive"] = args.archive == "on"
+    if args.name is not None or args.forward or args.archive:
         remote_mod.save_node(node)
     neighbors = [{"name": r["name"], "host": r["host"], "node_id": r.get("node_id"), "proto": r.get("proto")}
                  for r in remote_mod.load_remotes()]
     if args.json:
-        print(json.dumps(dict(node, code=code_fingerprint(), neighbors=neighbors), ensure_ascii=False, indent=2))
+        print(json.dumps(dict(node, archive=archive_mod.enabled(), code=code_fingerprint(), neighbors=neighbors),
+                         ensure_ascii=False, indent=2))
         return 0
     print("name     %s" % node["name"])
     print("id       %s" % node["id"])
     print("code     %s" % code_fingerprint())
     print("forward  %s%s" % ("on" if node["forward"] else "off",
                              "" if node["forward"] else "  (neighbors cannot search or read through this device)"))
+    archiving = archive_mod.enabled()
+    print("archive  %s  (%s%s)" % (
+        "on" if archiving else "off",
+        "session logs are copied to %s and stay searchable after their agent deletes them"
+        % archive_mod.root_for(args.db) if archiving else "sessions leave the index when their agent deletes the log",
+        "; set by %s" % archive_mod.ENV if archive_mod.overridden() else ""))
     for n in neighbors:
         print("neighbor %-16s %-24s %s" % (n["name"], n["host"], (n["node_id"] or "id not learned yet")[:12]))
     return 0
@@ -506,9 +527,12 @@ def cmd_session(args):
     if args.json:
         print(json.dumps(sess, ensure_ascii=False, indent=2))
         return 0
-    print("%s%s%s  source=%s  cwd=%s%s" % (
-        BOLD, args.path, RESET, sess["source"], sess["cwd"],
+    print("%s%s%s  source=%s%s  cwd=%s%s" % (
+        BOLD, args.path, RESET, sess["source"],
+        "  account=%s" % sess["account"] if sess.get("account") else "", sess["cwd"],
         "  RAW (full bodies from file)" if args.raw else ""))
+    if sess.get("archived"):
+        print("%sarchived: the original log is gone; reading the copy at %s%s" % (DIM, sess["archive_path"], RESET))
     print("%s%s → %s  %d messages (showing %d)%s\n" % (
         DIM, (sess["started_at"] or "")[:16].replace("T", " "),
         (sess["ended_at"] or "")[:16].replace("T", " "),
@@ -546,6 +570,8 @@ def cmd_context(args):
     if args.json:
         print(json.dumps(rows, ensure_ascii=False, indent=2))
         return 0
+    if host == LOCAL and rows:
+        _archived_note(idx, args.path)
     color = color_enabled()
     for r in rows:
         mark = ">" if r["hit"] else " "
@@ -568,11 +594,22 @@ def cmd_context(args):
     return 0
 
 
+def _archived_note(idx, path):
+    row = idx.db.execute("SELECT source FROM files WHERE path = ?", (path,)).fetchone()
+    found = origin(idx, row["source"], path) if row else {}
+    if found.get("archived"):
+        print("%sarchived: the original log is gone; reading the copy at %s%s\n"
+              % (DIM, found["archive_path"], RESET))
+
+
 def cmd_status(args):
     idx = Index(args.db)
     counts = idx.counts()
     last = idx.last_sync()
     remotes = remote_mod.load_remotes()
+    files, size = idx.archive.usage()
+    archive = {"enabled": archive_mod.enabled(), "path": idx.archive.root, "files": files, "bytes": size,
+               "sessions_archived": archived_count(idx)}
     if args.json:
         print(json.dumps({
             "db": args.db,
@@ -580,6 +617,7 @@ def cmd_status(args):
             "sources": {
                 name: counts.get(name, {"files": 0, "messages": 0}) for name in sorted(SOURCES)
             },
+            "archive": archive,
             "remotes": remotes,
         }, ensure_ascii=False, indent=2))
         return 0
@@ -589,6 +627,9 @@ def cmd_status(args):
     if last:
         print("last sync:", datetime.datetime.fromtimestamp(last).strftime("%Y-%m-%d %H:%M:%S"))
     print("db:       %s" % args.db)
+    print("archive:  %s, %d files (%s) in %s; %d sessions kept after their logs were deleted" % (
+        "on" if archive["enabled"] else "off", files, _human_size(size), idx.archive.root,
+        archive["sessions_archived"]))
     for r in remotes:
         print("remote:   %s → %s (%s)" % (r["name"], r["host"], r["bin"]))
     return 0
@@ -614,10 +655,11 @@ def cmd_recent(args):
         return 0
     for r in rows:
         ts = (r["started_ts"] or "")[:16].replace("T", " ")
-        print("%s%s%s  %s[%s]%s  %s%s%s" % (
-            BOLD, ts, RESET, BOLD, r["source"], RESET, DIM, r["cwd"] or "", RESET))
+        print("%s%s%s  %s[%s%s]%s  %s%s%s" % (
+            BOLD, ts, RESET, BOLD, r["source"], _account(r), RESET, DIM, r["cwd"] or "", RESET))
         print("   " + r["title"])
-        print("   %s%d msgs -> %s%s" % (DIM, r["messages"] or 0, r["path"], RESET))
+        print("   %s%d msgs -> %s%s%s" % (DIM, r["messages"] or 0, r["path"],
+                                        "  (archived)" if r.get("archived") else "", RESET))
     return 0
 
 
@@ -792,6 +834,9 @@ def main(argv=None):
     sp.add_argument("--name", help="rename this device (how neighbors see it)")
     sp.add_argument("--forward", choices=("on", "off"),
                     help="relay searches and reads so neighbors can reach devices behind this one")
+    sp.add_argument("--archive", choices=("on", "off"),
+                    help="keep a copy of every session log beside the index, so sessions stay searchable "
+                         "after Claude Code, Codex or Pi delete them (default: on)")
     sp.add_argument("--json", action="store_true")
     # Protocol 2, used between devices and by the dashboard: map the reachable network.
     sp.add_argument("--probe", action="store_true", help=argparse.SUPPRESS)

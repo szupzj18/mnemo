@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+- Every Claude Code and Codex account on the device is indexed, not just the default one: `~/.claude-*/projects` and `$CLAUDE_CONFIG_DIR` beside `~/.claude/projects`, and `~/.codex-*/sessions` (and `archived_sessions`) and `$CODEX_HOME` beside `~/.codex`. A folder reached twice through a symlink (such as `~/.codex-work/sessions` pointing to `~/.codex/sessions`), and a session file linked into two accounts, are indexed once. Hits, `recent` rows and session reads carry `account`, the config dir the session came from (`.claude-work`); the CLI shows it next to the source for accounts other than the default.
+- Session archive, on by default: sync copies every Claude Code, Codex and Pi session log it indexes to `~/.mnemo/archive/<source>/<account>/…` (written atomically, files `0600` in `0700` folders), and when the agent deletes the original (Claude Code does after `cleanupPeriodDays`, 30 days by default) the session stays in the index and is read from the copy. `search`, `context`, `session` and `--raw` work as before; hits, `recent` rows and session reads say `archived: true`, sessions also give `archive_path`, and the CLI marks them `(archived)`. `mnemo status`, `mnemo doctor` and `mnemo node` show the archive. The copy roughly doubles the disk space the logs take. Turn it off with `mnemo node --archive off` (or `MNEMO_ARCHIVE=off` for one command); OpenCode, which keeps every session in one database, is not archived.
+
+### Changed
+- With the archive on, deleting a session log no longer removes it from the index. Sessions deleted before this release can't be brought back, because there is no copy of them. Delete a session's copy under `~/.mnemo/archive` to drop it for good. The index schema is unchanged, so no rebuild is needed: the next sync indexes the other accounts and copies every log once (about as long as the copy of that many bytes takes).
+
 ## [0.6.0] - 2026-10-17
 
 ### Added

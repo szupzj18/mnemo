@@ -41,7 +41,7 @@ export default function (pi) {
       "Full-text search across coding-agent sessions (claude, codex, opencode, pi) on this machine " +
       "and registered remote devboxes. " +
       "Finds user prompts, assistant replies, summaries, tool calls and tool results. " +
-      "Each hit includes host, source, cwd, timestamp, snippet, and path+line for get_session_context " +
+      "Each hit includes host, source, account, cwd, timestamp, snippet, and path+line for get_session_context " +
       "(pass the hit's host there); pass the hit's path alone to get_full_session for the whole session file. " +
       "Supports English (prefix) and Chinese (substring). Hits carry a short snippet, not the message body. " +
       "This pi session is left out by default (include_current_session keeps it). " +

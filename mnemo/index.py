@@ -5,6 +5,7 @@ import re
 import sqlite3
 import time
 
+from . import archive as archive_mod
 from .model import cjk_grams, first_ts, make_title
 from .sources import SOURCES, get_sources
 from .sources.base import SourceUnavailable
@@ -87,6 +88,9 @@ class Index:
             self._script(SCHEMA)
         self.stored_version = None
         self._migration_pending = self._detect_pending()
+        # Beside the index, so a throwaway index (tests, benchmarks, upgrade's
+        # rebuild in the same folder) uses the archive that belongs with it.
+        self.archive = archive_mod.Archive(archive_mod.root_for(self.db_path))
 
     @contextlib.contextmanager
     def _write(self):
@@ -204,7 +208,8 @@ class Index:
             log("schema v%s: rebuilding index from session files ..." % SCHEMA_VERSION)
             self._apply_schema()
         sources = get_sources(source_names, home=home)
-        stats = dict(files_new=0, files_updated=0, files_removed=0, messages=0)
+        stats = dict(files_new=0, files_updated=0, files_removed=0, messages=0, files_archived=0)
+        archiving = archive_mod.enabled()
         # Self-heal rows an older mnemo process wrote after the upgrade.
         stale = set(self.incomplete_paths())
         if stale:
@@ -216,6 +221,9 @@ class Index:
                 log(message)
                 if message.startswith("skip "):
                     warnings.append(message)
+            archive = self.archive if archiving and source.ARCHIVABLE else None
+            if archive:
+                source.extra_dirs = archive.origins(source.name)
             try:
                 current = {path: (mtime, size) for path, mtime, size in source.records()}
             except SourceUnavailable as exc:
@@ -224,6 +232,19 @@ class Index:
                     self.db.execute("INSERT OR REPLACE INTO meta VALUES(?,?)",
                                     ("sync_warnings:" + source.name, json.dumps(warnings)))
                 continue
+            # Sessions whose log is gone stay, read from their archived copy.
+            copies = {}
+            keep_gone = False
+            if archive:
+                try:
+                    kept, copied = archive.sync(source, current, source_log)
+                except Exception as exc:  # the archive is unreadable: drop nothing it might hold
+                    source_log("skip archive for %s: %s" % (source.name, exc))
+                    kept, copied, keep_gone = {}, 0, True
+                stats["files_archived"] += copied
+                for path, (copy, mtime, size) in kept.items():
+                    current[path] = (mtime, size)
+                    copies[path] = copy
 
             rows = self.db.execute(
                 "SELECT path, mtime, size FROM files WHERE source = ?", (source.name,)
@@ -237,9 +258,10 @@ class Index:
                     stats["files_updated"] += 1
                 else:
                     continue
-                self._reindex_file(source, path, mtime, size, stats, source_log)
+                self._reindex_file(source, path, mtime, size, stats, source_log,
+                                   read_path=copies.get(path))
 
-            gone = set(known) - set(current)
+            gone = set() if keep_gone else set(known) - set(current)
             if gone:
                 with self._write():
                     for path in gone:
@@ -287,9 +309,10 @@ class Index:
         self._apply_schema()
         return self.sync(source_names, home=home, logger=log)
 
-    def _reindex_file(self, source, path, mtime, size, stats, log):
+    def _reindex_file(self, source, path, mtime, size, stats, log, read_path=None):
         try:
-            session_id, cwd, msgs = source.parse(path)
+            # An archived session is parsed from its copy but keeps its own path.
+            session_id, cwd, msgs = source.parse(read_path or path)
         except Exception as exc:  # corrupt or unexpected file: skip, don't crash sync
             log("skip %s: %s" % (path, exc))
             return

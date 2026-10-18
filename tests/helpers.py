@@ -9,9 +9,10 @@ if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
 
-# A developer's own XDG settings must not reach the throwaway HOMEs tests use
-# (here or in the mnemo subprocesses they start); tests of XDG set them explicitly.
-for _var in ("XDG_DATA_HOME", "XDG_CONFIG_HOME"):
+# A developer's own XDG settings, agent config dirs and archive switch must not
+# reach the throwaway HOMEs tests use (here or in the mnemo subprocesses they
+# start); tests of these variables set them explicitly.
+for _var in ("XDG_DATA_HOME", "XDG_CONFIG_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "MNEMO_ARCHIVE"):
     os.environ.pop(_var, None)
 
 

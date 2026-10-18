@@ -24,6 +24,8 @@ def _iso(ms):
 
 class OpenCodeSource(Source):
     name = "opencode"
+    # Every session lives in one database: there is no per-session file to copy.
+    ARCHIVABLE = False
 
     def db_path(self):
         # OpenCode keeps its data under $XDG_DATA_HOME/opencode on every platform.

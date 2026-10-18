@@ -50,6 +50,14 @@ class IndexTest(unittest.TestCase):
 
         os.remove(pi_file)
         stats = self.idx.sync(home=self.demo.home)
+        self.assertEqual(stats["files_removed"], 0, "the archived copy stands in for it")
+        self.assertEqual(len(search(self.idx, "zebra")), 1)
+
+        os.environ["MNEMO_ARCHIVE"] = "off"
+        try:
+            stats = self.idx.sync(home=self.demo.home)
+        finally:
+            del os.environ["MNEMO_ARCHIVE"]
         self.assertEqual(stats["files_removed"], 1)
         self.assertEqual(search(self.idx, "zebra"), [])
 

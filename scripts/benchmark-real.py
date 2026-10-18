@@ -33,6 +33,9 @@ from mnemo.search import get_context, get_session  # noqa: E402
 from mnemo.sources import get_sources  # noqa: E402
 
 MNEMO = [sys.executable, os.path.join(REPO, "bin", "mnemo")]
+# The throwaway index must not copy every real log into its temp folder (the
+# archive sits beside the index), and the timings stay those of indexing alone.
+os.environ["MNEMO_ARCHIVE"] = "off"
 QUERIES = [
     ("English, one word", "error"),
     ("English, two words", "retry timeout"),

@@ -47,8 +47,10 @@ class IndexTest(unittest.TestCase):
     def setUp(self):
         with contextlib.redirect_stdout(io.StringIO()):
             self.demo = DemoHome()
+        self.demo.activate()  # the archive setting lives in the (demo) node.json
 
     def tearDown(self):
+        self.demo.deactivate()
         self.demo.cleanup()
 
     def test_missing_index_says_how_to_build_it(self):
@@ -60,8 +62,19 @@ class IndexTest(unittest.TestCase):
         idx.sync(home=self.demo.home)
         idx.close()
         checks = doctor.check_index(self.demo.db, full=True, now=NOW)
-        self.assertEqual([(c.name, c.status) for c in checks], [("index", doctor.OK), ("integrity", doctor.OK)])
+        self.assertEqual([(c.name, c.status) for c in checks],
+                         [("index", doctor.OK), ("archive", doctor.OK), ("integrity", doctor.OK)])
         self.assertIn("5 sessions", checks[0].detail)
+        self.assertIn("5 session files", checks[1].detail)
+
+    def test_archive_off_is_reported_with_the_switch(self):
+        os.environ["MNEMO_ARCHIVE"] = "off"
+        try:
+            Index(self.demo.db).sync(home=self.demo.home)
+            check = [c for c in doctor.check_index(self.demo.db, now=NOW) if c.name == "archive"][0]
+        finally:
+            del os.environ["MNEMO_ARCHIVE"]
+        self.assertEqual((check.status, check.fix), (doctor.SKIP, "mnemo node --archive on"))
 
     def test_rows_from_an_older_mnemo_are_a_warning(self):
         idx = Index(self.demo.db)

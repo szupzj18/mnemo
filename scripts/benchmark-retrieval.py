@@ -81,7 +81,7 @@ def corpus(home, messages):
 def worker(args):
     sys.path.insert(0, os.path.abspath(args.repo))
     os.environ["HOME"] = args.home
-    for key in ("XDG_DATA_HOME", "XDG_CONFIG_HOME"):
+    for key in ("XDG_DATA_HOME", "XDG_CONFIG_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME"):
         os.environ.pop(key, None)
     from mnemo.index import Index
     from mnemo.search import get_session, search

@@ -13,7 +13,7 @@ Mnemo indexes the local session logs of coding agents into SQLite FTS5 and expos
 - **The dashboard stays local.** It binds to `127.0.0.1`, every `/api/*` call must carry the per-launch token, and the `Host` allowlist must stay in place.
 - **Session content stays on its device.** Remote reads (`context`, `session`, raw) execute on the remote and return only the requested messages. Don't add code paths that copy remote indexes or logs.
 - **Never commit indexes or session data.** `*.db` and `*.db-*` are gitignored, so keep it that way. Don't commit screenshots of real sessions. Generate synthetic ones with `scripts/make-demo-home.py`.
-- **Tests stay hermetic.** Python tests call `DemoHome.activate()` so syncs read the demo HOME and no registered remote is contacted; e2e runs the dashboard with a temp HOME.
+- **Tests stay hermetic.** Python tests call `DemoHome.activate()` so syncs read the demo HOME and no registered remote is contacted; e2e runs the dashboard with a temp HOME. `tests/helpers.py` clears `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `MNEMO_ARCHIVE`, which would otherwise point a test at your real accounts. The archive lives beside the index, so a test index gets its own.
 - **Forwarded searches must keep `--host local`,** or meshed devices will chain queries (see `remote.search_argv`).
 
 ## Layout
@@ -22,6 +22,7 @@ Mnemo indexes the local session logs of coding agents into SQLite FTS5 and expos
 bin/mnemo                    launcher (resolves its own symlink)
 mnemo/cli.py                 argparse front end
 mnemo/index.py               schema + incremental sync
+mnemo/archive.py             copies of session logs beside the index, read once the agent deletes the original
 mnemo/search.py              FTS5 query builder, BM25, context/session/raw reads
 mnemo/remote.py              SSH exec, fan-out, RRF, rsync install
 mnemo/mcp_server.py          stdio JSON-RPC MCP server; each tool call runs in a fresh `mnemo mcp --call`

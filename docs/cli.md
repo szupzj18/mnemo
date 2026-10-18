@@ -33,6 +33,8 @@ Alias: `mnemo query`.
 | `--json` | off | JSON array of hits |
 | `--coverage` | off | With `--json`, return `{hits, coverage, warnings, excluded_sessions}` |
 
+Each hit names its `account`, the config dir it came from (`.claude`, `.claude-work`, `.codex`, …); text output shows it beside the source for accounts other than the default, as in `[local/claude .claude-work]`. A hit whose log the agent has deleted is served from the [archive](getting-started.md#the-session-archive), has `"archived": true` and is printed with `(archived)`; `context`, `session` and `--raw` read it the same way.
+
 Every device, local and remote, syncs its index incrementally before it is searched, so sessions from a minute ago are found. Warnings about unreachable devices, or a local index that couldn't be refreshed, go to stderr and don't fail the command.
 
 Agents inject boilerplate into user messages — `AGENTS.md` instructions, plugin suggestions, ambient browser state, slash-command output and Codex approval-review wraps. Mnemo keeps these **verbatim** but excludes them from search, ranking and titles, so a keyword that only appears in the injected instructions does not surface every session. Pass `--include-injected` to search the verbatim bodies too. Hits from such a message carry `"envelope": 1`.
@@ -70,7 +72,7 @@ Prints every message of one session file in time order. `--show-envelope` shows 
 mnemo index [--source S] [--rebuild] [-v]
 ```
 
-Incremental sync of local session logs. Files whose size or mtime are unchanged are skipped, and deleted files are dropped from the index. `-v` logs each file. `--rebuild` drops the index and reparses every session from scratch in place; prefer `mnemo upgrade` after updating Mnemo.
+Incremental sync of local session logs. Files whose size or mtime are unchanged are skipped. New and changed logs are copied into the [archive](getting-started.md#the-session-archive) (`N copied to the archive`), and a deleted log's session stays, read from its copy; with the archive off, deleted files are dropped from the index. `-v` logs each file. `--rebuild` drops the index and reparses every session from scratch in place; prefer `mnemo upgrade` after updating Mnemo.
 
 ## mnemo setup
 
@@ -176,7 +178,7 @@ mnemo doctor · laptop
 mnemo status [--json]
 ```
 
-Shows session and message counts per agent, the last sync time and the database path.
+Shows session and message counts per agent, the last sync time, the database path and the archive: on or off, its size, and how many sessions are read from it because their log was deleted.
 
 ```text
 claude       2 sessions        21 messages
@@ -184,15 +186,16 @@ codex        2 sessions        17 messages
 pi           1 sessions         7 messages
 last sync: 2026-09-28 12:07:00
 db:       /home/alex/.mnemo/index.db
+archive:  on, 5 files (13.5 KB) in /home/alex/.mnemo/archive; 0 sessions kept after their logs were deleted
 ```
 
 ## mnemo node
 
 ```bash
-mnemo node [--name NAME] [--forward on|off] [--json]
+mnemo node [--name NAME] [--forward on|off] [--archive on|off] [--json]
 ```
 
-This device's identity and relay policy, stored in `~/.mnemo/node.json`: a stable id (dedupes a device reached over several routes), a display name, and `forward` (off by default) which lets neighbors search and read *through* this device to its own neighbors. Also lists neighbors with the ids learned from them. See [Multi-device](multi-device.md#topologies-direct-links-and-relays).
+This device's identity and policies, stored in `~/.mnemo/node.json`: a stable id (dedupes a device reached over several routes), a display name, `forward` (off by default) which lets neighbors search and read *through* this device to its own neighbors, and `archive` (on by default) which keeps a copy of every session log so sessions outlive the agents' cleanup (see [the session archive](getting-started.md#the-session-archive); `MNEMO_ARCHIVE=on|off` overrides it for one command). Also lists neighbors with the ids learned from them. See [Multi-device](multi-device.md#topologies-direct-links-and-relays).
 
 ## mnemo remote
 

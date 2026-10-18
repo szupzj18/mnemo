@@ -126,7 +126,60 @@ def search(
     rows = [dict(r) for r in index.db.execute(search_sql(where), params).fetchall()]
     for r in rows:  # keep the documented JSON field name
         r["rank"] = r.pop("score")
+    return annotate(index, rows)
+
+
+def _source(name, cache):
+    if name not in cache:
+        cls = SOURCES.get(name)
+        cache[name] = cls() if cls else None
+    return cache[name]
+
+
+def origin(index, source_name, path, cache=None):
+    """Which account a session file came from, and whether only its archived copy is left.
+
+    {"account": ".claude-work" or None, "archived": bool, "archive_path": copy (archived only)}
+    """
+    source = _source(source_name, {} if cache is None else cache)
+    out = {"account": None, "archived": False}
+    if source is None or not source.ARCHIVABLE:
+        return out
+    out["account"] = source.account(path)
+    if not source.exists(path):
+        copy = index.archive.locate(source, path)
+        if copy:
+            out["archived"] = True
+            out["archive_path"] = source.actual(copy)
+    return out
+
+
+def annotate(index, rows):
+    """Add account and archived to rows that carry source and path (hits, recent sessions)."""
+    cache, seen = {}, {}
+    for r in rows:
+        key = (r["source"], r["path"])
+        if key not in seen:
+            seen[key] = origin(index, r["source"], r["path"], cache)
+        r["account"] = seen[key]["account"]
+        r["archived"] = seen[key]["archived"]
     return rows
+
+
+def archived_count(index):
+    """Indexed sessions whose original log is gone, read from the archive instead."""
+    cache = {}
+    return sum(1 for r in index.db.execute("SELECT source, path FROM files")
+               if origin(index, r["source"], r["path"], cache)["archived"])
+
+
+def read_path(index, source, path):
+    """The file to read a session from: the original, or its archived copy once it is gone."""
+    if source.ARCHIVABLE and not source.exists(path):
+        copy = index.archive.locate(source, path)
+        if copy:
+            return copy
+    return path
 
 
 def _view_row(r, hit=None):
@@ -202,7 +255,7 @@ def recent(index, sources=None, cwd=None, since=None, limit=25):
         "WHERE " + " AND ".join(where) +
         " ORDER BY f.started_ts DESC LIMIT ?"
     )
-    return [dict(r) for r in index.db.execute(sql, params).fetchall()]
+    return annotate(index, [dict(r) for r in index.db.execute(sql, params).fetchall()])
 
 
 def session_selection(count, signature, head=None, tail=None, limit=None, cursor=None, anchor=None):
@@ -291,6 +344,7 @@ def _get_session(index, path, head, tail, limit, cursor, anchor_line):
         "path": path, "source": meta["source"], "session_id": meta["session_id"], "cwd": meta["cwd"],
         "started_at": span["started_at"], "ended_at": span["ended_at"], "count": count, "messages": messages,
     }
+    result.update(origin(index, meta["source"], path))
     if limit is not None:
         result["page"] = session_page(offset, size, count, signature)
     return result
@@ -311,7 +365,7 @@ def raw_session(index, path, head=None, tail=None, limit=None, cursor=None, anch
     source = _source_for(index, path)
     if source is None:
         return None
-    sid, cwd, parsed = source.parse(path, clip_text=False)
+    sid, cwd, parsed = source.parse(read_path(index, source, path), clip_text=False)
     messages = [
         {
             "lineno": lineno,
@@ -334,6 +388,7 @@ def raw_session(index, path, head=None, tail=None, limit=None, cursor=None, anch
         "messages": messages,
         "raw": True,
     }
+    result.update(origin(index, source.name, path))
     meta = index.db.execute("SELECT mtime, size FROM files WHERE path=?", (path,)).fetchone()
     signature = [path, "raw", meta["mtime"], meta["size"]]
     anchor = None

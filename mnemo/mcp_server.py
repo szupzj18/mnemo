@@ -28,8 +28,11 @@ def build_tools():
             "description": (
                 "Full-text search across coding-agent sessions (claude, codex, opencode, pi) on this machine"
                 " and registered remote devices. Matches user prompts, assistant replies, summaries,"
-                " tool calls and tool results. Each hit gives host, source, cwd, timestamp, a snippet,"
+                " tool calls and tool results. Each hit gives host, source, account (the agent config dir it came"
+                " from, e.g. .claude-work), cwd, timestamp, a snippet,"
                 " and file:line for get_context (pass the hit's host to get_context); pass the hit's path alone to get_session for the whole session file."
+                " Sessions stay searchable after their agent deletes the log: such hits carry archived=true and"
+                " every read uses mnemo's archived copy."
                 " Supports English (prefix) and Chinese (substring via bigrams)."
                 " Hits carry a short snippet, not the message body; read bodies with get_context/get_session."
                 " The calling agent's own session is left out by default (include_current_session=true keeps it)."
@@ -97,7 +100,8 @@ def build_tools():
                 " (same normalized format), ordered by time. Use after get_context when you need the"
                 " full conversation rather than a window around one line. Message bodies are capped"
                 " at 20k characters in the index; pass raw=true to read the original session file with"
-                " full bodies. head/tail select only the first/last N messages."
+                " full bodies. head/tail select only the first/last N messages. archived=true means the agent"
+                " deleted the original log and archive_path is the copy being read."
             ),
             "inputSchema": {
                 "type": "object",

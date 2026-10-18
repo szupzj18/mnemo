@@ -6,18 +6,8 @@ from .base import Source, decode_cwd_dir
 
 class PiSource(Source):
     name = "pi"
-
-    def root(self):
-        return os.path.join(self.home, ".pi", "agent", "sessions")
-
-    def files(self):
-        root = self.root()
-        if not os.path.isdir(root):
-            return
-        for dirpath, _dirs, names in os.walk(root):
-            for n in names:
-                if n.endswith(".jsonl"):
-                    yield os.path.join(dirpath, n)
+    CONFIG_DIR = ".pi"
+    LOG_DIRS = (os.path.join("agent", "sessions"),)
 
     def parse(self, path, clip_text=True):
         # filename: 2026-09-01T09-46-41-101Z_<uuid>.jsonl

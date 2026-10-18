@@ -39,7 +39,7 @@ mnemo search "关键词" --json --coverage
 
 The response is `{hits, coverage, warnings, excluded_sessions}`. Inspect each device's status and index refresh; older devices report unknown freshness. Indexed bodies may stop at 20k characters, so zero hits do not establish that the original logs lack the text.
 
-Each hit contains: `host`, `source`, `cwd`, `ts`, `role`, `kind`, `snippet`, `path`, `lineno` (plus `envelope: 1` when the match is inside injected text). Injected boilerplate is kept verbatim but excluded from default search, so a keyword that only appears in the agent's `AGENTS.md` does not surface every session; genuine user replies inside such messages are still searchable.
+Each hit contains: `host`, `source`, `account`, `cwd`, `ts`, `role`, `kind`, `snippet`, `path`, `lineno`, `archived` (plus `envelope: 1` when the match is inside injected text). `account` is the agent config dir the session came from (`.claude`, `.claude-work`, `.codex`, …): every Claude Code and Codex account on the device is searched. `archived: true` means the agent has since deleted the original log; mnemo kept a copy, and `context`/`session` (and `--raw`) read it under the same `path`. Injected boilerplate is kept verbatim but excluded from default search, so a keyword that only appears in the agent's `AGENTS.md` does not surface every session; genuine user replies inside such messages are still searchable.
 Warnings list unreachable devices and incomplete index refreshes; results cover only the indexed content on devices that answered.
 
 ## Recalling recent sessions

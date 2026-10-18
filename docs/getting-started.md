@@ -39,18 +39,39 @@ The first `mnemo index` parses every session file. Expect about 30 s for a few t
 
 | Agent | Session logs |
 |---|---|
-| Claude Code | `~/.claude/projects/**/*.jsonl` |
-| Codex | `~/.codex/sessions/**` and `~/.codex/archived_sessions/**` |
+| Claude Code | `~/.claude/projects/**/*.jsonl`, and the same under every `~/.claude-*` account and `$CLAUDE_CONFIG_DIR` |
+| Codex | `~/.codex/sessions/**` and `~/.codex/archived_sessions/**`, and the same under every `~/.codex-*` account and `$CODEX_HOME` |
 | Pi | `~/.pi/agent/sessions/**` |
 | OpenCode | `~/.local/share/opencode/opencode.db` (SQLite) |
+
+Every account folder counts: one made per account by a switcher (`~/.claude-work`, `~/.codex-team`) is indexed like the default, and results name it as the hit's `account`. A folder that is a symlink to one already read is read once. `$CLAUDE_CONFIG_DIR` and `$CODEX_HOME` apply to your own home only, like the XDG variables; once an account outside your home has been indexed, the archive remembers it, so searches started without the variable (by another agent, say) still cover it.
 
 Mnemo keeps its own state in `~/.mnemo/`:
 
 | File | Contents |
 |---|---|
 | `index.db` | SQLite FTS5 index over this machine's sessions |
+| `archive/` | A copy of every session log, kept after the agent deletes the original ([below](#the-session-archive)) |
 | `remotes.json` | Registered remote devices |
+| `node.json` | This device's name, id, relay and archive settings |
 | `ssh-<name>` | SSH ControlMaster sockets |
+
+### The session archive
+
+Claude Code deletes session logs older than `cleanupPeriodDays` (30 days unless you change it), and Codex threads and Pi sessions can be deleted by hand. When a log is gone, its session would normally leave the index with it. To prevent that, every sync copies each Claude Code, Codex and Pi log it indexes to
+
+```text
+~/.mnemo/archive/<source>/<account>/<path inside the account>
+~/.mnemo/archive/claude/.claude-work/projects/-Users-me-app/<session>.jsonl
+```
+
+and once the original is gone, Mnemo keeps the session and reads the copy. Search, `context`, `session` and `--raw` work as before, and results say `archived: true` (the CLI prints `(archived)`). Copies are written atomically, readable by you only (`0600` files in `0700` folders, since logs can contain credentials). A changed log is copied again on the next sync. Each `archive/<source>/<account>/origin.json` records which account folder it mirrors, so an index rebuilt with `mnemo upgrade` or `mnemo index --rebuild` finds archived sessions again.
+
+- **Disk.** The archive takes about as much space as the logs: on one machine, 0.8 GB for Claude Code and 1.8 GB for Codex. `mnemo status` shows its size.
+- **Off.** `mnemo node --archive off` stops copying, and sessions whose log is gone leave the index on the next sync, as before. Copies already made stay in `~/.mnemo/archive` until you delete them, and `--archive on` brings their sessions back. `MNEMO_ARCHIVE=off` (or `on`) overrides the setting for one command.
+- **Forgetting a session.** Delete its copy under `~/.mnemo/archive` as well as the original log.
+- **Moves.** When Codex moves a rollout to `archived_sessions`, or a session is continued under another account, the copy of the old path is not kept beside the live file, and an identical moved copy is removed. OpenCode keeps every session in one SQLite database and is not archived.
+- **What it can't recover.** Logs deleted before you ran a version with the archive were never copied, so their sessions stay gone.
 
 ## Connect your agents
 
@@ -121,6 +142,8 @@ If another process is writing the index, the search waits up to 10 s. If the syn
 git -C ~/mnemo pull          # or: uv tool upgrade mnemo-search / pipx upgrade mnemo-search
 mnemo upgrade                # back up, rebuild, verify and swap; then update devices running older code
 ```
+
+Updating to the release with the session archive changes no schema: the next sync indexes the other accounts and copies every log into `~/.mnemo/archive` once (a few seconds per GB), so run `mnemo index -v` after updating if you prefer that not to happen inside a search.
 
 Running agent sessions pick up the new code on their next tool call: the MCP server runs each call in a fresh process. Only a release that adds or changes tools needs a new session to see them. A running dashboard restarts itself on the same port, and `mnemo link` services are restarted by `mnemo upgrade`. An older mnemo never writes to an index a newer one has upgraded, and rows an old process wrote before that guard existed are repaired on the next sync. If anything looks wrong, `mnemo upgrade --restore` brings back the previous index.
 

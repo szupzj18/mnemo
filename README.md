@@ -110,7 +110,8 @@ and say which session (agent, device, date) you are drawing on.
 
 ## Highlights
 
-- **Cross-agent.** A single index covers Claude Code, Codex (including archived sessions), OpenCode and Pi, all normalized to one message schema.
+- **Cross-agent.** A single index covers Claude Code, Codex (including archived sessions), OpenCode and Pi, all normalized to one message schema, across every account (`~/.claude-*`, `$CLAUDE_CONFIG_DIR`, `~/.codex-*`, `$CODEX_HOME`).
+- **Keeps what the agents delete.** Mnemo copies each session log into `~/.mnemo/archive`, so a session stays searchable and readable after Claude Code's 30-day cleanup or a deleted Codex thread (`mnemo node --archive off` to opt out).
 - **Cross-device.** Queries fan out over SSH to your devboxes and merge by rank. Session bodies never leave the machine that produced them.
 - **Cheap for agents.** A search returns ranked snippets, not raw logs: ~1.9k tokens for 10 hits. In a controlled test, agents used 23% fewer tokens and 52% fewer tool calls than with grep ([benchmarks](#benchmarks)).
 - **Good at CJK.** English uses prefix matching and Chinese uses substring matching (unigram + bigram), all ranked with BM25.
@@ -250,7 +251,7 @@ In a controlled experiment on 2026-09-24, fresh agents answered four "what did w
 - Everything runs locally. Mnemo makes no network calls except SSH to devices you registered yourself.
 - Session bodies are read on the device that produced them. A cross-device query returns only the hits and the messages you asked to read.
 - The dashboard listens on `127.0.0.1` only. API calls require a random per-launch token and a local `Host` header.
-- The index at `~/.mnemo/index.db` holds your transcripts in plaintext. Treat it like the logs themselves.
+- The index at `~/.mnemo/index.db` holds your transcripts in plaintext, and `~/.mnemo/archive` holds a copy of every session log (readable by you only). Treat both like the logs themselves.
 
 See [SECURITY.md](SECURITY.md) to report a vulnerability.
 
