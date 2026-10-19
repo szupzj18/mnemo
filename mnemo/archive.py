@@ -20,7 +20,6 @@ contain credentials.
 import hashlib
 import json
 import os
-import shutil
 import threading
 
 ENV = "MNEMO_ARCHIVE"
@@ -58,10 +57,11 @@ def setting():
         return True
 
 
-def same_copy(a, b):
+def same_copy(a, b, exact=False):
     """(mtime, size) pairs of a file and its copy: equal size, mtime within a second
-    (some filesystems keep coarser timestamps than the one copied from)."""
-    return a[1] == b[1] and abs(a[0] - b[0]) < 1
+    (some filesystems keep coarser timestamps than the one copied from), or the
+    very same mtime for a file that can change without changing size (exact)."""
+    return a[1] == b[1] and (a[0] == b[0] if exact else abs(a[0] - b[0]) < 1)
 
 
 class Archive:
@@ -163,7 +163,7 @@ class Archive:
             for sub in source.LOG_DIRS:
                 for copy in source.walk(os.path.join(top, sub)):
                     try:
-                        st = os.stat(source.actual(copy))
+                        st = source.stat(copy)
                     except OSError:
                         continue
                     out.setdefault(os.path.join(origin, os.path.relpath(copy, top)),
@@ -177,13 +177,13 @@ class Archive:
             raise OSError("not inside a known config dir")
         actual = source.actual(path)
         target = copy + actual[len(path):]  # Codex: keep the .zst of a compressed log
-        st = os.stat(actual)
+        st = source.stat(path)
         self._makedirs(os.path.dirname(target))
         tmp = self._tmp_name(target)
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        os.close(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
         try:
-            with os.fdopen(fd, "wb") as out, open(actual, "rb") as src:
-                shutil.copyfileobj(src, out, 1 << 20)
+            # Bytes as they are, or a database's own consistent copy (agy).
+            source.snapshot(actual, tmp)
             os.chmod(tmp, 0o600)
             # The copy keeps the original's mtime: once the original is gone the
             # copy reports the same change key, so the index has nothing to redo.
@@ -218,7 +218,7 @@ class Archive:
         mirrored = set()
         for path, key in sorted(live.items()):
             entry = have.get(path)
-            if entry is None or not same_copy(entry[1:], key):
+            if entry is None or not same_copy(entry[1:], key, source.EXACT_MTIME):
                 try:
                     self.store(source, path)
                 except OSError as exc:
@@ -234,7 +234,7 @@ class Archive:
             name = os.path.basename(orig)
             if name in by_name:
                 path, key = by_name[name]
-                if path in mirrored and same_copy((mtime, size), key):
+                if path in mirrored and same_copy((mtime, size), key, source.EXACT_MTIME):
                     self.remove(copy)  # the very same file, moved; its new path has a copy
                 continue
             best = chosen.get(name)

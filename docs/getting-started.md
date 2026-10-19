@@ -4,7 +4,7 @@
 
 - Python 3.7 or newer, standard library only
 - SQLite built with FTS5 (the default on macOS and on current Linux distributions)
-- One or more of: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), [Pi](https://github.com/badlogic/pi-mono) or [OpenCode](https://github.com/sst/opencode)
+- One or more of: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), [Pi](https://github.com/badlogic/pi-mono), [OpenCode](https://github.com/sst/opencode) or [Antigravity CLI](https://antigravity.google) (`agy`)
 
 Check FTS5:
 
@@ -43,6 +43,7 @@ The first `mnemo index` parses every session file. Expect about 30 s for a few t
 | Codex | `~/.codex/sessions/**` and `~/.codex/archived_sessions/**`, and the same under every `~/.codex-*` account and `$CODEX_HOME` |
 | Pi | `~/.pi/agent/sessions/**` |
 | OpenCode | `~/.local/share/opencode/opencode.db` (SQLite) |
+| Antigravity CLI | `~/.gemini/antigravity-cli/conversations/<conversation id>.db` (SQLite, one per conversation) |
 
 Every account folder counts: one made per account by a switcher (`~/.claude-work`, `~/.codex-team`) is indexed like the default, and results name it as the hit's `account`. A folder that is a symlink to one already read is read once. `$CLAUDE_CONFIG_DIR` and `$CODEX_HOME` apply to your own home only, like the XDG variables; once an account outside your home has been indexed, the archive remembers it, so searches started without the variable (by another agent, say) still cover it.
 
@@ -58,14 +59,14 @@ Mnemo keeps its own state in `~/.mnemo/`:
 
 ### The session archive
 
-Claude Code deletes session logs older than `cleanupPeriodDays` (30 days unless you change it), and Codex threads and Pi sessions can be deleted by hand. When a log is gone, its session would normally leave the index with it. To prevent that, every sync copies each Claude Code, Codex and Pi log it indexes to
+Claude Code deletes session logs older than `cleanupPeriodDays` (30 days unless you change it), and Codex threads, Pi sessions and Antigravity CLI conversations can be deleted by hand. When a log is gone, its session would normally leave the index with it. To prevent that, every sync copies each Claude Code, Codex, Pi and Antigravity CLI log it indexes to
 
 ```text
 ~/.mnemo/archive/<source>/<account>/<path inside the account>
 ~/.mnemo/archive/claude/.claude-work/projects/-Users-me-app/<session>.jsonl
 ```
 
-and once the original is gone, Mnemo keeps the session and reads the copy. Search, `context`, `session` and `--raw` work as before, and results say `archived: true` (the CLI prints `(archived)`). Copies are written atomically, readable by you only (`0600` files in `0700` folders, since logs can contain credentials). A changed log is copied again on the next sync. Each `archive/<source>/<account>/origin.json` records which account folder it mirrors, so an index rebuilt with `mnemo upgrade` or `mnemo index --rebuild` finds archived sessions again.
+and once the original is gone, Mnemo keeps the session and reads the copy. Search, `context`, `session` and `--raw` work as before, and results say `archived: true` (the CLI prints `(archived)`). Copies are written atomically, readable by you only (`0600` files in `0700` folders, since logs can contain credentials). A changed log is copied again on the next sync. An Antigravity CLI conversation is copied with SQLite's backup API, which includes steps agy still holds in its write-ahead log, into a single self-contained `.db`. Each `archive/<source>/<account>/origin.json` records which account folder it mirrors, so an index rebuilt with `mnemo upgrade` or `mnemo index --rebuild` finds archived sessions again.
 
 - **Disk.** The archive takes about as much space as the logs: on one machine, 0.8 GB for Claude Code and 1.8 GB for Codex. `mnemo status` shows its size.
 - **Off.** `mnemo node --archive off` stops copying, and sessions whose log is gone leave the index on the next sync, as before. Copies already made stay in `~/.mnemo/archive` until you delete them, and `--archive on` brings their sessions back. `MNEMO_ARCHIVE=off` (or `on`) overrides the setting for one command.
@@ -75,7 +76,7 @@ and once the original is gone, Mnemo keeps the session and reads the copy. Searc
 
 ## Connect your agents
 
-`mnemo setup` does all of the below for every agent it detects (a CLI on `PATH` or its config directory): it registers the MCP server with `claude mcp add`, appends `[mcp_servers.mnemo]` to `~/.codex/config.toml` after backing it up, adds `mcp.mnemo` to OpenCode's `opencode.json`, and links the Claude skill and the Pi extension. Stale symlinks from an older checkout are repaired; real files are never replaced. `--dry-run` previews, `--agent codex` limits it. The manual steps:
+`mnemo setup` does all of the below for every agent it detects (a CLI on `PATH` or its config directory): it registers the MCP server with `claude mcp add`, appends `[mcp_servers.mnemo]` to `~/.codex/config.toml` after backing it up, adds `mcp.mnemo` to OpenCode's `opencode.json` and `mcpServers.mnemo` to Antigravity CLI's `~/.gemini/config/mcp_config.json` (both backed up first), and links the Claude skill and the Pi extension. Stale symlinks from an older checkout are repaired; real files are never replaced. `--dry-run` previews, `--agent codex` limits it. The manual steps:
 
 ### Claude Code
 
@@ -115,6 +116,22 @@ Use an absolute path, because MCP servers don't always inherit your shell's `PAT
 ```
 
 The `timeout` (milliseconds; OpenCode's default is 5 s) covers the first full index, like Codex's `startup_timeout_sec`. OpenCode's own sessions are indexed from `$XDG_DATA_HOME/opencode/opencode.db` (default `~/.local/share/opencode/`).
+
+### Antigravity CLI
+
+```json
+// ~/.gemini/config/mcp_config.json
+{
+  "mcpServers": {
+    "mnemo": {
+      "command": "/Users/you/.local/bin/mnemo",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+agy reads its global MCP servers from this file; plugins can carry their own `mcp_config.json`. Its start-up timeout is not documented, so build the index (`mnemo index`) before the first agy session rather than leaving that to the MCP server. agy's conversations are indexed from `~/.gemini/antigravity-cli/conversations/` as source `agy`. The Antigravity desktop app keeps its conversations elsewhere and is not indexed.
 
 ### Pi
 

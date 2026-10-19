@@ -20,7 +20,7 @@ PI_SRC = os.path.join(INTEGRATIONS, "pi", "mnemo.ts")
 
 from . import xdg
 
-AGENTS = ("claude", "codex", "opencode", "pi")
+AGENTS = ("claude", "codex", "opencode", "pi", "agy")
 
 
 class Step:
@@ -72,6 +72,7 @@ def detect():
         "opencode": bool(shutil.which("opencode") or os.path.isdir(os.path.join(xdg.config(), "opencode"))
                          or os.path.isdir(os.path.join(xdg.data(), "opencode"))),
         "pi": bool(shutil.which("pi") or os.path.isdir(home(".pi", "agent"))),
+        "agy": bool(shutil.which("agy") or os.path.isdir(home(".gemini", "antigravity-cli"))),
     }
 
 
@@ -196,7 +197,42 @@ def setup_pi(cmd, dry_run):
     return [_link("pi", "extension", PI_SRC, home(".pi", "agent", "extensions", "mnemo.ts"), dry_run)]
 
 
-SETUPS = {"claude": setup_claude, "codex": setup_codex, "opencode": setup_opencode, "pi": setup_pi}
+def agy_entry(cmd):
+    return {"command": cmd[0], "args": cmd[1:] + ["mcp"]}
+
+
+def setup_agy(cmd, dry_run):
+    # Antigravity CLI reads its global MCP servers from the "mcpServers" map in
+    # this file, which it creates empty.
+    config = home(".gemini", "config", "mcp_config.json")
+    snippet = '"mnemo": ' + json.dumps(agy_entry(cmd), indent=2)
+    data = {}
+    if os.path.isfile(config):
+        with open(config, encoding="utf-8") as f:
+            text = f.read()
+        try:
+            data = json.loads(text) if text.strip() else data
+        except ValueError:
+            return [Step("agy", "MCP server", "%s is not plain JSON, so it was left alone\n"
+                         "add this inside its \"mcpServers\" object:\n%s" % (config, snippet), "skipped")]
+        if not isinstance(data, dict) or not isinstance(data.get("mcpServers", {}), dict):
+            return [Step("agy", "MCP server", "%s is not a config object; left alone" % config, "skipped")]
+    if "mnemo" in data.get("mcpServers", {}):
+        return [Step("agy", "MCP server", "%s already has mcpServers.mnemo" % config, "ok")]
+    data.setdefault("mcpServers", {})["mnemo"] = agy_entry(cmd)
+    detail = config
+    if not dry_run:
+        os.makedirs(os.path.dirname(config), exist_ok=True)
+        if os.path.isfile(config):
+            detail = "%s (backup: %s)" % (config, _backup(config))
+        with open(config, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+    return [Step("agy", "MCP server", detail, "added")]
+
+
+SETUPS = {"claude": setup_claude, "codex": setup_codex, "opencode": setup_opencode, "pi": setup_pi,
+          "agy": setup_agy}
 
 
 def run(agents=None, dry_run=False):
@@ -216,7 +252,7 @@ def run(agents=None, dry_run=False):
 
 # ------------------------------------------------------------------- output
 
-NAMES = {"claude": "Claude Code", "codex": "Codex", "opencode": "OpenCode", "pi": "Pi"}
+NAMES = {"claude": "Claude Code", "codex": "Codex", "opencode": "OpenCode", "pi": "Pi", "agy": "Antigravity CLI"}
 ICONS = {"added": "+", "fixed": "\u21bb", "ok": "\u2713", "skipped": "\u00b7", "failed": "\u2717"}
 ASCII_ICONS = {"added": "+", "fixed": "~", "ok": "=", "skipped": "-", "failed": "!"}
 COLORS = {"added": "34", "fixed": "33", "ok": "32", "skipped": "2", "failed": "31"}
@@ -285,7 +321,8 @@ def render(steps, dry_run=False, color=False, unicode=True, home_dir=None):
     elif found:
         nxt = "Everything is already set up."
     else:
-        nxt = "No agents found. Install Claude Code, Codex, OpenCode or Pi, then run mnemo setup again."
+        nxt = ("No agents found. Install Claude Code, Codex, OpenCode, Pi or Antigravity CLI,"
+               " then run mnemo setup again.")
     if nxt:
         lines.append("  " + paint("1", arrow + " " + nxt))
     if by_hand and not counts["failed"]:

@@ -11,6 +11,7 @@ const TILE: Record<string, string> = {
   codex: "bg-[#0f1115] text-white dark:bg-black dark:ring-1 dark:ring-white/15",
   pi: "bg-white ring-1 ring-black/10 dark:bg-muted dark:ring-white/15",
   opencode: "bg-[#131010] text-white dark:ring-1 dark:ring-white/15",
+  agy: "bg-[#3279f9] text-white",
 }
 
 export function SourceIcon({ source, className }: { source: string; className?: string }) {
@@ -41,6 +42,11 @@ export function SourceIcon({ source, className }: { source: string; className?: 
         // Terminal-style monogram rather than a redrawn brand mark.
         <span role="img" aria-label="OpenCode" className="font-mono text-[13px] font-bold tracking-tight">
           oc
+        </span>
+      ) : source === "agy" ? (
+        // Antigravity CLI: its command name as a monogram, like OpenCode's.
+        <span role="img" aria-label="Antigravity CLI" className="font-mono text-[12px] font-bold tracking-tight">
+          agy
         </span>
       ) : (
         <span className="font-bold">{source.charAt(0).toUpperCase() || "?"}</span>

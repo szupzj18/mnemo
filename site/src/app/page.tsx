@@ -101,7 +101,7 @@ export default function Home() {
               Memory your agents call as a tool
             </h1>
             <p className={`mx-auto mt-6 max-w-2xl text-lg text-balance ${muted}`}>
-              Mnemo indexes every Claude Code, Codex, OpenCode and Pi session on your machines. Any agent can look up what another
+              Mnemo indexes every Claude Code, Codex, OpenCode, Pi and Antigravity CLI session on your machines. Any agent can look up what another
               already worked out, on this laptop or a box three hops away, and read only as much as it needs.
             </p>
             <div className="mx-auto mt-10 flex max-w-2xl flex-col gap-3 sm:flex-row">
@@ -174,7 +174,7 @@ export default function Home() {
             <div className="space-y-4">
               <CopyCommand command="mnemo setup" />
               <p className={`text-sm leading-relaxed ${muted}`}>
-                Registers the MCP server for Claude Code, Codex and OpenCode, links the Claude Code skill and the Pi extension.
+                Registers the MCP server for Claude Code, Codex, OpenCode and Antigravity CLI, links the Claude Code skill and the Pi extension.
                 Anything already configured is left alone. The tool schemas cost about 500 tokens per session.
               </p>
               <CopyCommand command='mnemo search "sglang oom" --json' />
@@ -222,7 +222,7 @@ export default function Home() {
               <CopyCommand command={INSTALL} />
               <ul className={`space-y-2 text-sm ${muted}`}>
                 <li>Checks Python 3.7+ and SQLite FTS5, clones to <code className="font-mono text-[13px]">~/mnemo</code>, links <code className="font-mono text-[13px]">mnemo</code> into <code className="font-mono text-[13px]">~/.local/bin</code>.</li>
-                <li>Runs <code className="font-mono text-[13px]">mnemo setup</code>: registers the MCP server for Claude Code, Codex and OpenCode, links the skill and the Pi extension.</li>
+                <li>Runs <code className="font-mono text-[13px]">mnemo setup</code>: registers the MCP server for Claude Code, Codex, OpenCode and Antigravity CLI, links the skill and the Pi extension.</li>
                 <li>On re-run: pulls, then <code className="font-mono text-[13px]">mnemo upgrade</code> backs up and rebuilds the index and updates devices running older code.</li>
               </ul>
               <div>

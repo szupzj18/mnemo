@@ -1,0 +1,43 @@
+{
+  "about": "Synthetic Antigravity CLI conversations. tests/agy_store.py writes each one as ~/.gemini/antigravity-cli/conversations/<id>.db in agy 1.3.6's format. Every step type the adapter reads appears once or more, plus an API error step it must skip.",
+  "conversations": [
+    {
+      "id": "3f2b8c1e-7d4a-4c9b-8e21-5a6f0d9c7b14",
+      "workspace": "file:///home/alex/relay",
+      "start": 1790000000,
+      "steps": [
+        {"at": 0, "user": "Webhook retries give up after three tries; add exponential backoff to the relay."},
+        {"at": 4, "planner": {
+          "thinking": "The retry loop sleeps a fixed two seconds. Exponential backoff with jitter, capped, is the usual fix.",
+          "tool_calls": [{"name": "grep_search", "args": {"Query": "retry", "SearchPath": "/home/alex/relay"}}]}},
+        {"at": 5, "tool": {"output": "relay/webhook.py:41:    for attempt in range(3):"}},
+        {"at": 9, "planner": {
+          "text": "I'll switch the loop to exponential backoff with full jitter, capped at 30 s.",
+          "tool_calls": [{"name": "replace_file_content", "args": {"TargetFile": "/home/alex/relay/webhook.py", "Instruction": "use backoff(attempt) between tries"}}]}},
+        {"at": 10, "tool": {"error": "permission check failed: replace_file_content needs approval"}},
+        {"at": 30, "notification": "Background task finished: pytest relay/tests (exit 0)"},
+        {"at": 31, "error": "API error (attempt 1): UNAVAILABLE"},
+        {"at": 40, "checkpoint": "The user wants webhook retries to use exponential backoff; the retry loop is in relay/webhook.py."},
+        {"at": 60, "user": "中文也要能搜到：跨设备会话检索。"},
+        {"at": 63, "planner": {"text": "好的，跨设备会话检索已经覆盖中文子串。"}}
+      ]
+    },
+    {
+      "id": "9a41d6e0-2c7f-4b38-a5e9-1f0c8d3b6a27",
+      "workspace": "file:///home/alex/docs%20site",
+      "start": 1790090000,
+      "steps": [
+        {"at": 0, "user": "<system-reminder>\nAGENTS.md instructions for /home/alex/docs site\n</system-reminder>\n\nFix the flash of unstyled theme on the search page."},
+        {"at": 6, "planner": {
+          "text": "The theme stylesheet loads async; make it blocking.",
+          "tool_calls": [{"name": "view_file", "args": {"AbsolutePath": "/home/alex/docs site/app/layout.tsx"}}]}}
+      ]
+    },
+    {
+      "id": "c4e8a2f6-0b1d-4a3c-9e7f-6d5b4a3c2e10",
+      "workspace": "file:///home/alex",
+      "start": 1790095000,
+      "steps": []
+    }
+  ]
+}

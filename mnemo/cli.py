@@ -746,8 +746,10 @@ def main(argv=None):
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_doctor)
 
-    sp = sub.add_parser("setup", help="connect Claude Code, Codex, OpenCode and Pi to mnemo (safe to re-run)")
-    sp.add_argument("--agent", help="comma-separated subset of claude,codex,opencode,pi (default: every one detected)")
+    sp = sub.add_parser("setup", help="connect Claude Code, Codex, OpenCode, Pi and Antigravity CLI to mnemo"
+                                      " (safe to re-run)")
+    sp.add_argument("--agent", help="comma-separated subset of claude,codex,opencode,pi,agy"
+                                    " (default: every one detected)")
     sp.add_argument("--dry-run", action="store_true", help="show what would change without changing anything")
     sp.add_argument("--json", action="store_true", help="machine-readable steps")
     sp.set_defaults(func=cmd_setup)

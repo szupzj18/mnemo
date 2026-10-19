@@ -1,9 +1,11 @@
+from .agy import AgySource
 from .claude import ClaudeSource
 from .codex import CodexSource
 from .opencode import OpenCodeSource
 from .pi import PiSource
 
 SOURCES = {
+    "agy": AgySource,
     "claude": ClaudeSource,
     "codex": CodexSource,
     "opencode": OpenCodeSource,

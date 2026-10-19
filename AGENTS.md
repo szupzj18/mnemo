@@ -29,8 +29,8 @@ mnemo/mcp_server.py          stdio JSON-RPC MCP server; each tool call runs in a
 mnemo/live.py                long-running processes that follow code updates (markers, code watcher)
 mnemo/dashboard.py           HTTP API + static server for mnemo/web_dist
 mnemo/web_dist/              committed static export of web/ (generated)
-mnemo/sources/{claude,codex,pi}.py   per-agent log adapters
-mnemo/setup.py               `mnemo setup`: wires Claude Code, Codex, Pi (idempotent)
+mnemo/sources/{claude,codex,opencode,pi,agy}.py   per-agent log adapters
+mnemo/setup.py               `mnemo setup`: wires Claude Code, Codex, OpenCode, Pi, Antigravity CLI (idempotent)
 mnemo/upgrade.py             `mnemo upgrade`: backup, rebuild beside, verify, swap
 mnemo/doctor.py              `mnemo doctor`: health checks reusing setup, topology, link and upgrade logic
 mnemo/service.py             `mnemo link --install`: launchd / systemd user / background services for links

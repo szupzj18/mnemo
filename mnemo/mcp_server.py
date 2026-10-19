@@ -26,7 +26,7 @@ def build_tools():
             "name": "search_sessions",
             "annotations": READ_ONLY,
             "description": (
-                "Full-text search across coding-agent sessions (claude, codex, opencode, pi) on this machine"
+                "Full-text search across coding-agent sessions (claude, codex, opencode, pi, agy) on this machine"
                 " and registered remote devices. Matches user prompts, assistant replies, summaries,"
                 " tool calls and tool results. Each hit gives host, source, account (the agent config dir it came"
                 " from, e.g. .claude-work), cwd, timestamp, a snippet,"
@@ -43,7 +43,7 @@ def build_tools():
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "keywords, whitespace-separated (all must match)"},
-                    "source": {"type": "string", "description": "comma-separated subset of: claude,codex,opencode,pi"},
+                    "source": {"type": "string", "description": "comma-separated subset of: claude,codex,opencode,pi,agy"},
                     "kinds": {
                         "type": "string",
                         "description": "comma-separated subset of: text,summary,tool_call,tool_result,reasoning (default: text,summary,tool_call,tool_result)",
@@ -129,7 +129,7 @@ def build_tools():
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "source": {"type": "string", "description": "comma-separated subset of: claude,codex,opencode,pi"},
+                    "source": {"type": "string", "description": "comma-separated subset of: claude,codex,opencode,pi,agy"},
                     "cwd": {"type": "string", "description": "only sessions whose working directory contains this substring"},
                     "since": {"type": "string", "description": "YYYY-MM-DD"},
                     "limit": {"type": "integer", "description": "max sessions (default 25)"},
@@ -143,7 +143,7 @@ def build_tools():
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "source": {"type": "string", "description": "comma-separated subset of: claude,codex,opencode,pi"},
+                    "source": {"type": "string", "description": "comma-separated subset of: claude,codex,opencode,pi,agy"},
                 },
             },
         },

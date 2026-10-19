@@ -46,6 +46,7 @@ export const INTEGRATIONS = [
   { name: "Codex", how: "MCP server" },
   { name: "Pi", how: "extension" },
   { name: "OpenCode", how: "MCP server" },
+  { name: "Antigravity CLI", how: "MCP server" },
   { name: "Any MCP client", how: "stdio JSON-RPC" },
   { name: "Scripts", how: "mnemo search --json" },
 ]

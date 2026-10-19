@@ -28,9 +28,13 @@ class Source:
     CONFIG_DIR = None
     CONFIG_ENV = None
     LOG_DIRS = ()
+    LOG_SUFFIX = ".jsonl"
     MULTI_ACCOUNT = False
     # One file per session, so a copy in the archive can stand in for it (archive.py).
     ARCHIVABLE = True
+    # A session file that can change without changing size (a database updated in
+    # place): its archived copy is current only with the very same mtime.
+    EXACT_MTIME = False
 
     def __init__(self, home=None):
         self.home = os.path.expanduser(home or "~")
@@ -77,7 +81,7 @@ class Source:
         for dirpath, dirs, names in os.walk(root):
             dirs.sort()
             for n in sorted(names):
-                if n.endswith(".jsonl"):
+                if n.endswith(self.LOG_SUFFIX):
                     yield os.path.join(dirpath, n)
 
     def actual(self, path):
@@ -86,6 +90,15 @@ class Source:
 
     def exists(self, path):
         return os.path.exists(self.actual(path))
+
+    def stat(self, path):
+        """os.stat of a session file: its change key (st_mtime, st_size) and identity."""
+        return os.stat(self.actual(path))
+
+    def snapshot(self, src, dest):
+        """Copy the session file src over dest, an empty 0600 file in the archive."""
+        with open(src, "rb") as f, open(dest, "wb") as out:
+            shutil.copyfileobj(f, out, 1 << 20)
 
     def account_of(self, path):
         """The config dir a session file belongs to (~/.claude-work for its projects/...)."""
@@ -111,7 +124,7 @@ class Source:
         seen = set()
         for path in self.files():
             try:
-                st = os.stat(self.actual(path))
+                st = self.stat(path)
             except OSError:
                 continue
             key = (st.st_dev, st.st_ino)

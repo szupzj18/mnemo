@@ -24,7 +24,7 @@ exit 0
 class AgentHome:
     """A throwaway HOME with a fake `claude` CLI first on PATH."""
 
-    def __init__(self, agents=("claude", "codex", "opencode", "pi")):
+    def __init__(self, agents=("claude", "codex", "opencode", "pi", "agy")):
         self.root = tempfile.mkdtemp(prefix="mnemo-setup-")
         self.home = os.path.join(self.root, "home")
         self.bin = os.path.join(self.root, "bin")
@@ -42,6 +42,8 @@ class AgentHome:
             os.makedirs(os.path.join(self.home, ".config", "opencode"))
         if "pi" in agents:
             os.makedirs(os.path.join(self.home, ".pi", "agent"))
+        if "agy" in agents:
+            os.makedirs(os.path.join(self.home, ".gemini", "antigravity-cli"))
         self._saved = {k: os.environ.get(k)
                        for k in ("HOME", "PATH", "FAKE_CLAUDE_LOG", "XDG_CONFIG_HOME", "XDG_DATA_HOME")}
 
@@ -87,11 +89,14 @@ class SetupTest(unittest.TestCase):
                 ("codex", "MCP server"): "added",
                 ("opencode", "MCP server"): "added",
                 ("pi", "extension"): "added",
+                ("agy", "MCP server"): "added",
             })
             with open(h.path(".config", "opencode", "opencode.json")) as f:
                 oc = json.load(f)
             self.assertEqual(oc["mcp"]["mnemo"]["type"], "local")
             self.assertEqual(oc["mcp"]["mnemo"]["command"][-1], "mcp")
+            with open(h.path(".gemini", "config", "mcp_config.json")) as f:
+                self.assertEqual(json.load(f)["mcpServers"]["mnemo"]["args"][-1], "mcp")
             self.assertTrue(any(c.startswith("mcp add --scope user mnemo -- ") and c.endswith(" mcp") for c in h.claude_calls()))
             self.assertEqual(os.path.realpath(h.path(".claude", "skills", "mnemo")), os.path.realpath(setup.SKILL_SRC))
             self.assertEqual(os.path.realpath(h.path(".pi", "agent", "extensions", "mnemo.ts")), os.path.realpath(setup.PI_SRC))
@@ -184,6 +189,59 @@ class OpenCodeSetupTest(unittest.TestCase):
         with AgentHome(agents=("opencode",)) as h:
             self.assertEqual(statuses(setup.run(dry_run=True))[("opencode", "MCP server")], "added")
             self.assertFalse(os.path.exists(self.config(h)))
+
+
+class AgySetupTest(unittest.TestCase):
+    def config(self, h):
+        return h.path(".gemini", "config", "mcp_config.json")
+
+    def write(self, h, text):
+        os.makedirs(os.path.dirname(self.config(h)), exist_ok=True)
+        with open(self.config(h), "w") as f:
+            f.write(text)
+
+    def test_fills_the_empty_file_agy_creates(self):
+        with AgentHome(agents=("agy",)) as h:
+            self.write(h, "")
+            self.assertEqual(statuses(setup.run())[("agy", "MCP server")], "added")
+            with open(self.config(h)) as f:
+                entry = json.load(f)["mcpServers"]["mnemo"]
+            self.assertEqual([entry["command"]] + entry["args"], setup.mnemo_command() + ["mcp"])
+            self.assertEqual(len([p for p in os.listdir(h.path(".gemini", "config")) if ".bak-" in p]), 1)
+            self.assertEqual(statuses(setup.run())[("agy", "MCP server")], "ok")
+
+    def test_keeps_other_servers(self):
+        with AgentHome(agents=("agy",)) as h:
+            self.write(h, json.dumps({"mcpServers": {"other": {"url": "https://example.test/mcp"}}}))
+            self.assertEqual(statuses(setup.run())[("agy", "MCP server")], "added")
+            with open(self.config(h)) as f:
+                self.assertEqual(sorted(json.load(f)["mcpServers"]), ["mnemo", "other"])
+
+    def test_creates_the_file_when_missing_and_dry_run_writes_nothing(self):
+        with AgentHome(agents=("agy",)) as h:
+            self.assertEqual(statuses(setup.run(dry_run=True))[("agy", "MCP server")], "added")
+            self.assertFalse(os.path.exists(self.config(h)))
+            self.assertEqual(statuses(setup.run())[("agy", "MCP server")], "added")
+            self.assertTrue(os.path.isfile(self.config(h)))
+
+    def test_leaves_unreadable_configs_alone(self):
+        for text, why in (("{\n  // mine\n}\n", "not plain JSON"), ('{"mcpServers": []}', "not a config object")):
+            with self.subTest(why), AgentHome(agents=("agy",)) as h:
+                self.write(h, text)
+                step = [s for s in setup.run() if s.agent == "agy"][0]
+                self.assertEqual(step.status, "skipped")
+                self.assertIn(why, step.detail)
+                with open(self.config(h)) as f:
+                    self.assertEqual(f.read(), text)
+
+    def test_detected_by_its_folder_or_cli(self):
+        with AgentHome(agents=()) as h:
+            self.assertEqual(statuses(setup.run())[("agy", "detect")], "skipped")
+            agy = os.path.join(h.bin, "agy")
+            with open(agy, "w") as f:
+                f.write("#!/bin/sh\n")
+            os.chmod(agy, 0o755)
+            self.assertEqual(statuses(setup.run())[("agy", "MCP server")], "added")
 
 
 class RenderTest(unittest.TestCase):

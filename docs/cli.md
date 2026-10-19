@@ -19,7 +19,7 @@ Alias: `mnemo query`.
 | Option | Default | Description |
 |---|---|---|
 | `<keywords…>` | — | All keywords must match (AND). English matches word prefixes; Chinese matches substrings. |
-| `--source` | all | `claude,codex,opencode,pi` (comma-separated) |
+| `--source` | all | `claude,codex,opencode,pi,agy` (comma-separated) |
 | `--kind` | `text,summary,tool_call,tool_result` | Message kinds to match |
 | `--all-kinds` | off | Also match `reasoning` |
 | `--cwd` | — | Substring of the session's working directory |
@@ -77,7 +77,7 @@ Incremental sync of local session logs. Files whose size or mtime are unchanged 
 ## mnemo setup
 
 ```bash
-mnemo setup [--agent claude,codex,opencode,pi] [--dry-run] [--json]
+mnemo setup [--agent claude,codex,opencode,pi,agy] [--dry-run] [--json]
 ```
 
 Connects every coding agent found on this machine and reports each step as added, fixed, ok, skipped or failed:
@@ -88,6 +88,7 @@ Connects every coding agent found on this machine and reports each step as added
 | Codex | appends `[mcp_servers.mnemo]` to `~/.codex/config.toml` (backed up first) |
 | OpenCode | adds `mcp.mnemo` to `opencode.json` (or an existing `opencode.jsonc`) under `$XDG_CONFIG_HOME/opencode`, default `~/.config/opencode` (backed up first). A `.jsonc` with comments is left alone, and the block to add is printed instead |
 | Pi | links the extension into `~/.pi/agent/extensions/mnemo.ts` |
+| Antigravity CLI | adds `mcpServers.mnemo` to `~/.gemini/config/mcp_config.json` (backed up first; agy creates it empty). A file that isn't plain JSON is left alone, and the block to add is printed instead |
 
 Idempotent: already-configured agents are left alone, stale symlinks are repaired, real files are never replaced.
 
