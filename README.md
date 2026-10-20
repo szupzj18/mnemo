@@ -9,7 +9,7 @@
 
 **One memory for all your coding agents.**
 
-Your agents can recall every Claude Code, Codex, OpenCode, Pi and Antigravity CLI session you've ever run, on this machine and your devboxes, just by asking.
+Your agents can recall every Claude Code, Codex, OpenCode, Pi, Antigravity CLI and Grok CLI session you've ever run, on this machine and your devboxes, just by asking.
 
 [![Python 3.7+](https://img.shields.io/badge/python-3.7%2B-3776AB?logo=python&logoColor=white)](#install)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-0-2ea44f)](#install)
@@ -110,8 +110,8 @@ and say which session (agent, device, date) you are drawing on.
 
 ## Highlights
 
-- **Cross-agent.** A single index covers Claude Code, Codex (including archived sessions), OpenCode, Pi and Antigravity CLI (`agy`), all normalized to one message schema, across every account (`~/.claude-*`, `$CLAUDE_CONFIG_DIR`, `~/.codex-*`, `$CODEX_HOME`).
-- **Keeps what the agents delete.** Mnemo copies each session log into `~/.mnemo/archive`, so a session stays searchable and readable after Claude Code's 30-day cleanup, a deleted Codex thread or a deleted agy conversation (`mnemo node --archive off` to opt out).
+- **Cross-agent.** A single index covers Claude Code, Codex (including archived sessions), OpenCode, Pi, Antigravity CLI (`agy`) and Grok CLI (`grok`), all normalized to one message schema, across every account (`~/.claude-*`, `$CLAUDE_CONFIG_DIR`, `~/.codex-*`, `$CODEX_HOME`, `~/.grok-*`, `$GROK_HOME`).
+- **Keeps what the agents delete.** Mnemo copies each session log into `~/.mnemo/archive`, so a session stays searchable and readable after Claude Code's 30-day cleanup, a deleted Codex thread, agy conversation or grok session (`mnemo node --archive off` to opt out).
 - **Cross-device.** Queries fan out over SSH to your devboxes and merge by rank. Session bodies never leave the machine that produced them.
 - **Cheap for agents.** A search returns ranked snippets, not raw logs: ~1.9k tokens for 10 hits. In a controlled test, agents used 23% fewer tokens and 52% fewer tool calls than with grep ([benchmarks](#benchmarks)).
 - **Good at CJK.** English uses prefix matching and Chinese uses substring matching (unigram + bigram), all ranked with BM25.
@@ -125,7 +125,7 @@ and say which session (agent, device, date) you are drawing on.
 curl -fsSL https://szupzj18.github.io/mnemo/install.sh | sh
 ```
 
-One command: it checks Python 3.7+ and SQLite FTS5, clones to `~/mnemo`, links `mnemo` into `~/.local/bin`, builds the index, and runs `mnemo setup`, which connects every agent it finds (Claude Code MCP + skill, Codex MCP, OpenCode MCP, Pi extension, Antigravity CLI MCP; anything already configured is left alone). Run it again to upgrade. Prefer a Python tool manager? `uv tool install mnemo-search && mnemo setup` (or `pipx install mnemo-search`; the command is `mnemo`).
+One command: it checks Python 3.7+ and SQLite FTS5, clones to `~/mnemo`, links `mnemo` into `~/.local/bin`, builds the index, and runs `mnemo setup`, which connects every agent it finds (Claude Code MCP + skill, Codex MCP, OpenCode MCP, Pi extension, Antigravity CLI MCP, Grok CLI MCP; anything already configured is left alone). Run it again to upgrade. Prefer a Python tool manager? `uv tool install mnemo-search && mnemo setup` (or `pipx install mnemo-search`; the command is `mnemo`).
 
 Then try `mnemo search "retry budget"`, or ask an agent about something only an old session would know.
 

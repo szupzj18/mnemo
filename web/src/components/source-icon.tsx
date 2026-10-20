@@ -12,6 +12,7 @@ const TILE: Record<string, string> = {
   pi: "bg-white ring-1 ring-black/10 dark:bg-muted dark:ring-white/15",
   opencode: "bg-[#131010] text-white dark:ring-1 dark:ring-white/15",
   agy: "bg-[#3279f9] text-white",
+  grok: "bg-black text-white dark:ring-1 dark:ring-white/15",
 }
 
 export function SourceIcon({ source, className }: { source: string; className?: string }) {
@@ -47,6 +48,11 @@ export function SourceIcon({ source, className }: { source: string; className?: 
         // Antigravity CLI: its command name as a monogram, like OpenCode's.
         <span role="img" aria-label="Antigravity CLI" className="font-mono text-[12px] font-bold tracking-tight">
           agy
+        </span>
+      ) : source === "grok" ? (
+        // Grok CLI: its command name as a monogram, like Antigravity CLI's.
+        <span role="img" aria-label="Grok CLI" className="font-mono text-[11px] font-bold tracking-tight">
+          grok
         </span>
       ) : (
         <span className="font-bold">{source.charAt(0).toUpperCase() || "?"}</span>

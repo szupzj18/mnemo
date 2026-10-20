@@ -107,6 +107,12 @@ class Source:
         i = max([path.rfind(os.sep + sub + os.sep) for sub in self.LOG_DIRS] or [-1])
         return path[:i] if i > 0 else None
 
+    def session_name(self, path):
+        """What names a session wherever its log sits (another folder or account): the
+        file name, for agents that name each log after its session. archive.py tells
+        a log that moved from one that was deleted by it."""
+        return os.path.basename(path)
+
     def account(self, path):
         """Short account label for results: the config dir's name, e.g. .claude-work."""
         config = self.account_of(path)

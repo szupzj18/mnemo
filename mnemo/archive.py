@@ -209,9 +209,10 @@ class Archive:
         live is {path: (mtime, size)} from source.records(). Returns
         ({original path: (copy, mtime, size)}, number of files copied). A copy
         stands in for its original only once the original is gone from disk, and
-        not while a live file of the same name exists (Codex moving a rollout to
-        archived_sessions, a session continued under another account): that file
-        carries the session on. Of several copies with one name, the newest wins.
+        not while a live file of the same session name exists (Source.session_name;
+        Codex moving a rollout to archived_sessions, a session continued under
+        another account): that file carries the session on. Of several copies with
+        one name, the newest wins.
         """
         have = self.scan(source)
         copied = 0
@@ -226,12 +227,12 @@ class Archive:
                     continue
                 copied += 1
             mirrored.add(path)
-        by_name = {os.path.basename(p): (p, key) for p, key in live.items()}
+        by_name = {source.session_name(p): (p, key) for p, key in live.items()}
         chosen = {}
         for orig, (copy, mtime, size) in sorted(have.items()):
             if orig in live or source.exists(orig):
                 continue  # still on disk (a symlinked duplicate, say): not ours to keep
-            name = os.path.basename(orig)
+            name = source.session_name(orig)
             if name in by_name:
                 path, key = by_name[name]
                 if path in mirrored and same_copy((mtime, size), key, source.EXACT_MTIME):

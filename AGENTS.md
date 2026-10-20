@@ -13,7 +13,7 @@ Mnemo indexes the local session logs of coding agents into SQLite FTS5 and expos
 - **The dashboard stays local.** It binds to `127.0.0.1`, every `/api/*` call must carry the per-launch token, and the `Host` allowlist must stay in place.
 - **Session content stays on its device.** Remote reads (`context`, `session`, raw) execute on the remote and return only the requested messages. Don't add code paths that copy remote indexes or logs.
 - **Never commit indexes or session data.** `*.db` and `*.db-*` are gitignored, so keep it that way. Don't commit screenshots of real sessions. Generate synthetic ones with `scripts/make-demo-home.py`.
-- **Tests stay hermetic.** Python tests call `DemoHome.activate()` so syncs read the demo HOME and no registered remote is contacted; e2e runs the dashboard with a temp HOME. `tests/helpers.py` clears `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `MNEMO_ARCHIVE`, which would otherwise point a test at your real accounts. The archive lives beside the index, so a test index gets its own.
+- **Tests stay hermetic.** Python tests call `DemoHome.activate()` so syncs read the demo HOME and no registered remote is contacted; e2e runs the dashboard with a temp HOME. `tests/helpers.py` clears `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME` and `MNEMO_ARCHIVE`, which would otherwise point a test at your real accounts. The archive lives beside the index, so a test index gets its own.
 - **Forwarded searches must keep `--host local`,** or meshed devices will chain queries (see `remote.search_argv`).
 
 ## Layout
@@ -29,8 +29,8 @@ mnemo/mcp_server.py          stdio JSON-RPC MCP server; each tool call runs in a
 mnemo/live.py                long-running processes that follow code updates (markers, code watcher)
 mnemo/dashboard.py           HTTP API + static server for mnemo/web_dist
 mnemo/web_dist/              committed static export of web/ (generated)
-mnemo/sources/{claude,codex,opencode,pi,agy}.py   per-agent log adapters
-mnemo/setup.py               `mnemo setup`: wires Claude Code, Codex, OpenCode, Pi, Antigravity CLI (idempotent)
+mnemo/sources/{claude,codex,opencode,pi,agy,grok}.py   per-agent log adapters
+mnemo/setup.py               `mnemo setup`: wires Claude Code, Codex, OpenCode, Pi, Antigravity CLI, Grok CLI (idempotent)
 mnemo/upgrade.py             `mnemo upgrade`: backup, rebuild beside, verify, swap
 mnemo/doctor.py              `mnemo doctor`: health checks reusing setup, topology, link and upgrade logic
 mnemo/service.py             `mnemo link --install`: launchd / systemd user / background services for links

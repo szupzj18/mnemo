@@ -9,7 +9,7 @@
 
 **所有编程 Agent 共用的一份记忆。**
 
-让 Agent 直接回忆你在本机和 devbox 上跑过的每一个 Claude Code、Codex、OpenCode、Pi、Antigravity CLI 会话，开口问就行。
+让 Agent 直接回忆你在本机和 devbox 上跑过的每一个 Claude Code、Codex、OpenCode、Pi、Antigravity CLI、Grok CLI 会话，开口问就行。
 
 [![Python 3.7+](https://img.shields.io/badge/python-3.7%2B-3776AB?logo=python&logoColor=white)](#安装)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-0-2ea44f)](#安装)
@@ -108,8 +108,8 @@ search_sessions ──▶ get_context ──▶ get_session
 
 ## 特性
 
-- **跨 Agent**：Claude Code、Codex（含归档会话）、OpenCode、Pi、Antigravity CLI（`agy`）统一进一个索引，归一成同一套消息结构；所有账号目录都会被索引（`~/.claude-*`、`$CLAUDE_CONFIG_DIR`、`~/.codex-*`、`$CODEX_HOME`）。
-- **Agent 删了也还在**：Mnemo 把每个会话日志复制一份到 `~/.mnemo/archive`，Claude Code 30 天自动清理、删掉的 Codex 线程或 agy 对话之后，会话照样能搜、能读（不需要可以 `mnemo node --archive off` 关闭）。
+- **跨 Agent**：Claude Code、Codex（含归档会话）、OpenCode、Pi、Antigravity CLI（`agy`）、Grok CLI（`grok`）统一进一个索引，归一成同一套消息结构；所有账号目录都会被索引（`~/.claude-*`、`$CLAUDE_CONFIG_DIR`、`~/.codex-*`、`$CODEX_HOME`、`~/.grok-*`、`$GROK_HOME`）。
+- **Agent 删了也还在**：Mnemo 把每个会话日志复制一份到 `~/.mnemo/archive`，Claude Code 30 天自动清理、删掉的 Codex 线程、agy 对话或 grok 会话之后，会话照样能搜、能读（不需要可以 `mnemo node --archive off` 关闭）。
 - **跨设备**：查询经 SSH 并行扇出到各台 devbox，按排名融合；会话正文不离开产生它的机器。
 - **对 Agent 省 token**：搜索返回的是排序后的片段而不是原始日志，10 条命中约 1.9k token。对照实验中，Agent 比用 grep 少用 23% 的 token、少调用 52% 的工具（见[评测](#评测)）。
 - **中英文都能搜**：英文前缀匹配，中文子串匹配（unigram + bigram），BM25 排序。
@@ -123,7 +123,7 @@ search_sessions ──▶ get_context ──▶ get_session
 curl -fsSL https://szupzj18.github.io/mnemo/install.sh | sh
 ```
 
-一条命令完成：检查 Python 3.7+ 和 SQLite FTS5，克隆到 `~/mnemo`，把 `mnemo` 链进 `~/.local/bin`，建索引，再运行 `mnemo setup` 自动接好本机检测到的 Agent（Claude Code 的 MCP 和技能、Codex 的 MCP、OpenCode 的 MCP、Pi 扩展、Antigravity CLI 的 MCP；已配置的不会重复改动）。再运行一次即升级。习惯用 Python 工具管理器的话：`uv tool install mnemo-search && mnemo setup`（或 `pipx install mnemo-search`；装好后命令是 `mnemo`）。
+一条命令完成：检查 Python 3.7+ 和 SQLite FTS5，克隆到 `~/mnemo`，把 `mnemo` 链进 `~/.local/bin`，建索引，再运行 `mnemo setup` 自动接好本机检测到的 Agent（Claude Code 的 MCP 和技能、Codex 的 MCP、OpenCode 的 MCP、Pi 扩展、Antigravity CLI 的 MCP、Grok CLI 的 MCP；已配置的不会重复改动）。再运行一次即升级。习惯用 Python 工具管理器的话：`uv tool install mnemo-search && mnemo setup`（或 `pipx install mnemo-search`；装好后命令是 `mnemo`）。
 
 装好后试试 `mnemo search "retry budget"`，或者问 Agent 一个只有旧会话才知道答案的问题。
 

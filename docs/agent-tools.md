@@ -28,7 +28,7 @@ Full-text search over user prompts, assistant replies, summaries, tool calls and
 | Parameter | Type | Default | Notes |
 |---|---|---|---|
 | `query` | string | required | Whitespace-separated keywords, all of which must match. English matches word prefixes (`refact` → `refactoring`); Chinese matches substrings (`订阅` → `订阅支出`). |
-| `source` | string | all | Comma-separated subset of `claude,codex,opencode,pi,agy` |
+| `source` | string | all | Comma-separated subset of `claude,codex,opencode,pi,agy,grok` |
 | `kinds` | string | `text,summary,tool_call,tool_result` | Add `reasoning` to search model reasoning too. The CLI flags are `--kind` and `--all-kinds`. |
 | `cwd` | string | — | Substring of the session's working directory, e.g. `infra` |
 | `since` | string | — | `YYYY-MM-DD` |
@@ -71,7 +71,7 @@ Each hit:
 }
 ```
 
-`account` is the agent config dir the session came from (`.claude`, `.claude-work`, `.codex-team`, `.gemini` for Antigravity CLI, …; `null` for OpenCode). `archived` is `true` when the agent has deleted the original log and Mnemo reads its archived copy; `get_context` and `get_session` work on it the same way, with the hit's `path`.
+`account` is the agent config dir the session came from (`.claude`, `.claude-work`, `.codex-team`, `.gemini` for Antigravity CLI, `.grok` for Grok CLI, …; `null` for OpenCode). `archived` is `true` when the agent has deleted the original log and Mnemo reads its archived copy; `get_context` and `get_session` work on it the same way, with the hit's `path`.
 
 `envelope` is `1` only when the matched text is injected boilerplate (possible with `include_injected`); the snippet then shows cleaned text and the verbatim body is available under `body`.
 
@@ -133,7 +133,7 @@ Lists recently started sessions newest-first, titled with the first real user pr
 
 | Parameter | Type | Default | Notes |
 |---|---|---|---|
-| `source` | string | all | Comma-separated subset of `claude,codex,opencode,pi,agy` |
+| `source` | string | all | Comma-separated subset of `claude,codex,opencode,pi,agy,grok` |
 | `cwd` | string | — | Substring of the working directory |
 | `since` | string | — | `YYYY-MM-DD` |
 | `limit` | integer | 25 | Capped at 100 over MCP |

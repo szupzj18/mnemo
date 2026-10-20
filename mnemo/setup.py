@@ -20,7 +20,7 @@ PI_SRC = os.path.join(INTEGRATIONS, "pi", "mnemo.ts")
 
 from . import xdg
 
-AGENTS = ("claude", "codex", "opencode", "pi", "agy")
+AGENTS = ("claude", "codex", "opencode", "pi", "agy", "grok")
 
 
 class Step:
@@ -73,6 +73,7 @@ def detect():
                          or os.path.isdir(os.path.join(xdg.data(), "opencode"))),
         "pi": bool(shutil.which("pi") or os.path.isdir(home(".pi", "agent"))),
         "agy": bool(shutil.which("agy") or os.path.isdir(home(".gemini", "antigravity-cli"))),
+        "grok": bool(shutil.which("grok") or os.path.isdir(grok_home())),
     }
 
 
@@ -125,7 +126,8 @@ def setup_claude(cmd, dry_run):
     return steps
 
 
-CODEX_BLOCK = """
+# Codex and Grok CLI read the same [mcp_servers.<name>] tables.
+TOML_BLOCK = """
 [mcp_servers.mnemo]
 command = "{command}"
 args = [{args}]
@@ -137,16 +139,16 @@ def _toml_str(value):
     return '"%s"' % value.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def setup_codex(cmd, dry_run):
-    config = home(".codex", "config.toml")
-    text = ""
-    if os.path.isfile(config):
-        with open(config, encoding="utf-8") as f:
-            text = f.read()
-    if "[mcp_servers.mnemo]" in text:
-        return [Step("codex", "MCP server", "%s already has [mcp_servers.mnemo]" % config, "ok")]
+def _read(path):
+    if not os.path.isfile(path):
+        return ""
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def _append_toml_server(agent, config, text, cmd, dry_run):
     args = ", ".join(_toml_str(a) for a in cmd[1:] + ["mcp"])
-    block = CODEX_BLOCK.format(command=_toml_str(cmd[0])[1:-1], args=args)
+    block = TOML_BLOCK.format(command=_toml_str(cmd[0])[1:-1], args=args)
     detail = config
     if not dry_run:
         os.makedirs(os.path.dirname(config), exist_ok=True)
@@ -154,7 +156,15 @@ def setup_codex(cmd, dry_run):
             detail = "%s (backup: %s)" % (config, _backup(config))
         with open(config, "a", encoding="utf-8") as f:
             f.write(("\n" if text and not text.endswith("\n") else "") + block)
-    return [Step("codex", "MCP server", detail, "added")]
+    return [Step(agent, "MCP server", detail, "added")]
+
+
+def setup_codex(cmd, dry_run):
+    config = home(".codex", "config.toml")
+    text = _read(config)
+    if "[mcp_servers.mnemo]" in text:
+        return [Step("codex", "MCP server", "%s already has [mcp_servers.mnemo]" % config, "ok")]
+    return _append_toml_server("codex", config, text, cmd, dry_run)
 
 
 def opencode_entry(cmd):
@@ -231,8 +241,44 @@ def setup_agy(cmd, dry_run):
     return [Step("agy", "MCP server", detail, "added")]
 
 
+def grok_home():
+    """Where Grok CLI keeps its config and sessions: $GROK_HOME, else ~/.grok."""
+    value = os.environ.get("GROK_HOME", "")
+    return os.path.abspath(os.path.expanduser(value)) if value else home(".grok")
+
+
+def _grok_imports_claude_mnemo(text):
+    """Whether grok picks up Claude Code's user-scope mnemo server from ~/.claude.json.
+
+    It does unless its [compat.claude] mcps switch is off: GROK_CLAUDE_MCPS_ENABLED,
+    else that key in config.toml, else on.
+    """
+    try:
+        with open(home(".claude.json"), encoding="utf-8") as f:
+            servers = json.load(f).get("mcpServers")
+    except (OSError, ValueError, AttributeError):
+        return False
+    if not isinstance(servers, dict) or "mnemo" not in servers:
+        return False
+    value = os.environ.get("GROK_CLAUDE_MCPS_ENABLED", "").strip().lower()
+    if value:
+        return value not in ("0", "false", "no", "off")
+    section = re.search(r"^\[compat\.claude\][ \t]*$(.*?)(?=^[ \t]*\[|\Z)", text, re.M | re.S)
+    return not (section and re.search(r"^[ \t]*mcps[ \t]*=[ \t]*false\b", section.group(1), re.M))
+
+
+def setup_grok(cmd, dry_run):
+    config = os.path.join(grok_home(), "config.toml")
+    text = _read(config)
+    if "[mcp_servers.mnemo]" in text:
+        return [Step("grok", "MCP server", "%s already has [mcp_servers.mnemo]" % config, "ok")]
+    if _grok_imports_claude_mnemo(text):
+        return [Step("grok", "MCP server", "imported from Claude Code's ~/.claude.json", "ok")]
+    return _append_toml_server("grok", config, text, cmd, dry_run)
+
+
 SETUPS = {"claude": setup_claude, "codex": setup_codex, "opencode": setup_opencode, "pi": setup_pi,
-          "agy": setup_agy}
+          "agy": setup_agy, "grok": setup_grok}
 
 
 def run(agents=None, dry_run=False):
@@ -252,7 +298,8 @@ def run(agents=None, dry_run=False):
 
 # ------------------------------------------------------------------- output
 
-NAMES = {"claude": "Claude Code", "codex": "Codex", "opencode": "OpenCode", "pi": "Pi", "agy": "Antigravity CLI"}
+NAMES = {"claude": "Claude Code", "codex": "Codex", "opencode": "OpenCode", "pi": "Pi", "agy": "Antigravity CLI",
+         "grok": "Grok CLI"}
 ICONS = {"added": "+", "fixed": "\u21bb", "ok": "\u2713", "skipped": "\u00b7", "failed": "\u2717"}
 ASCII_ICONS = {"added": "+", "fixed": "~", "ok": "=", "skipped": "-", "failed": "!"}
 COLORS = {"added": "34", "fixed": "33", "ok": "32", "skipped": "2", "failed": "31"}
@@ -321,7 +368,7 @@ def render(steps, dry_run=False, color=False, unicode=True, home_dir=None):
     elif found:
         nxt = "Everything is already set up."
     else:
-        nxt = ("No agents found. Install Claude Code, Codex, OpenCode, Pi or Antigravity CLI,"
+        nxt = ("No agents found. Install Claude Code, Codex, OpenCode, Pi, Antigravity CLI or Grok CLI,"
                " then run mnemo setup again.")
     if nxt:
         lines.append("  " + paint("1", arrow + " " + nxt))

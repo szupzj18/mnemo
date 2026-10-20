@@ -24,7 +24,7 @@ exit 0
 class AgentHome:
     """A throwaway HOME with a fake `claude` CLI first on PATH."""
 
-    def __init__(self, agents=("claude", "codex", "opencode", "pi", "agy")):
+    def __init__(self, agents=("claude", "codex", "opencode", "pi", "agy", "grok")):
         self.root = tempfile.mkdtemp(prefix="mnemo-setup-")
         self.home = os.path.join(self.root, "home")
         self.bin = os.path.join(self.root, "bin")
@@ -44,6 +44,8 @@ class AgentHome:
             os.makedirs(os.path.join(self.home, ".pi", "agent"))
         if "agy" in agents:
             os.makedirs(os.path.join(self.home, ".gemini", "antigravity-cli"))
+        if "grok" in agents:
+            os.makedirs(os.path.join(self.home, ".grok"))
         self._saved = {k: os.environ.get(k)
                        for k in ("HOME", "PATH", "FAKE_CLAUDE_LOG", "XDG_CONFIG_HOME", "XDG_DATA_HOME")}
 
@@ -90,6 +92,7 @@ class SetupTest(unittest.TestCase):
                 ("opencode", "MCP server"): "added",
                 ("pi", "extension"): "added",
                 ("agy", "MCP server"): "added",
+                ("grok", "MCP server"): "added",
             })
             with open(h.path(".config", "opencode", "opencode.json")) as f:
                 oc = json.load(f)
@@ -242,6 +245,73 @@ class AgySetupTest(unittest.TestCase):
                 f.write("#!/bin/sh\n")
             os.chmod(agy, 0o755)
             self.assertEqual(statuses(setup.run())[("agy", "MCP server")], "added")
+
+
+class GrokSetupTest(unittest.TestCase):
+    def config(self, h):
+        return h.path(".grok", "config.toml")
+
+    def claude_json(self, h, servers):
+        with open(h.path(".claude.json"), "w") as f:
+            json.dump({"numStartups": 3, "mcpServers": servers}, f)
+
+    def test_appends_the_server_to_config_toml(self):
+        with AgentHome(agents=("grok",)) as h:
+            with open(self.config(h), "w") as f:
+                f.write('[ui]\nyolo = false')
+            self.assertEqual(statuses(setup.run())[("grok", "MCP server")], "added")
+            with open(self.config(h)) as f:
+                cfg = f.read()
+            self.assertTrue(cfg.startswith('[ui]\nyolo = false\n'), "existing config is preserved")
+            self.assertIn("[mcp_servers.mnemo]", cfg)
+            self.assertIn('args = ["mcp"]', cfg)
+            self.assertIn("startup_timeout_sec = 120", cfg)  # grok's default is 30 s
+            self.assertEqual(len([p for p in os.listdir(h.path(".grok")) if ".bak-" in p]), 1)
+            self.assertEqual(statuses(setup.run())[("grok", "MCP server")], "ok")
+            with open(self.config(h)) as f:
+                self.assertEqual(f.read().count("[mcp_servers.mnemo]"), 1)
+
+    def test_claude_codes_server_counts_while_grok_imports_it(self):
+        with AgentHome(agents=("grok",)) as h:
+            self.claude_json(h, {"mnemo": {"type": "stdio", "command": "mnemo", "args": ["mcp"]}})
+            step = [s for s in setup.run() if s.agent == "grok"][0]
+            self.assertEqual((step.status, step.detail), ("ok", "imported from Claude Code's ~/.claude.json"))
+            self.assertFalse(os.path.exists(self.config(h)))
+            # grok's [compat.claude] mcps switch off, in config.toml or the environment: add our own.
+            with open(self.config(h), "w") as f:
+                f.write("[compat.claude]\nskills = true\nmcps = false\n")
+            self.assertEqual(statuses(setup.run(dry_run=True))[("grok", "MCP server")], "added")
+            os.remove(self.config(h))
+            os.environ["GROK_CLAUDE_MCPS_ENABLED"] = "0"
+            try:
+                self.assertEqual(statuses(setup.run(dry_run=True))[("grok", "MCP server")], "added")
+            finally:
+                del os.environ["GROK_CLAUDE_MCPS_ENABLED"]
+            self.claude_json(h, {"other": {"command": "x"}})
+            self.assertEqual(statuses(setup.run(dry_run=True))[("grok", "MCP server")], "added")
+
+    def test_follows_grok_home_and_dry_run_writes_nothing(self):
+        with AgentHome(agents=()) as h:
+            grok_home = os.path.join(h.root, "grok-home")
+            os.makedirs(grok_home)
+            os.environ["GROK_HOME"] = grok_home
+            try:
+                self.assertEqual(statuses(setup.run(dry_run=True))[("grok", "MCP server")], "added")
+                self.assertFalse(os.path.exists(os.path.join(grok_home, "config.toml")))
+                self.assertEqual(statuses(setup.run())[("grok", "MCP server")], "added")
+                self.assertTrue(os.path.isfile(os.path.join(grok_home, "config.toml")))
+                self.assertFalse(os.path.exists(h.path(".grok")))
+            finally:
+                del os.environ["GROK_HOME"]
+
+    def test_detected_by_its_folder_or_cli(self):
+        with AgentHome(agents=()) as h:
+            self.assertEqual(statuses(setup.run())[("grok", "detect")], "skipped")
+            grok = os.path.join(h.bin, "grok")
+            with open(grok, "w") as f:
+                f.write("#!/bin/sh\n")
+            os.chmod(grok, 0o755)
+            self.assertEqual(statuses(setup.run())[("grok", "MCP server")], "added")
 
 
 class RenderTest(unittest.TestCase):

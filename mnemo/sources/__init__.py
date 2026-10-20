@@ -1,6 +1,7 @@
 from .agy import AgySource
 from .claude import ClaudeSource
 from .codex import CodexSource
+from .grok import GrokSource
 from .opencode import OpenCodeSource
 from .pi import PiSource
 
@@ -8,6 +9,7 @@ SOURCES = {
     "agy": AgySource,
     "claude": ClaudeSource,
     "codex": CodexSource,
+    "grok": GrokSource,
     "opencode": OpenCodeSource,
     "pi": PiSource,
 }
