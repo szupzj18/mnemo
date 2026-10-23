@@ -165,6 +165,27 @@ def check_archive(idx):
         "{:,}".format(files), _size(size), "{:,}".format(archived_count(idx))))
 
 
+def check_skills(inv=None):
+    """Skill folders of every agent: dangling links and names whose copies differ are worth fixing."""
+    from . import skills
+
+    inv = skills.inventory() if inv is None else inv
+    if not inv["dirs"]:
+        return Check(MACHINE, "skills", SKIP, "no agent skill folders")
+    found = skills.issues({"local": inv})
+    dangling = sorted({i["skill"] for i in found if i["issue"] == "dangling"})
+    forked = sorted(i["skill"] for i in found if i["issue"] == "forked")
+    detail = "%d skills in %d folders" % (len({s["name"] for s in inv["skills"]}), len(inv["dirs"]))
+    if not found:
+        return Check(MACHINE, "skills", OK, detail)
+    parts = []
+    if dangling:
+        parts.append("dangling: %s" % ", ".join(dangling))
+    if forked:
+        parts.append("different copies: %s" % ", ".join(forked))
+    return Check(MACHINE, "skills", WARN, detail + " · " + "; ".join(parts), "mnemo skill ls")
+
+
 def check_processes():
     stale = upgrade.stale_processes()
     if not stale:
@@ -272,7 +293,7 @@ def _devices_or_error():
 def plan(full=False, offline=False):
     """(group, run) pairs in report order, so the report can print each group as it finishes."""
     return [
-        (MACHINE, lambda: [check_version(offline)] + check_index(full=full) + [check_processes()]),
+        (MACHINE, lambda: [check_version(offline)] + check_index(full=full) + [check_processes(), check_skills()]),
         ("Agents", check_agents),
         ("Devices", _devices_or_error),
         ("Links", check_links),

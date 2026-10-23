@@ -11,7 +11,7 @@ class ToolAnnotationsTest(unittest.TestCase):
     approval prompt only for readOnlyHint tools, and cancels the rest when approvals are off
     (`codex exec`), so the read tools must say so."""
 
-    READ_TOOLS = {"search_sessions", "get_context", "get_session", "list_recent_sessions"}
+    READ_TOOLS = {"search_sessions", "get_context", "get_session", "list_recent_sessions", "list_skills", "skill_usage"}
 
     def setUp(self):
         self.demo = DemoHome()

@@ -6,13 +6,16 @@ import sqlite3
 import time
 
 from . import archive as archive_mod
+from . import skills as skills_mod
 from .model import cjk_grams, first_ts, make_title
 from .sources import SOURCES, get_sources
 from .sources.base import SourceUnavailable
 
 DEFAULT_DB_PATH = os.path.expanduser("~/.mnemo/index.db")
 
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
+# Older schemas that a sync brings up to date in place, without reparsing every session.
+MIGRATABLE = ("3",)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS files (
@@ -49,6 +52,15 @@ CREATE VIRTUAL TABLE IF NOT EXISTS messages USING fts5(
   envelope   UNINDEXED,
   tokenize = "unicode61"
 );
+CREATE TABLE IF NOT EXISTS skill_events (
+  msg     INTEGER NOT NULL,
+  path    TEXT NOT NULL,
+  source  TEXT NOT NULL,
+  skill   TEXT NOT NULL,
+  trigger TEXT NOT NULL,
+  ts      TEXT
+);
+CREATE INDEX IF NOT EXISTS skill_events_path ON skill_events(path);
 """
 
 DEFAULT_KINDS = ("text", "summary", "tool_call", "tool_result")
@@ -84,7 +96,10 @@ class Index:
         # os.replace, which a leftover -wal file would corrupt.)
         self.db.execute("PRAGMA busy_timeout = 10000")
         have = {r[0] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-        if not SCHEMA_TABLES <= have:  # new index, or tables an older mnemo did not have
+        # A new index, or tables an older mnemo did not have. skill_events alone is
+        # left to migrate(): opening a v3 index (doctor, status, a search with --no-sync)
+        # must not write to it.
+        if SCHEMA_TABLES - have - {"skill_events"} or not have:
             self._script(SCHEMA)
         self.stored_version = None
         self._migration_pending = self._detect_pending()
@@ -189,12 +204,39 @@ class Index:
         """Drop and recreate tables for the current schema (full reparse next)."""
         self._check_writable()
         self._script(
-            "DROP TABLE IF EXISTS messages; DROP TABLE IF EXISTS file_ranges; DROP TABLE IF EXISTS files;\n"
+            "DROP TABLE IF EXISTS messages; DROP TABLE IF EXISTS file_ranges; DROP TABLE IF EXISTS files;"
+            " DROP TABLE IF EXISTS skill_events;\n"
             + SCHEMA
             + "\nINSERT OR REPLACE INTO meta(key, value) VALUES('schema_version', '%s');" % SCHEMA_VERSION
         )
         self.stored_version = SCHEMA_VERSION
         self._migration_pending = False
+
+    def migrate(self, logger=None):
+        """Bring a v3 index to v4 in place: fill skill_events from the messages already stored.
+
+        Idempotent and atomic: the table is emptied and refilled in one transaction
+        that also stamps the version, so a crash leaves a v3 index a later sync redoes.
+        """
+        log = logger or (lambda msg: None)
+        self._check_writable()
+        log("schema v%s -> v%s: finding skill uses in indexed messages ..." % (self.stored_version, SCHEMA_VERSION))
+        with self._write():
+            for stmt in re.findall(r"CREATE (?:TABLE|INDEX) IF NOT EXISTS skill_events.*?;", SCHEMA, re.S):
+                self.db.execute(stmt)
+            self.db.execute("DELETE FROM skill_events")
+            rows = []
+            for r in self.db.execute(
+                "SELECT rowid, source, path, ts, role, kind, COALESCE(body, text) FROM messages WHERE "
+                + skills_mod.CANDIDATES
+            ):
+                for skill, trigger in skills_mod.events(r[1], r[4], r[5], r[6]):
+                    rows.append((r[0], r[2], r[1], skill, trigger, r[3]))
+            self.db.executemany(
+                "INSERT INTO skill_events(msg, path, source, skill, trigger, ts) VALUES(?,?,?,?,?,?)", rows)
+            self._stamp_version()
+        self._migration_pending = False
+        return len(rows)
 
     def close(self):
         self.db.close()
@@ -204,7 +246,9 @@ class Index:
     def sync(self, source_names=None, home=None, logger=None):
         log = logger or (lambda msg: None)
         self._check_writable()
-        if self._migration_pending:
+        if self._migration_pending and self.stored_version in MIGRATABLE:
+            self.migrate(logger=log)
+        elif self._migration_pending:
             log("schema v%s: rebuilding index from session files ..." % SCHEMA_VERSION)
             self._apply_schema()
         sources = get_sources(source_names, home=home)
@@ -286,6 +330,7 @@ class Index:
                     " (SELECT m.rowid FROM messages m"
                     "  JOIN file_ranges fr ON m.rowid BETWEEN fr.lo AND fr.hi)"
                 )
+                self.db.execute("DELETE FROM skill_events WHERE path NOT IN (SELECT path FROM file_ranges)")
 
             self.db.execute(
                 "INSERT OR REPLACE INTO meta(key, value) VALUES('last_sync', ?)",
@@ -327,8 +372,10 @@ class Index:
                 )
                 self._stamp_adapter(source, path, mtime, size, None, None)
             return
-        rows = []
-        for lineno, msg in msgs:
+        rows, uses = [], []
+        for i, (lineno, msg) in enumerate(msgs):
+            for skill, trigger in skills_mod.events(source.name, msg.role, msg.kind, msg.stored):
+                uses.append((i, path, source.name, skill, trigger, msg.ts))
             # body holds the verbatim message only when it differs from the
             # cleaned text (injected envelopes); otherwise NULL, and readers
             # fall back to text. Storing both doubled the index (schema v3).
@@ -364,6 +411,10 @@ class Index:
             self.db.execute(
                 "INSERT INTO file_ranges(path, lo, hi) VALUES(?,?,?)", (path, lo, hi)
             )
+            self.db.executemany(
+                "INSERT INTO skill_events(msg, path, source, skill, trigger, ts) VALUES(?,?,?,?,?,?)",
+                [(lo + u[0],) + u[1:] for u in uses],
+            )
             self.db.execute(
                 "INSERT OR REPLACE INTO"
                 " files(path, source, session_id, cwd, mtime, size, title, started_ts)"
@@ -382,6 +433,7 @@ class Index:
         ).fetchall():
             self.db.execute("DELETE FROM messages WHERE rowid BETWEEN ? AND ?", (r["lo"], r["hi"]))
         self.db.execute("DELETE FROM file_ranges WHERE path = ?", (path,))
+        self.db.execute("DELETE FROM skill_events WHERE path = ?", (path,))
         self.db.execute("DELETE FROM meta WHERE key=?", ("adapter:codex:" + path,))
 
     def _stamp_adapter(self, source, path, mtime, size, lo, hi):

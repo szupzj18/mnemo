@@ -103,15 +103,23 @@ def cmd_upgrade(args):
         dest = up.backup(args.db, keep=args.keep)
         if dest:
             print("backup: %s (%s)" % (dest, _human_size(os.path.getsize(dest))))
-    print("rebuilding schema v%s beside the live index ..." % SCHEMA_VERSION)
+    migrating = up.migratable(args.db)
+    if migrating:
+        print("migrating schema v%s to v%s beside the live index ..." % (up._stored_version(args.db), SCHEMA_VERSION))
+    else:
+        print("rebuilding schema v%s beside the live index ..." % SCHEMA_VERSION)
     try:
-        stats, counts = up.rebuild(args.db, logger=log)
+        if migrating:
+            uses, counts = up.migrate(args.db, logger=log)
+        else:
+            stats, counts = up.rebuild(args.db, logger=log)
     except (up.UpgradeError, IndexTooNew) as exc:
         print("error: %s\nthe live index was not modified" % exc, file=sys.stderr)
         return 1
     files = sum(c["files"] for c in counts.values())
     msgs = sum(c["messages"] for c in counts.values())
-    print("verified and swapped in: %d sessions, %d messages" % (files, msgs))
+    print("verified and swapped in: %d sessions, %d messages%s"
+          % (files, msgs, " (%d skill uses found)" % uses if migrating else ""))
 
     rc = 0
     sys.stdout.flush()  # keep stdout/stderr in order when piped
@@ -602,6 +610,124 @@ def _archived_note(idx, path):
               % (DIM, found["archive_path"], RESET))
 
 
+def _skill_devices(args, sub, default_host):
+    from . import skills
+
+    try:
+        return skills.collect(sub, args.db, host=args.host or default_host, since=getattr(args, "since", None),
+                              no_sync=getattr(args, "no_sync", False), today=args.today,
+                              query=" ".join(getattr(args, "query", None) or []))
+    except IndexTooNew as exc:
+        return {}, [str(exc)]
+
+
+def _tilde(path):
+    home = os.path.expanduser("~")
+    return "~" + path[len(home):] if path == home or path.startswith(home + os.sep) else path
+
+
+def cmd_skill_ls(args):
+    from . import skills
+
+    devices, warnings = _skill_devices(args, "ls", LOCAL)
+    found = skills.issues(devices)
+    if args.json:
+        print(json.dumps({"devices": devices, "issues": found, "warnings": warnings}, ensure_ascii=False, indent=2))
+        return 0
+    for name, inv in sorted(devices.items()):
+        print("%s%s%s · %d folders · %d skills" % (BOLD, name, RESET, len(inv["dirs"]), len(inv["skills"])))
+        for d in inv["dirs"]:
+            extra = []
+            if d["also"]:
+                extra.append("also " + ", ".join(d["also"]))
+            if d["managed"]:
+                extra.append("left alone: " + ", ".join(d["managed"]))
+            print("  %-8s %-34s %3d%s" % (d["agent"], _tilde(d["path"]) if name == LOCAL else d["path"],
+                                         d["skills"], ("  " + DIM + "; ".join(extra) + RESET) if extra else ""))
+        names = {}
+        for s in inv["skills"]:
+            names.setdefault(s["name"], []).append(s)
+        print()
+        for skill, items in sorted(names.items()):
+            where = "  ".join("%s:%s%s" % (s["account"], s["kind"], "@" + s["hash"][:7] if s.get("hash") else "")
+                              for s in items)
+            print("  %-34s %s" % (skill, where))
+        print()
+    for i in found:
+        if i["issue"] == "dangling":
+            print("%sdangling%s %-26s %s -> %s" % (YELLOW, RESET, i["skill"], ", ".join(i["where"]), i.get("target")))
+        else:
+            print("%sforked%s   %-26s %d versions: %s" % (YELLOW, RESET, i["skill"], i["versions"],
+                                                         "; ".join("%s %s" % (h[:7], ", ".join(w))
+                                                                   for h, w in sorted(i["hashes"].items()))))
+    for w in warnings:
+        print("warning: %s" % w, file=sys.stderr)
+    return 0
+
+
+def cmd_skill_search(args):
+    from . import skills
+
+    query = " ".join(args.query)
+    devices, warnings = _skill_devices(args, "search", "all")
+    hits = skills.search(devices, query, limit=args.limit)
+    if args.json:
+        print(json.dumps({"hits": hits, "devices": sorted(devices), "warnings": warnings}, ensure_ascii=False, indent=2))
+        return 0
+    for h in hits:
+        print("%s%s%s  %s%s%s" % (BOLD, h["skill"], RESET, DIM, ", ".join(h["where"]), RESET))
+        if h["desc"]:
+            print("    " + (h["desc"][:157] + "..." if len(h["desc"]) > 160 else h["desc"]))
+    if not hits:
+        print("no installed skill matches %r" % query)
+    for w in warnings:
+        print("warning: %s" % w, file=sys.stderr)
+    return 0
+
+
+def cmd_skill_stats(args):
+    from . import skills
+
+    by = [b.strip() for b in (args.by or "").split(",") if b.strip()]
+    bad = [b for b in by if b not in ("device", "agent")]
+    if bad:
+        print("error: --by takes device and/or agent, not %s" % ",".join(bad), file=sys.stderr)
+        return 2
+    try:
+        skills.parse_since(args.since, datetime.date.today())
+    except ValueError as exc:
+        print("error: %s" % exc, file=sys.stderr)
+        return 2
+    devices, warnings = _skill_devices(args, "stats", "all")
+    out = skills.report(devices, by, args.since, args.unused, args.gaps, warnings)
+    if args.json:
+        print(json.dumps(out, ensure_ascii=False, indent=2))
+        return 0
+    keys = [k for k in ("device", "agent") if k in by]
+    print("%sskill uses since %s%s · devices: %s" % (DIM, out["first_day"], RESET, ", ".join(out["devices"]) or "none"))
+    head = "".join("%-12s" % k for k in keys) + "%-32s %6s %6s %6s %6s %6s %7s  %s" % (
+        "skill", "calls", "sess", "user", "tool", "read", "total", "last")
+    print(head)
+    shown = [r for r in out["rows"] if r["calls"]] if not args.all else out["rows"]
+    for r in shown[:args.limit]:
+        print("".join("%-12s" % r[k] for k in keys) + "%-32s %6d %6d %6d %6d %6d %7d  %s" % (
+            r["skill"][:32], r["calls"], r["sessions"], r["user"], r["tool"], r["read"], r["total"], r["last"][5:]))
+    if len(shown) > args.limit:
+        print("%s... %d more (--limit)%s" % (DIM, len(shown) - args.limit, RESET))
+    if args.unused:
+        print("\nunused since %s (installed, no use on any device): %s"
+              % (out["first_day"], " ".join(out["unused"]) or "none"))
+    if args.gaps:
+        print("\nused on one device, missing on another:")
+        for g in out["gaps"] or []:
+            print("  %-30s -> %-14s %s %s, %d sessions" % (g["skill"], g["to"], g["from"], g["agent"], g["sessions"]))
+        if not out["gaps"]:
+            print("  none")
+    for w in warnings:
+        print("warning: %s" % w, file=sys.stderr)
+    return 0
+
+
 def cmd_status(args):
     idx = Index(args.db)
     counts = idx.counts()
@@ -859,6 +985,31 @@ def main(argv=None):
     # Run on the remote end of a link, over the SSH session it opened.
     sp.add_argument("--serve", action="store_true", help=argparse.SUPPRESS)
     sp.set_defaults(func=cmd_link)
+
+    sp = sub.add_parser("skill", help="agent skills on this and other devices: list, search, usage counts")
+    ksub = sp.add_subparsers(dest="skill_cmd", required=True)
+    for name, func, helptext, default in (
+        ("ls", cmd_skill_ls, "skill folders of every agent, with links, dangling links and differing copies", "local"),
+        ("search", cmd_skill_search, "installed skills whose name or description has every word", "all"),
+        ("stats", cmd_skill_stats, "how often sessions used each skill", "all"),
+    ):
+        ksp = ksub.add_parser(name, help=helptext)
+        if name == "search":
+            ksp.add_argument("query", nargs="+")
+            ksp.add_argument("--limit", type=int, default=20)
+        if name == "stats":
+            ksp.add_argument("--since", default="30d", help="Nd or YYYY-MM-DD (default: 30d)")
+            ksp.add_argument("--by", default="device,agent", help="group by device and/or agent (default: device,agent)")
+            ksp.add_argument("--unused", action="store_true", help="also list installed skills nobody used")
+            ksp.add_argument("--gaps", action="store_true",
+                             help="also list skills used in 3+ sessions on one device that another device lacks")
+            ksp.add_argument("--all", action="store_true", help="also show skills used only before --since")
+            ksp.add_argument("--limit", type=int, default=40, help="rows to print (default 40)")
+            ksp.add_argument("--no-sync", action="store_true", help="skip the incremental index sync first")
+        ksp.add_argument("--host", help="local, all, or comma-separated device names (default: %s)" % default)
+        ksp.add_argument("--today", help=argparse.SUPPRESS)  # YYYY-MM-DD; fixes the window in tests
+        ksp.add_argument("--json", action="store_true")
+        ksp.set_defaults(func=func)
 
     sp = sub.add_parser("status", help="index stats")
     sp.add_argument("--json", action="store_true")

@@ -75,6 +75,18 @@ MCP/Pi expose the same as `get_session` / `get_full_session`. Prefer `context` f
 
 Indexed message bodies are capped at 20k characters each (long tool outputs are clipped with a `…[truncated]` marker). To read the original full content straight from the session JSONL, add `--raw` to `context`/`session` (MCP/Pi: `raw: true`). Raw reads execute on the device that holds the file, so remote content still does not leave it except in the query response. Injected messages render their cleaned text by default; add `--show-envelope` to see the verbatim boilerplate (in JSON it is also returned as `body`).
 
+## Skills on each device
+
+When the user asks which skills they have, where a skill is installed, whether copies differ between agents or devices, or which skills they actually use:
+
+```bash
+mnemo skill ls [--host all] --json                    # every agent's skill folders; dangling links and differing copies
+mnemo skill search "code review" --json               # installed skills whose name or description match
+mnemo skill stats --since 30d --by device,agent --json [--unused] [--gaps]
+```
+
+Over MCP these are `list_skills` (with `query` for a search) and `skill_usage`. In stats, `user` means the user asked for the skill by name, `tool` that Claude Code's Skill tool loaded it, and `read` that an agent read its SKILL.md (how Codex, Pi, agy and Grok load a skill, but also any read on request). These commands only read; never change a skill folder because of them unless the user asks.
+
 ## Keeping the index fresh
 
 Every search syncs each device's index incrementally first (sub-second when idle), so sessions from moments ago, in any agent on any device, are searchable without extra steps. To force a sync or inspect the index:

@@ -66,6 +66,32 @@ Indexed `head`/`tail` reads load only selected bodies. Pagination returns `page.
 
 Prints every message of one session file in time order. `--show-envelope` shows verbatim injected bodies (otherwise the cleaned text); each envelope message is flagged and its original is available in the JSON as `body`.
 
+## mnemo skill
+
+```bash
+mnemo skill ls [--host local|all|NAMES] [--json]
+mnemo skill search <words…> [--host H] [--limit 20] [--json]
+mnemo skill stats [--since 30d|YYYY-MM-DD] [--by device,agent] [--unused] [--gaps] [--all] [--host H] [--no-sync] [--json]
+```
+
+Read-only views of the agent skills on this device and, with `--host`, on registered devices. Nothing here writes to a skill folder.
+
+- **`ls`** lists every folder in the agents' user-level skill directories: `~/.claude/skills` and every `~/.claude-*/skills`, `~/.codex*/skills`, `~/.agents/skills`, `~/.pi/agent/skills`, `~/.grok*/skills`, OpenCode's `skills` under its config dir and `~/.gemini/config/skills`. A directory reached through a symlink (`~/.claude-work/skills -> ~/.claude/skills`) is listed once. Each skill is a `link`, a real `dir` or a `dangling` link, with a 12-digit hash of its content; inside a git repository only tracked files count, so a log a skill writes next to itself does not change it. Entries the agent manages itself (Claude Code's `synced/`, Codex's `.system/`) are left out. Problems are printed at the end: `dangling` links and `forked` names, a name whose copies hold different content. Default host: `local`.
+- **`search`** matches every word against the name and the `description` in each `SKILL.md` front matter. Default host: `all`, this device and every registered device.
+- **`stats`** counts how often indexed sessions used each skill, from the `skill_events` table the indexer fills. Default host: `all`; each device counts its own sessions.
+
+| Column | Meaning |
+|---|---|
+| `calls`, `sess` | Uses and distinct sessions since `--since` (default the last 30 days) |
+| `user` | The user asked for the skill: `/name` (Claude Code), `$name` (Codex), `/skill:name` (Pi) |
+| `tool` | Claude Code's Skill tool loaded it; the model chose it |
+| `read` | An agent read the skill's `SKILL.md` by path. This is how Codex, Pi, agy and Grok load a skill they chose, and also how any agent follows an instruction to read one, so the two cannot be told apart |
+| `total`, `last` | All-time uses and the date of the last one |
+
+A Claude Code slash command counts only when its name is an installed skill or the session shows the skill loading, so `/login` is not a use. `--by` groups by `device`, `agent`, both or neither (always by skill). `--unused` lists skills in some device's skill folders that no device used since `--since`; `--gaps` lists skills one device used in 3 or more sessions since `--since` that another device neither has in its skill folders nor ever used. `--all` also prints skills used only before `--since`.
+
+Devices are asked directly (no relays) and must run a mnemo with `skill`; an older one is skipped with a warning naming `mnemo remote upgrade`.
+
 ## mnemo index
 
 ```bash
@@ -127,7 +153,7 @@ mnemo upgrade --restore [BACKUP]
 The safe way to adopt a new index schema after updating Mnemo:
 
 1. Backs up the live index to `~/.mnemo/backups/index-v<schema>-<time>.db` with SQLite's online backup API, keeping the newest `--keep`.
-2. Rebuilds into a temporary file beside it, so searches keep working on the old index meanwhile.
+2. Rebuilds into a temporary file beside it, so searches keep working on the old index meanwhile. An index one schema behind that only lacks a table (v3, before `skill_events`) is copied and migrated instead of rebuilt, which takes seconds instead of minutes; the output says `migrating schema v3 to v4` and how many skill uses it found.
 3. Verifies the result (schema version, no incomplete rows) and swaps it in with an atomic rename. On any failure the live index is left untouched.
 4. Lists `mnemo mcp` / `mnemo dashboard` processes started before the update. They still run the old code; restart the agent sessions that own them.
 5. Brings every other device that runs different code up to this code, as `mnemo remote upgrade` does. Unreachable devices are reported and skipped. `--no-remotes` leaves them alone.

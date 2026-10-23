@@ -110,7 +110,7 @@ class UpgradeTest(unittest.TestCase):
         self.assertTrue(idx._migration_pending)
         self.assertFalse(upgrade.schema_current(self.demo.db))
         idx.sync(home=self.demo.home)
-        self.assertEqual(idx.stored_version, "3")
+        self.assertEqual(idx.stored_version, SCHEMA_VERSION)
         self.assertEqual(idx.db.execute("SELECT COUNT(*) FROM messages WHERE body = text").fetchone()[0], 0)
         self.assertEqual(sum(c["messages"] for c in idx.counts().values()), 45)
         idx.close()

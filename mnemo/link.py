@@ -61,8 +61,15 @@ def allowed(argv):
         return True
     if cmd == "node":  # topology probe; never --name or --forward
         return "--probe" in rest and "--relay" in rest and not {"--name", "--forward"} & set(rest)
+    if cmd == "skill":  # read-only views of this device's skills, answered for itself only
+        return bool(rest) and rest[0] in ("ls", "search", "stats") and "--json" in rest \
+            and _host_local(rest)
     # --relay makes this device apply its own forward policy, as for any neighbor.
     return cmd in ("search", "context", "session") and "--relay" in rest
+
+
+def _host_local(rest):
+    return any(a == "--host" and i + 1 < len(rest) and rest[i + 1] == "local" for i, a in enumerate(rest))
 
 
 # ------------------------------------------------------------ remote side

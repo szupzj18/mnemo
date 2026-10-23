@@ -22,6 +22,7 @@
 | `mnemo/sources/` | One adapter per agent: find session files, parse JSONL into normalized messages |
 | `mnemo/model.py` | `Msg` record, timestamp normalization, 20k clipping, CJK gram generation |
 | `mnemo/index.py` | Schema, incremental sync, per-file rowid ranges |
+| `mnemo/skills.py` | Skill uses in messages (per-agent rules), skill folder inventory and content hashes, usage stats |
 | `mnemo/archive.py` | Copies of session logs that outlive the agents' cleanup |
 | `mnemo/search.py` | FTS5 query construction, BM25 search, context and session lookup, raw reads |
 | `mnemo/remote.py` | Remote registry, SSH execution, parallel fan-out, RRF merge, rsync install |
@@ -53,6 +54,7 @@ CREATE VIRTUAL TABLE messages USING fts5(
 CREATE TABLE files       (path PRIMARY KEY, source, session_id, cwd, mtime, size);
 CREATE TABLE file_ranges (path, lo, hi);   -- contiguous rowid range per file
 CREATE TABLE meta        (key PRIMARY KEY, value);
+CREATE TABLE skill_events (msg, path, source, skill, trigger, ts);  -- skill uses, one per message rowid
 ```
 
 **Accounts.** Each adapter reads every config dir of its agent: the default (`~/.claude`), sibling accounts (`~/.claude-*`), the agent's env var (`$CLAUDE_CONFIG_DIR`, own home only) and any account the archive remembers. Log folders are deduplicated by realpath and session files by inode, so symlinks never index a session twice. A result's `account` is derived from its path (the folder above `projects/`, `sessions/`, …), so it needs no schema change.
@@ -60,6 +62,8 @@ CREATE TABLE meta        (key PRIMARY KEY, value);
 **Archive.** `archive.py` mirrors every file-per-session log into `archive/<source>/<account>/<relative path>` beside the index (temp file + rename, `0600`/`0700`, the original's mtime kept). During sync, a copy whose original is gone joins the source's records under the original path, with the copy's `(mtime, size)`, which equal what the index stored, so the session is neither dropped nor reparsed; a reparse, if one is due, reads the copy. A copy is not used while a live file of the same name exists (Codex moving a rollout, a session continued in another account), and of several copies with one name the newest wins; the name is the file's, or what `Source.session_name` returns for agents whose logs share a file name (Grok CLI's `<session id>/updates.jsonl`). `archived` is derived at read time (original gone, copy present). `origin.json` in each account folder maps it back to its config dir, so a rebuild from scratch finds archived sessions again. Antigravity CLI keeps one SQLite database per conversation, written through a write-ahead log: its adapter folds `<id>.db-wal` into the change key (`Source.stat`), copies the database with SQLite's backup API into one self-contained file (`Source.snapshot`), and, because a database can change without growing, counts a copy as current only with the very same mtime (`EXACT_MTIME`). OpenCode's single database for every session is not archived.
 
 **Incremental sync.** Mnemo stats every session file and compares its `(mtime, size)` with `files`. When a file changed, its rowid range is deleted and the file is re-inserted as one contiguous block, which is simple and correct for append-only JSONL. Deleted files are dropped, unless the archive holds a copy. Codex adapter-version metadata forces unchanged files to be reparsed after an adapter upgrade, without changing the SQLite schema. Sync failures are retained in per-source metadata for later coverage reports. Searches call `sync_if_stale()`, which runs this sync unless one finished in the last 2 s; `busy_timeout` makes concurrent writers wait instead of failing.
+
+**Skill uses.** While a file is indexed, `skills.events()` looks at each message for a skill being used and writes one `skill_events` row pointing at that message's rowid: Claude Code's `Skill` tool call (`tool`), a slash command, `$name` or `/skill:name` the user typed (`user`, from the verbatim envelope in `body`), or a read tool opening `…/skills/<name>/SKILL.md` (`read`). Rows are deleted with their file's range. Claude Code's "Base directory for this skill" message is stored as `load` and a slash command as `slash`; stats count a slash command only when its name is a skill, so `/login` is not one. Schema v4 added the table; a v3 index is migrated in place by filling it from the stored messages (about 9 s on a 5 GB index), without reparsing sessions.
 
 **Context in O(1) of file size.** `file_ranges` maps a file to `[lo, hi]` rowids. A context window is a rowid range query, so it doesn't need to re-parse the file. On the largest session (44k lines), a lookup takes 7 ms compared with 316 ms for re-parsing.
 

@@ -90,6 +90,8 @@ Snippets are deliberately short. The skill tells the agent to call `get_context`
 | `get_context` | `get_session_context` | `mnemo context <path> <line>` | Messages around a hit |
 | `get_session` | `get_full_session` | `mnemo session <path>` | The whole session, optionally head/tail/raw |
 | `list_recent_sessions` | — | `mnemo recent` | Recently started sessions with their first task as title |
+| `list_skills` | — | `mnemo skill ls` / `mnemo skill search` | Agent skills installed on each device, with dangling links and differing copies |
+| `skill_usage` | — | `mnemo skill stats` | How often sessions used each skill, per device and agent |
 | `reindex` | — | `mnemo index` | Incremental sync of local logs |
 
 Parameters, output shapes and token costs: [Agent tools](docs/agent-tools.md).
@@ -117,6 +119,7 @@ and say which session (agent, device, date) you are drawing on.
 - **Good at CJK.** English uses prefix matching and Chinese uses substring matching (unigram + bigram), all ranked with BM25.
 - **Fast.** Searches take about 60–100 ms on a 236k-message index and an idle incremental sync about 0.1 s. Opening a long session reads one page around the hit (133 KB) instead of the whole transcript (19 MB).
 - **Zero dependencies.** Mnemo needs only the Python 3.7+ standard library and SQLite FTS5. It installs with `git clone` and needs no daemon.
+- **Knows your skills.** `mnemo skill ls` finds every agent's skill folders, with dangling links and copies that drifted apart; `mnemo skill stats` counts how often each device's sessions used each skill, so you can see what to sync and what nobody uses.
 - **A dashboard for humans.** A local browser UI to search, read sessions on a timeline and manage devices.
 
 ## Install

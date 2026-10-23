@@ -149,6 +149,39 @@ Lists recently started sessions newest-first, titled with the first real user pr
 
 Sessions that contain only injected boilerplate (e.g. Codex approval-review rollouts) have no title and are skipped. This tool reads the local device only; run it on the devbox itself (or over SSH) to list that machine's sessions.
 
+## list_skills
+
+The agent skills installed on this device (and on others with `host`), as `mnemo skill ls` and `mnemo skill search` show them.
+
+| Parameter | Type | Default | Notes |
+|---|---|---|---|
+| `query` | string | — | Return the skills whose name or `SKILL.md` description contains every word, instead of the whole list |
+| `host` | string | `local` | `local`, `all`, or comma-separated device names |
+
+Without `query`: `{devices: {local: {dirs, skills}}, issues, warnings}`. Each skill has `name`, `agent`, `account`, `dir`, `kind` (`link`, `dir` or `dangling`), `target` for links, `hash` and `desc`. `issues` lists `dangling` links and `forked` names (copies with different content). With `query`: `{hits: [{skill, desc, where}], warnings}`.
+
+## skill_usage
+
+How often indexed sessions used each skill, as `mnemo skill stats --json` reports it.
+
+| Parameter | Type | Default | Notes |
+|---|---|---|---|
+| `since` | string | `30d` | `Nd` or `YYYY-MM-DD` |
+| `by` | string | `device,agent` | Group by `device` and/or `agent`; always by skill |
+| `host` | string | `all` | `local`, `all`, or comma-separated device names |
+| `unused` | boolean | false | Also list installed skills no device used since `since` |
+| `gaps` | boolean | false | Also list skills used in 3+ sessions on one device that another device lacks |
+| `limit` | integer | 50 | Rows with uses in the window, at most 500 |
+
+```json
+{"since": "30d", "first_day": "2026-09-24", "by": ["device", "agent"], "devices": ["local", "devbox-a"],
+ "rows": [{"device": "local", "agent": "codex", "skill": "read-pr", "calls": 56, "sessions": 40,
+           "user": 0, "tool": 0, "read": 56, "total": 116, "total_sessions": 65, "last": "2026-10-22"}],
+ "warnings": []}
+```
+
+`user` counts uses the user asked for by name, `tool` Claude Code's Skill tool, `read` an agent reading the skill's `SKILL.md`; see [mnemo skill](cli.md#mnemo-skill).
+
 ## reindex
 
 Incrementally re-scans local session files. It costs about 0.1 s when nothing changed, and it accepts an optional `source` filter. `search_sessions` already syncs before every search, so agents rarely need this; it is kept for forcing a sync explicitly.

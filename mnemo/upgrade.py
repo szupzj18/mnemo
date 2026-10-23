@@ -13,7 +13,7 @@ import sqlite3
 import subprocess
 import time
 
-from .index import SCHEMA_VERSION, Index
+from .index import MIGRATABLE, SCHEMA_VERSION, Index
 
 BACKUP_KEEP = 3
 
@@ -109,6 +109,37 @@ def rebuild(db_path, home=None, logger=lambda m: None):
         raise UpgradeError("rebuilt index failed verification: " + "; ".join(problems))
     os.replace(tmp, db_path)
     return stats, counts
+
+
+def migratable(db_path):
+    """True when the index can be brought to this schema without reparsing every session."""
+    return os.path.isfile(db_path) and _stored_version(db_path) in MIGRATABLE
+
+
+def migrate(db_path, logger=lambda m: None):
+    """Migrate a copy of db_path beside it, verify it, then atomically replace db_path.
+
+    Faster than rebuild() for MIGRATABLE schemas and, like it, never edits the live
+    index. Rows other processes write meanwhile are lost with the old file; their
+    sessions keep their old (mtime, size) in the copy, so the next sync reindexes them.
+    """
+    tmp = "%s.migrate-%d" % (db_path, os.getpid())
+    for leftover in (tmp, tmp + "-journal"):
+        if os.path.exists(leftover):
+            os.remove(leftover)
+    _copy_db(db_path, tmp)
+    idx = Index(tmp)
+    try:
+        uses = idx.migrate(logger=logger)
+        problems = verify(idx)
+        counts = idx.counts()
+    finally:
+        idx.close()
+    if problems:
+        os.remove(tmp)
+        raise UpgradeError("migrated index failed verification: " + "; ".join(problems))
+    os.replace(tmp, db_path)
+    return uses, counts
 
 
 def restore(db_path, source=None):
