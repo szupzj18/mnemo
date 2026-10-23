@@ -16,6 +16,9 @@ All notable changes to this project are documented here. The format follows [Kee
 - The index schema is now v4: a `skill_events` table records each skill use found while indexing. Run `mnemo upgrade`: a v3 index is copied, the table is filled from the messages already stored (seconds, no reparse), verified and swapped in, so the live index is never changed in place; a search with new code on a v3 index does the same fill in place on its first sync. Once an index is v4, mnemo processes still on older code (MCP servers of open agent sessions, links, other devices) stop indexing into it until restarted or upgraded, as with any schema change.
 - With the archive on, deleting a session log no longer removes it from the index. Sessions deleted before this release can't be brought back, because there is no copy of them. Delete a session's copy under `~/.mnemo/archive` to drop it for good. The index schema is unchanged, so no rebuild is needed: the next sync indexes the other accounts and copies every log once (about as long as the copy of that many bytes takes).
 
+### Fixed
+- `mnemo --db <path> mcp` used the default index (`~/.mnemo/index.db`) for its startup sync and for every tool call, ignoring `--db`. Both now use the index named.
+
 ## [0.6.0] - 2026-10-17
 
 ### Added

@@ -41,3 +41,38 @@ class ToolAnnotationsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DbOptionTest(unittest.TestCase):
+    def test_server_and_tool_processes_use_the_given_index(self):
+        import contextlib
+        import io
+        import os
+        import subprocess
+        import sys
+
+        from helpers import REPO, DemoHome
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            demo = DemoHome()
+        try:
+            db = os.path.join(demo.root, "elsewhere.db")
+            env = dict(os.environ, HOME=demo.home, MNEMO_ARCHIVE="off")
+            for k in ("CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "CODEX_SESSION_ID"):
+                env.pop(k, None)
+            requests = [
+                {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}},
+                {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                 "params": {"name": "list_recent_sessions", "arguments": {"limit": 3}}},
+            ]
+            p = subprocess.run([sys.executable, os.path.join(REPO, "bin", "mnemo"), "--db", db, "mcp"],
+                               input="".join(json.dumps(r) + "\n" for r in requests),
+                               capture_output=True, text=True, env=env, timeout=120)
+            answers = {r["id"]: r for r in map(json.loads, p.stdout.splitlines())}
+            rows = json.loads(answers[2]["result"]["content"][0]["text"])
+            self.assertEqual(len(rows), 3, p.stderr)
+            self.assertTrue(os.path.isfile(db))
+            self.assertFalse(os.path.exists(os.path.join(demo.home, ".mnemo", "index.db")),
+                             "nothing may open the default index when --db names another")
+        finally:
+            demo.cleanup()

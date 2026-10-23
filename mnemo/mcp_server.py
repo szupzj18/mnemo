@@ -323,7 +323,7 @@ def call_arguments(params):
     return arguments
 
 
-def call_fresh(name, args, timeout=900):
+def call_fresh(name, args, timeout=900, db_path=None):
     """Run one tool call in a new process, so it always uses the code on disk now.
 
     This server lives as long as the agent session that started it; answering in
@@ -332,7 +332,9 @@ def call_fresh(name, args, timeout=900):
     from .link import self_argv
 
     try:
-        p = subprocess.run(self_argv() + ["mcp", "--call", name or ""], input=json.dumps(args or {}),
+        # The tool process answers from the index this server was started with (--db).
+        db = ["--db", db_path] if db_path else []
+        p = subprocess.run(self_argv() + db + ["mcp", "--call", name or ""], input=json.dumps(args or {}),
                            capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return _error("%s timed out after %ds" % (name, timeout))
@@ -343,14 +345,14 @@ def call_fresh(name, args, timeout=900):
         return _error(err[-1] if err else "tool process exited with %d" % p.returncode)
 
 
-def call_main(name):
+def call_main(name, db_path=None):
     """`mnemo mcp --call NAME`: one tool call, arguments as JSON on stdin, result on stdout."""
     try:
         args = json.loads(sys.stdin.read() or "{}")
     except ValueError as exc:
         args, result = None, _error("bad arguments: %s" % exc)
     if args is not None:
-        index = Index()
+        index = Index(db_path)
         try:
             result = handle_call(name, args, index)
         except Exception as exc:
@@ -365,12 +367,12 @@ def _error(text):
     return {"content": [{"type": "text", "text": "error: %s" % text}], "isError": True}
 
 
-def run():
+def run(db_path=None):
     from . import live
 
     live.mark("mcp")
     sys.stderr.write("mnemo mcp: indexing sessions...\n")
-    index = Index()
+    index = Index(db_path)
     try:
         stats = index.sync(logger=lambda m: sys.stderr.write(m + "\n"))
     except IndexTooNew as exc:
@@ -407,7 +409,7 @@ def run():
             resp = {"jsonrpc": "2.0", "id": rid, "result": {"tools": tools}}
         elif method == "tools/call":
             params = req.get("params") or {}
-            result = call_fresh(params.get("name"), call_arguments(params))
+            result = call_fresh(params.get("name"), call_arguments(params), db_path=db_path)
             resp = {"jsonrpc": "2.0", "id": rid, "result": result}
         elif method == "ping":
             resp = {"jsonrpc": "2.0", "id": rid, "result": {}}

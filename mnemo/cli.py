@@ -271,8 +271,8 @@ def cmd_mcp(args):
     from . import mcp_server
 
     if args.call is not None:
-        return mcp_server.call_main(args.call)
-    return mcp_server.run()
+        return mcp_server.call_main(args.call, args.db)
+    return mcp_server.run(args.db)
 
 
 def cmd_doctor(args):
