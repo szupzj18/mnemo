@@ -25,6 +25,8 @@ mnemo/index.py               schema + incremental sync
 mnemo/archive.py             copies of session logs beside the index, read once the agent deletes the original
 mnemo/search.py              FTS5 query builder, BM25, context/session/raw reads
 mnemo/remote.py              SSH exec, fan-out, RRF, rsync install
+mnemo/skills.py              skill folders, content hashes, skill use rules and stats
+mnemo/skillsync.py           `mnemo skill sync/rollback`: manifest, lock, links; device side sent over SSH
 mnemo/mcp_server.py          stdio JSON-RPC MCP server; each tool call runs in a fresh `mnemo mcp --call`
 mnemo/live.py                long-running processes that follow code updates (markers, code watcher)
 mnemo/dashboard.py           HTTP API + static server for mnemo/web_dist

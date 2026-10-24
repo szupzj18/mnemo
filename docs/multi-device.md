@@ -92,6 +92,10 @@ Every device knows a short fingerprint of the code it runs (`mnemo node` shows i
 
 Updates happen only when you ask: there is no background auto-update changing files on other machines behind your back.
 
+## Sharing skills across devices
+
+`mnemo skill sync --device <name>` (or `all`) installs the skills listed in `~/.mnemo/skills.toml` on other devices over the same SSH connection: each device clones or pulls the skill repositories itself, and when it can't (no credentials on a devbox, a copy without git history), this device pushes its own checkout with rsync. It does not need the device to run the same mnemo version. Sources marked `scope = "internal"` only go to the devices listed for that scope. Devices that linked in (`mnemo link`) are refused: run the sync on them instead. See [`mnemo skill sync`](cli.md#mnemo-skill-sync--rollback).
+
 ## Freshness and failure
 
 - Before each federated search, every remote runs an incremental `mnemo index`. This takes well under a second when idle.

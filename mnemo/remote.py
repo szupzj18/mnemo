@@ -207,8 +207,28 @@ def remote_exec(remote, argv, timeout=60):
         env = dict(os.environ, HOME=remote["home"])
     else:
         cmd = _ssh_base(remote) + [_remote_command(remote, argv)]
+    return _run(remote, cmd, timeout, env)
+
+
+def remote_python(remote, program, timeout=120):
+    """Run a Python program, sent on stdin, on the device; its stdout.
+
+    For work that must not depend on the device's mnemo version (skill sync
+    sends the code it runs), so a device on older code needs no upgrade first.
+    """
+    if remote.get("transport") == "link":
+        raise RemoteError("%s linked in to this device; run this on it instead" % remote["name"])
+    env = None
+    if remote.get("transport") == "local":
+        cmd, env = [sys.executable, "-"], dict(os.environ, HOME=remote["home"])
+    else:
+        cmd = _ssh_base(remote) + ["python3 -"]
+    return _run(remote, cmd, timeout, env, program)
+
+
+def _run(remote, cmd, timeout, env, stdin=None):
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+        p = subprocess.run(cmd, input=stdin, capture_output=True, text=True, timeout=timeout, env=env)
     except subprocess.TimeoutExpired:
         raise RemoteError("%s: timed out after %ds" % (remote["name"], timeout))
     except OSError as exc:

@@ -119,7 +119,7 @@ and say which session (agent, device, date) you are drawing on.
 - **Good at CJK.** English uses prefix matching and Chinese uses substring matching (unigram + bigram), all ranked with BM25.
 - **Fast.** Searches take about 60–100 ms on a 236k-message index and an idle incremental sync about 0.1 s. Opening a long session reads one page around the hit (133 KB) instead of the whole transcript (19 MB).
 - **Zero dependencies.** Mnemo needs only the Python 3.7+ standard library and SQLite FTS5. It installs with `git clone` and needs no daemon.
-- **Knows your skills.** `mnemo skill ls` finds every agent's skill folders, with dangling links and copies that drifted apart; `mnemo skill stats` counts how often each device's sessions used each skill, so you can see what to sync and what nobody uses.
+- **Knows your skills.** `mnemo skill ls` finds every agent's skill folders, with dangling links and copies that drifted apart; `mnemo skill stats` counts how often each device's sessions used each skill, so you can see what to sync and what nobody uses; `mnemo skill sync --device devbox-109` links the skills a manifest lists from your git repositories into `~/.claude/skills` and `~/.agents/skills` on any device, records them in a lock and can `rollback` ([details](docs/cli.md#mnemo-skill-sync--rollback)).
 - **A dashboard for humans.** A local browser UI to search, read sessions on a timeline and manage devices.
 
 ## Install

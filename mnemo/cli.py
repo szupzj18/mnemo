@@ -728,6 +728,133 @@ def cmd_skill_stats(args):
     return 0
 
 
+_SOURCE_STATES = {
+    "clone": "git clone would work",
+    "cloned": "cloned",
+    "pull": "git pull --ff-only would run",
+    "pulled": "pulled (git pull --ff-only)",
+    "stale": "used as it is",
+    "ready": "used as it is",
+    "current": "same content as this device's checkout; nothing to push",
+    "push": "pushed from this device's checkout (rsync)",
+    "missing": "not available",
+    "foreign": "not used",
+}
+
+
+def _sync_setup(args):
+    from . import skillsync
+
+    try:
+        manifest = skillsync.load_manifest(args.manifest or os.path.join(remote_mod.CONFIG_DIR, skillsync.MANIFEST))
+        return manifest, skillsync.devices_for(args.device)
+    except skillsync.SyncError as exc:
+        print("error: %s" % exc, file=sys.stderr)
+        return None, None
+
+
+def _each_device(devices, step):
+    results, failed = {}, False
+    for name, remote in devices:
+        try:
+            results[name] = step(name, remote)
+        except RemoteError as exc:
+            results[name] = {"device": name, "error": str(exc)}
+        failed = failed or bool(results[name].get("error"))
+    return results, failed
+
+
+def _short(sha):
+    return (sha or "?")[:7]
+
+
+def _print_actions(actions, show_all):
+    from .skillsync import ROOTS
+
+    by_root, counts = {}, {}
+    for a in actions:
+        counts[a["action"]] = counts.get(a["action"], 0) + 1
+        if show_all or a["action"] != "keep":
+            by_root.setdefault(a.get("root") or "", []).append(a)
+    for root, items in sorted(by_root.items()):
+        print("  %s%s%s" % (DIM, ROOTS.get(root, root), RESET))
+        for a in items:
+            if a["action"] in ("link", "relink"):
+                text = "-> " + _tilde(a["target"])
+            elif a["action"] in ("adopt", "keep"):
+                text = "already -> " + _tilde(a.get("detail") or a["target"])
+            else:
+                text = a.get("detail") or ""
+            warn = a["action"] in ("conflict", "error")
+            print("    %s%-8s%s %-40s %s" % (YELLOW if warn else "", a["action"], RESET if warn else "",
+                                            a.get("name") or _tilde(a["link"]), text))
+    print("  " + (" · ".join("%d %s" % (n, k) for k, n in sorted(counts.items())) or "nothing to do"))
+
+
+def cmd_skill_sync(args):
+    from . import skillsync
+
+    manifest, devices = _sync_setup(args)
+    if manifest is None:
+        return 2
+    results, failed = _each_device(
+        devices, lambda name, remote: skillsync.sync_device(name, manifest, args.dry_run, remote=remote))
+    if args.json:
+        print(json.dumps({"dry_run": args.dry_run, "devices": results}, ensure_ascii=False, indent=2))
+        return 1 if failed else 0
+    for name, r in results.items():
+        print("%s%s%s · %s" % (BOLD, name, RESET, "dry run, nothing changed" if args.dry_run else "sync"))
+        if r.get("error"):
+            print("  %serror%s %s" % (YELLOW, RESET, r["error"]))
+            print()
+            continue
+        for st in r.get("prepared") or r["sources"]:
+            state = _SOURCE_STATES[st["state"]]
+            if args.dry_run and st["state"] == "push":
+                state = "would push this device's checkout (rsync)"
+            kind = {"git": "git", "copy": "copy without git history"}.get(st["kind"], "no checkout")
+            print("  source %s  %s  %s @%s: %s%s" % (
+                st["source"], _tilde(st["checkout"]) if name == LOCAL else st["checkout"], kind,
+                _short(st["commit"]), state, ("; " + st["note"]) if st.get("note") else ""))
+        _print_actions(r["actions"], args.all)
+        for n in r.get("notes") or []:
+            print("  %snote:%s %s" % (DIM, RESET, n))
+        if not args.dry_run:
+            print("  %s%s%s" % (DIM, "lock written" if r.get("written") else "lock unchanged", RESET))
+        print()
+    return 1 if failed else 0
+
+
+def cmd_skill_rollback(args):
+    from . import skillsync
+
+    manifest, devices = _sync_setup(args)
+    if manifest is None:
+        return 2
+    results, failed = _each_device(
+        devices, lambda name, remote: skillsync.rollback_device(name, manifest, args.dry_run, remote=remote))
+    if args.json:
+        print(json.dumps({"dry_run": args.dry_run, "devices": results}, ensure_ascii=False, indent=2))
+        return 1 if failed else 0
+    for name, r in results.items():
+        print("%s%s%s · %s" % (BOLD, name, RESET, "rollback, dry run, nothing changed" if args.dry_run else "rollback"))
+        if r.get("error"):
+            print("  %serror%s %s" % (YELLOW, RESET, r["error"]))
+            print()
+            continue
+        print("  %sback to the lock saved as %s%s" % (DIM, r["lock"], RESET))
+        for c in r["content"]:
+            print("  source %s  %s -> %s: %s%s" % (c["source"], _short(c["from"]), _short(c["commit"]), c["action"],
+                                                 ("; " + c["detail"]) if c.get("detail") else ""))
+        _print_actions(r["actions"], args.all)
+        for link, why in r.get("mismatches") or []:
+            print("  %sdiffers from the lock%s %s: %s" % (YELLOW, RESET, _tilde(link), why))
+        if "mismatches" in r and not r["mismatches"]:
+            print("  %severy link matches the earlier lock%s" % (DIM, RESET))
+        print()
+    return 1 if failed else 0
+
+
 def cmd_status(args):
     idx = Index(args.db)
     counts = idx.counts()
@@ -1008,6 +1135,18 @@ def main(argv=None):
             ksp.add_argument("--no-sync", action="store_true", help="skip the incremental index sync first")
         ksp.add_argument("--host", help="local, all, or comma-separated device names (default: %s)" % default)
         ksp.add_argument("--today", help=argparse.SUPPRESS)  # YYYY-MM-DD; fixes the window in tests
+        ksp.add_argument("--json", action="store_true")
+        ksp.set_defaults(func=func)
+    for name, func, helptext in (
+        ("sync", cmd_skill_sync, "link the skills ~/.mnemo/skills.toml names into ~/.claude/skills and "
+                                 "~/.agents/skills, here or on devices"),
+        ("rollback", cmd_skill_rollback, "go back to the lock before the last sync that changed something"),
+    ):
+        ksp = ksub.add_parser(name, help=helptext)
+        ksp.add_argument("--dry-run", action="store_true", help="show what would change; change nothing")
+        ksp.add_argument("--device", default="local", help="local (default), all, or comma-separated device names")
+        ksp.add_argument("--manifest", help="manifest path (default: ~/.mnemo/skills.toml)")
+        ksp.add_argument("--all", action="store_true", help="also list links that stay as they are")
         ksp.add_argument("--json", action="store_true")
         ksp.set_defaults(func=func)
 

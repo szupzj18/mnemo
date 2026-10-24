@@ -117,7 +117,7 @@ search_sessions ──▶ get_context ──▶ get_session
 - **中英文都能搜**：英文前缀匹配，中文子串匹配（unigram + bigram），BM25 排序。
 - **快**：在 23.6 万条消息的索引上搜索约 60–100 ms，空闲增量同步约 0.1 s；打开长会话只读命中附近的一页（133 KB），不再整段加载（19 MB）。
 - **零依赖**：只需要 Python 3.7+ 标准库和 SQLite FTS5，`git clone` 即可用，不需要常驻进程。
-- **认识你的 skill**：`mnemo skill ls` 找出每个 Agent 的 skill 目录，标出断链和已经分叉的副本；`mnemo skill stats` 统计每台设备的会话调用每个 skill 的次数，看出该同步什么、哪些没人用。
+- **认识你的 skill**：`mnemo skill ls` 找出每个 Agent 的 skill 目录，标出断链和已经分叉的副本；`mnemo skill stats` 统计每台设备的会话调用每个 skill 的次数，看出该同步什么、哪些没人用；`mnemo skill sync --device devbox-109` 按清单把 git 仓库里的 skill 逐个链进任意设备的 `~/.claude/skills` 和 `~/.agents/skills`，记进 lock，可以 `rollback`（[详见](docs/cli.md#mnemo-skill-sync--rollback)）。
 - **给人用的面板**：本地浏览器界面，可以搜索、按时间轴读会话、管理设备。
 
 ## 安装

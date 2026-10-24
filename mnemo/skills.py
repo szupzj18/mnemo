@@ -169,23 +169,35 @@ def _tracked(folder):
     return files or None
 
 
-def tree_hash(folder):
-    """sha256 over (relative path, content hash) of every file, first 12 hex digits."""
+def tree_files(folder, tracked=True):
+    """[{path, hash, size}] of every file under folder, sorted; inside a git repository only tracked ones.
+
+    tracked=False walks the folder even inside a repository (a copy staged for a push).
+    """
     real = os.path.realpath(folder)
-    files = _tracked(real)
+    files = _tracked(real) if tracked else None
     if files is None:
         files = []
         for dirpath, dirnames, filenames in os.walk(real, followlinks=True):
             dirnames[:] = sorted(d for d in dirnames if d not in (".git", "__pycache__", "node_modules"))
             files += [os.path.join(dirpath, f) for f in filenames if f != ".DS_Store" and not f.endswith(".pyc")]
-    h = hashlib.sha256()
+    out = []
     for path in sorted(files):
         try:
             with open(path, "rb") as f:
-                digest = hashlib.sha256(f.read()).digest()
+                data = f.read()
         except OSError:
             continue
-        h.update(os.path.relpath(path, real).encode("utf-8") + b"\0" + digest)
+        out.append({"path": os.path.relpath(path, real).replace(os.sep, "/"),
+                    "hash": hashlib.sha256(data).hexdigest(), "size": len(data)})
+    return out
+
+
+def tree_hash(folder, tracked=True, files=None):
+    """sha256 over (relative path, content hash) of every file, first 12 hex digits."""
+    h = hashlib.sha256()
+    for f in tree_files(folder, tracked) if files is None else files:
+        h.update(f["path"].encode("utf-8") + b"\0" + bytes.fromhex(f["hash"]))
     return h.hexdigest()[:12]
 
 

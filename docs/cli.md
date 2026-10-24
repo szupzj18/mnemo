@@ -92,6 +92,62 @@ A Claude Code slash command counts only when its name is an installed skill or t
 
 Devices are asked directly (no relays) and must run a mnemo with `skill`; an older one is skipped with a warning naming `mnemo remote upgrade`.
 
+### mnemo skill sync / rollback
+
+```bash
+mnemo skill sync [--dry-run] [--device local|all|NAMES] [--manifest PATH] [--all] [--json]
+mnemo skill rollback [--dry-run] [--device local|all|NAMES] [--json]
+```
+
+`sync` links the skills a manifest names into the two shared skill folders, `~/.claude/skills` (Claude Code) and `~/.agents/skills` (Codex, Pi, Grok, OpenCode), one symlink per skill. Default device: `local`; `--device devbox-109` syncs that device, `all` this one and every registered device. Always run `--dry-run` first: it prints the same steps the sync would take and changes nothing.
+
+The manifest is `~/.mnemo/skills.toml` on the device you run the command from:
+
+```toml
+[sources.chris]
+git = "https://github.com/you/your-skills.git"
+path = "skills"                  # folder in the repo with one folder per skill (default: skills)
+checkout = "~/dev/your-skills"   # where every device keeps it (default: ~/.mnemo/skill-sources/<name>)
+
+[sources.internal]
+git = "git@git.example.com:team/skills.git"
+scope = "internal"               # only for the devices listed under [devices] internal
+
+[devices]
+internal = ["local", "devbox-109"]
+
+[[install]]
+from = "chris"
+skills = ["*"]                   # names or globs (default: all)
+exclude = ["draft-*"]            # optional
+roots = ["claude", "agents"]     # default: both
+devices = ["*"]                  # optional: only these devices
+```
+
+When two `[[install]]` entries give the same name to the same folder, the first one wins; put a device-specific entry first to prefer another source on that device. A source with a `scope` is not even sent to a device missing from its list.
+
+Each step is one of:
+
+| Step | Meaning |
+|---|---|
+| `link` | Nothing has the name yet: create the link |
+| `adopt` | A link there already resolves to the same folder of the source (made by hand, relative, or through another link): recorded in the lock, not touched |
+| `keep` | Recorded and unchanged (shown with `--all`) |
+| `relink` | A link sync made points somewhere else now: replaced |
+| `unlink` | A link sync made is no longer wanted: removed. Links it adopted are left in place |
+| `forget` | A recorded link someone changed or removed: dropped from the lock only |
+| `conflict` | The name is taken by something sync did not make (a real folder, a link elsewhere): left alone |
+| `skip` | A name sync never touches: hidden entries and `synced` |
+| `mkdir` | A skill folder is missing: created |
+
+Sync never deletes a folder or a file, and never touches Claude Code's `synced/`, Codex's `.system/`, mew workspace bundles or anything not in the manifest.
+
+**How a source reaches a device.** Each device clones the source into `checkout`, or runs `git pull --ff-only` there. A pull that fails (local changes, no network) leaves the checkout as it is. When a registered device cannot clone, or holds a copy without git history, this device pushes `git archive HEAD` of its own checkout with `rsync --delete` and writes `.mnemo-source.json` (source, commit) into it. A copy whose content already matches gets no push. The dry run says which happens. The device side runs as a program sent over SSH (`python3 -`), so a device needs python3 but not this version of mnemo.
+
+**Lock.** Each device writes `~/.mnemo/skills.lock.json`: for every link it made or adopted, the link, its target, `origin` (`linked` or `adopted`), the source commit, a content hash (as `mnemo skill ls` shows it) and the files with their sha256 and size. A sync that changes anything moves the previous lock to `~/.mnemo/skills.lock.history/`.
+
+**Rollback** goes back to the newest lock in the history: links that sync made since are removed, removed ones come back, and each source returns to the commit that lock recorded. A git checkout is reset (`git reset --keep`) only if it is still at the commit the current lock recorded and has no local changes; a pushed copy gets the earlier commit pushed. It ends by checking every link against the lock and prints any that differ. Run it again to go back further.
+
 ## mnemo index
 
 ```bash
