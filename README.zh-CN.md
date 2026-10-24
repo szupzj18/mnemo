@@ -208,18 +208,7 @@ mnemo remote add devbox-b          # 经 SSH 用 rsync 安装并构建远端索�
 mnemo search "sglang oom"            # 之后同时搜本机和 devbox-b
 ```
 
-```mermaid
-flowchart LR
-  A["笔记本上的 Agent"] -->|search| L["mnemo（笔记本）"]
-  L -->|本地查询| LI[("本机索引")]
-  L -->|ssh: mnemo search --host local| R1["mnemo（devbox-a）"]
-  L -->|ssh: mnemo search --host local| R2["mnemo（devbox-b）"]
-  R1 --> I1[("devbox-a 索引")]
-  R2 --> I2[("devbox-b 索引")]
-  R1 -. 排序后的命中 .-> L
-  R2 -. 排序后的命中 .-> L
-  L -->|RRF 融合| A
-```
+![多设备搜索：笔记本经 SSH 扇出查询，排序命中用 RRF 融合](docs/assets/multi-device.zh-CN.png)
 
 核心理念是**以通信共享记忆，而不是建共享存储**。每台机器只索引自己的日志；一次搜索就是发给各设备的一条消息，返回的排序命中用 Reciprocal Rank Fusion 融合。`context` 和 `session` 的读取路由到持有该会话的设备执行，不存在收集所有人会话的中心库。每台设备只需登记直连的邻居；在某台设备上执行 `mnemo node --forward on`，搜索就能经它中转到更远的设备，链式、树形、网状拓扑都可以，环路和重复结果会自动处理。命中会带上路由，例如 `devbox-a/devbox-b`。不可达的设备会被跳过并给出警告。
 

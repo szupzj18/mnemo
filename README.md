@@ -215,18 +215,7 @@ mnemo remote add devbox-b          # rsync-installs mnemo over SSH and builds it
 mnemo search "sglang oom"            # now searches local + devbox-b in parallel
 ```
 
-```mermaid
-flowchart LR
-  A["Agent on laptop"] -->|search| L["mnemo (laptop)"]
-  L -->|local query| LI[("laptop index")]
-  L -->|ssh: mnemo search --host local| R1["mnemo (devbox-a)"]
-  L -->|ssh: mnemo search --host local| R2["mnemo (devbox-b)"]
-  R1 --> I1[("devbox-a index")]
-  R2 --> I2[("devbox-b index")]
-  R1 -. ranked hits .-> L
-  R2 -. ranked hits .-> L
-  L -->|RRF merge| A
-```
+![Multi-device search: laptop fans out over SSH; ranked hits merge with RRF](docs/assets/multi-device.png)
 
 The design is **message passing, not shared storage**. Each machine indexes only its own logs, a search is a message sent to every device, and results come back as ranked hits merged with Reciprocal Rank Fusion. `context` and `session` reads are routed to the device that holds the session, so no central database collects everyone's transcripts. Each device lists only its direct neighbors; turn on `mnemo node --forward on` on a device and searches relay through it, so any topology works (chains, trees, meshes) with loops and duplicates handled. Hits carry their route, e.g. `devbox-a/devbox-b`. Unreachable devices are skipped with a warning.
 
