@@ -1,8 +1,10 @@
 import base64
+import datetime
 import json
 import os
+import re
 
-from .model import CJK_RUN, has_cjk
+from .model import CJK_RUN, has_cjk, norm_ts
 from .sources import SOURCES
 
 DEFAULT_KINDS = ("text", "summary", "tool_call", "tool_result")
@@ -13,6 +15,31 @@ DEFAULT_KINDS = ("text", "summary", "tool_call", "tool_result")
 # commands, and sends the same pair as threadId/sessionId in an MCP call's _meta.
 CALLER_SESSION_ENV = ("CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "CODEX_SESSION_ID")
 CALLER_SESSION_META = ("threadId", "sessionId")
+
+
+_SINCE_DAYS = re.compile(r"^(\d+)d$")
+_UTC_TS = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+
+
+def since_ts(value, now=None):
+    """A --since value as the sortable UTC timestamp the index stores, or None.
+
+    Takes Nd (the last N days, counted back from now), YYYY-MM-DD (from the
+    start of that day, UTC) or an ISO timestamp. Anything else raises
+    ValueError: compared as a string, '3d' would match nothing and '10d'
+    everything.
+    """
+    if not value:
+        return None
+    value = value.strip()
+    m = _SINCE_DAYS.match(value)
+    if m:
+        now = now or datetime.datetime.now(datetime.timezone.utc)
+        return (now - datetime.timedelta(days=int(m.group(1)))).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ts = norm_ts(value)
+    if not _UTC_TS.match(ts):
+        raise ValueError("since takes Nd (e.g. 7d), YYYY-MM-DD or an ISO timestamp, not %r" % value)
+    return ts
 
 
 def caller_session_ids(env=None, meta=None):

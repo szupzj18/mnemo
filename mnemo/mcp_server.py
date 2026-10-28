@@ -7,7 +7,7 @@ from .index import Index, IndexTooNew
 from . import remote as remote_mod
 from .remote import LOCAL, fan_out_search, remote_context, remote_session
 from .search import (CONTEXT_MAX_CHARS, DEFAULT_KINDS, caller_session_ids, clip_bodies, context_max_chars,
-                     get_context, get_session, raw_context, raw_session, recent, split_ids)
+                     get_context, get_session, raw_context, raw_session, recent, since_ts, split_ids)
 
 
 # Tool annotations tell an MCP client whether a call needs the user's approval. Codex skips its
@@ -49,7 +49,7 @@ def build_tools():
                         "description": "comma-separated subset of: text,summary,tool_call,tool_result,reasoning (default: text,summary,tool_call,tool_result)",
                     },
                     "cwd": {"type": "string", "description": "only sessions whose working directory contains this substring"},
-                    "since": {"type": "string", "description": "YYYY-MM-DD"},
+                    "since": {"type": "string", "description": "Nd (e.g. 7d), YYYY-MM-DD or an ISO timestamp"},
                     "host": {"type": "string", "description": host_desc},
                     "limit": {"type": "integer", "description": "max hits (default 20)"},
                     "include_injected": {
@@ -131,7 +131,7 @@ def build_tools():
                 "properties": {
                     "source": {"type": "string", "description": "comma-separated subset of: claude,codex,opencode,pi,agy,grok"},
                     "cwd": {"type": "string", "description": "only sessions whose working directory contains this substring"},
-                    "since": {"type": "string", "description": "YYYY-MM-DD"},
+                    "since": {"type": "string", "description": "Nd (e.g. 7d), YYYY-MM-DD or an ISO timestamp"},
                     "limit": {"type": "integer", "description": "max sessions (default 25)"},
                 },
             },
@@ -194,14 +194,6 @@ def _text_result(obj):
     return {"content": [{"type": "text", "text": json.dumps(obj, ensure_ascii=False, indent=2)}]}
 
 
-def _since(value):
-    if not value:
-        return None
-    if len(value) == 10:
-        return value + "T00:00:00Z"
-    return value
-
-
 def _excluded_sessions(args, meta):
     ids = args.get("exclude_session_ids")
     excluded = split_ids([ids] if isinstance(ids, str) else ids)
@@ -230,7 +222,7 @@ def handle_call(name, args, index):
             sources=sources.split(",") if sources else None,
             kinds=kinds.split(",") if kinds else list(DEFAULT_KINDS),
             cwd=args.get("cwd"),
-            since=_since(args.get("since")),
+            since=since_ts(args.get("since")),
             limit=min(int(args.get("limit", 20)), 100),
             hosts=hosts,
             include_injected=bool(args.get("include_injected")),
@@ -282,7 +274,7 @@ def handle_call(name, args, index):
             index,
             sources=sources.split(",") if sources else None,
             cwd=args.get("cwd"),
-            since=_since(args.get("since")),
+            since=since_ts(args.get("since")),
             limit=min(int(args.get("limit", 25)), 100),
         )
         return _text_result(rows)

@@ -31,7 +31,7 @@ Full-text search over user prompts, assistant replies, summaries, tool calls and
 | `source` | string | all | Comma-separated subset of `claude,codex,opencode,pi,agy,grok` |
 | `kinds` | string | `text,summary,tool_call,tool_result` | Add `reasoning` to search model reasoning too. The CLI flags are `--kind` and `--all-kinds`. |
 | `cwd` | string | — | Substring of the session's working directory, e.g. `infra` |
-| `since` | string | — | `YYYY-MM-DD` |
+| `since` | string | — | `Nd` (the last N days, e.g. `7d`), `YYYY-MM-DD` or an ISO timestamp |
 | `host` | string | all devices | Comma-separated. The MCP tool description lists the registered device names. |
 | `limit` | integer | 20 | Capped at 100 over MCP |
 | `include_injected` | boolean | false | Also match injected boilerplate (workspace instructions, plugin suggestions, slash-command output, Codex approval-review wraps). See [Message schema](#message-schema). |
@@ -135,7 +135,7 @@ Lists recently started sessions newest-first, titled with the first real user pr
 |---|---|---|---|
 | `source` | string | all | Comma-separated subset of `claude,codex,opencode,pi,agy,grok` |
 | `cwd` | string | — | Substring of the working directory |
-| `since` | string | — | `YYYY-MM-DD` |
+| `since` | string | — | `Nd` (the last N days, e.g. `7d`), `YYYY-MM-DD` or an ISO timestamp |
 | `limit` | integer | 25 | Capped at 100 over MCP |
 
 ```json

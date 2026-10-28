@@ -14,7 +14,7 @@ from .fingerprint import code_fingerprint
 from .remote import LOCAL, RemoteError, fan_out_search, remote_context, remote_session
 from .search import (CONTEXT_MAX_CHARS, DEFAULT_KINDS, archived_count, caller_session_ids, clip_bodies,
                      context_max_chars, get_context, get_session, origin, raw_context, raw_session, recent,
-                     split_ids)
+                     since_ts, split_ids)
 from .sources import SOURCES
 from .sources.base import SourceUnavailable
 
@@ -49,13 +49,11 @@ def _hl(text, use_color):
 
 
 def _since(value):
-    if not value:
-        return None
-    if len(value) == 10:
-        value += "T00:00:00Z"
-    elif "T" not in value:
-        value += "T00:00:00Z"
-    return value
+    """argparse type for --since; forwarded searches pass on the timestamp it returns."""
+    try:
+        return since_ts(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc))
 
 
 def _human_size(n):
@@ -366,7 +364,7 @@ def cmd_search(args):
             sources=args.source.split(",") if args.source else None,
             kinds=kinds,
             cwd=args.cwd,
-            since=_since(args.since),
+            since=args.since,
             limit=args.limit,
             hosts=hosts,
             sync_local=not args.no_sync,
@@ -428,7 +426,7 @@ def _relay_search(args, idx, kinds):
                 sources=args.source.split(",") if args.source else None,
                 kinds=kinds,
                 cwd=args.cwd,
-                since=_since(args.since),
+                since=args.since,
                 limit=args.limit,
                 hosts=None if relay else [LOCAL],
                 sync_local=not args.no_sync,
@@ -898,7 +896,7 @@ def cmd_recent(args):
     sources = args.source.split(",") if args.source else None
     rows = recent(
         idx, sources=sources, cwd=args.cwd,
-        since=_since(args.since), limit=args.limit,
+        since=args.since, limit=args.limit,
     )
     if args.json:
         print(json.dumps(rows, ensure_ascii=False, indent=2))
@@ -1032,7 +1030,7 @@ def main(argv=None):
     sp.add_argument("--kind", help="comma-separated kinds: text,summary,tool_call,tool_result,reasoning")
     sp.add_argument("--all-kinds", action="store_true")
     sp.add_argument("--cwd", help="substring match on working directory")
-    sp.add_argument("--since", help="YYYY-MM-DD")
+    sp.add_argument("--since", type=_since, help="Nd (e.g. 7d), YYYY-MM-DD or an ISO timestamp")
     sp.add_argument("--limit", type=int, default=20)
     sp.add_argument("--host", help="comma-separated devices or routes, e.g. local,devbox-109/devbox-126 "
                                    "(default: everything reachable)")
@@ -1157,7 +1155,7 @@ def main(argv=None):
     sp = sub.add_parser("recent", help="most recently started sessions with their first task")
     sp.add_argument("--source", help="comma-separated subset of: %s" % ",".join(SOURCES))
     sp.add_argument("--cwd", help="substring match on working directory")
-    sp.add_argument("--since", help="YYYY-MM-DD")
+    sp.add_argument("--since", type=_since, help="Nd (e.g. 7d), YYYY-MM-DD or an ISO timestamp")
     sp.add_argument("--limit", type=int, default=25)
     sp.add_argument("--no-sync", action="store_true", help="skip the incremental sync first")
     sp.add_argument("--json", action="store_true")
