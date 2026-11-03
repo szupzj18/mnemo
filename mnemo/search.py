@@ -4,7 +4,7 @@ import json
 import os
 import re
 
-from .model import CJK_RUN, has_cjk, norm_ts
+from .model import CJK_RUN, has_cjk
 from .sources import SOURCES
 
 DEFAULT_KINDS = ("text", "summary", "tool_call", "tool_result")
@@ -18,7 +18,6 @@ CALLER_SESSION_META = ("threadId", "sessionId")
 
 
 _SINCE_DAYS = re.compile(r"^(\d+)d$")
-_UTC_TS = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 
 
 def since_ts(value, now=None):
@@ -33,13 +32,21 @@ def since_ts(value, now=None):
         return None
     value = value.strip()
     m = _SINCE_DAYS.match(value)
-    if m:
-        now = now or datetime.datetime.now(datetime.timezone.utc)
-        return (now - datetime.timedelta(days=int(m.group(1)))).strftime("%Y-%m-%dT%H:%M:%SZ")
-    ts = norm_ts(value)
-    if not _UTC_TS.match(ts):
-        raise ValueError("since takes Nd (e.g. 7d), YYYY-MM-DD or an ISO timestamp, not %r" % value)
-    return ts
+    try:
+        if m:
+            now = now or datetime.datetime.now(datetime.timezone.utc)
+            dt = now - datetime.timedelta(days=int(m.group(1)))
+        else:
+            # Stricter than norm_ts, which keeps an unreadable log timestamp as it is:
+            # 2026-13-01T00:00:00Z has the shape of a cutoff but is no date.
+            dt = datetime.datetime.fromisoformat(value[:-1] + "+00:00" if value.endswith("Z") else value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        dt = dt.astimezone(datetime.timezone.utc)
+    except (ValueError, OverflowError):
+        raise ValueError("since takes Nd (e.g. 7d), a valid YYYY-MM-DD or an ISO timestamp, not %r" % value)
+    # Not strftime: %Y leaves years before 1000 unpadded on some platforms.
+    return "%04d-%02d-%02dT%02d:%02d:%02dZ" % (dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
 
 
 def caller_session_ids(env=None, meta=None):

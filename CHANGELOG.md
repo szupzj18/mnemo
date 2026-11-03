@@ -5,7 +5,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ## [Unreleased]
 
 ### Fixed
-- `--since` on `mnemo search` and `mnemo recent` (and `since` on the `search_sessions` and `list_recent_sessions` tools) accepts `Nd`, the last N days, as the bundled skill already showed with `mnemo recent --since 7d`. Before, `Nd` was compared to timestamps as text, so `--since 3d` or `7d` listed nothing and `--since 10d` didn't filter at all. A value that is neither `Nd`, a date nor an ISO timestamp is now an error rather than a silent mismatch.
+- `--since` on `mnemo search` and `mnemo recent` (and `since` on the `search_sessions` and `list_recent_sessions` tools) accepts `Nd`, the last N days, as the bundled skill already showed with `mnemo recent --since 7d`. Before, `Nd` was compared to timestamps as text, so `--since 3d` or `7d` listed nothing and `--since 10d` didn't filter at all. A value that is neither `Nd`, a date nor an ISO timestamp, or names a day or time that doesn't exist (`2026-13-01T00:00:00Z`), is now an error rather than a silent mismatch: the CLI exits 2 and the tools return `isError`.
 
 ## [0.7.0] - 2026-10-26
 
