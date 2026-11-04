@@ -1,6 +1,8 @@
 import base64
+import datetime
 import json
 import os
+import re
 
 from .model import CJK_RUN, has_cjk
 from .sources import SOURCES
@@ -13,6 +15,38 @@ DEFAULT_KINDS = ("text", "summary", "tool_call", "tool_result")
 # commands, and sends the same pair as threadId/sessionId in an MCP call's _meta.
 CALLER_SESSION_ENV = ("CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "CODEX_SESSION_ID")
 CALLER_SESSION_META = ("threadId", "sessionId")
+
+
+_SINCE_DAYS = re.compile(r"^(\d+)d$")
+
+
+def since_ts(value, now=None):
+    """A --since value as the sortable UTC timestamp the index stores, or None.
+
+    Takes Nd (the last N days, counted back from now), YYYY-MM-DD (from the
+    start of that day, UTC) or an ISO timestamp. Anything else raises
+    ValueError: compared as a string, '3d' would match nothing and '10d'
+    everything.
+    """
+    if not value:
+        return None
+    value = value.strip()
+    m = _SINCE_DAYS.match(value)
+    try:
+        if m:
+            now = now or datetime.datetime.now(datetime.timezone.utc)
+            dt = now - datetime.timedelta(days=int(m.group(1)))
+        else:
+            # Stricter than norm_ts, which keeps an unreadable log timestamp as it is:
+            # 2026-13-01T00:00:00Z has the shape of a cutoff but is no date.
+            dt = datetime.datetime.fromisoformat(value[:-1] + "+00:00" if value.endswith("Z") else value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        dt = dt.astimezone(datetime.timezone.utc)
+    except (ValueError, OverflowError):
+        raise ValueError("since takes Nd (e.g. 7d), a valid YYYY-MM-DD or an ISO timestamp, not %r" % value)
+    # Not strftime: %Y leaves years before 1000 unpadded on some platforms.
+    return "%04d-%02d-%02dT%02d:%02d:%02dZ" % (dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
 
 
 def caller_session_ids(env=None, meta=None):

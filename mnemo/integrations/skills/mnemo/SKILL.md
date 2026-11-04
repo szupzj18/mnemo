@@ -30,7 +30,7 @@ mnemo search "关键词" --json --coverage
   - `--source claude,codex,opencode,pi,agy,grok` — restrict to agents
   - `--host local,devbox-109` — restrict to devices
   - `--cwd <substring>` — restrict to working directory, e.g. `--cwd my-service`
-  - `--since YYYY-MM-DD`
+  - `--since 7d` or `--since YYYY-MM-DD`
   - `--limit N` (default 20)
   - `--kind text,summary,tool_call,tool_result,reasoning` (default excludes reasoning; pass `--all-kinds` to include it)
   - `--include-injected` — also match injected boilerplate (workspace instructions, plugin suggestions, slash-command output, Codex approval-review wraps); hidden by default

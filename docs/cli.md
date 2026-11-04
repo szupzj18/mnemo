@@ -11,7 +11,7 @@ All read commands accept `--json` for machine-readable output. The JSON shapes a
 
 ```bash
 mnemo search <keywords…> [--source S] [--kind K | --all-kinds] [--cwd SUBSTR]
-                         [--since YYYY-MM-DD] [--host H] [--limit N] [--json]
+                         [--since Nd|YYYY-MM-DD] [--host H] [--limit N] [--json]
 ```
 
 Alias: `mnemo query`.
@@ -23,7 +23,7 @@ Alias: `mnemo query`.
 | `--kind` | `text,summary,tool_call,tool_result` | Message kinds to match |
 | `--all-kinds` | off | Also match `reasoning` |
 | `--cwd` | — | Substring of the session's working directory |
-| `--since` | — | Only messages on or after this date |
+| `--since` | — | Only messages from the last N days (`7d`, counted back from now) or on or after a date (`YYYY-MM-DD`, UTC) or ISO timestamp |
 | `--host` | everything reachable | Comma-separated devices or routes (`local`, `devbox-a`, `devbox-a/devbox-b`) |
 | `--limit` | 20 | Max hits after merging |
 | `--no-sync` | off | Skip the local incremental sync (remotes still sync) |
@@ -42,10 +42,10 @@ Agents inject boilerplate into user messages — `AGENTS.md` instructions, plugi
 ## mnemo recent
 
 ```bash
-mnemo recent [--source S] [--cwd SUBSTR] [--since YYYY-MM-DD] [--limit N] [--json]
+mnemo recent [--source S] [--cwd SUBSTR] [--since Nd|YYYY-MM-DD] [--limit N] [--json]
 ```
 
-Lists the most recently started sessions, newest first, each with its first real user prompt as the title, the working directory, start time and message count. Use it to recall recent work without a keyword, or to choose a session before `mnemo session`. Boilerplate-only and approval-review rollouts have no title and are skipped.
+Lists the most recently started sessions, newest first, each with its first real user prompt as the title, the working directory, start time and message count. Use it to recall recent work without a keyword, or to choose a session before `mnemo session`. Boilerplate-only and approval-review rollouts have no title and are skipped. `--since` takes the same values as in `mnemo search` (`7d` is the last seven days).
 
 ## mnemo context
 
