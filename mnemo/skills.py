@@ -470,12 +470,39 @@ def collect(sub, db_path, host=LOCAL, since=None, no_sync=False, today=None, que
     return devices, warnings
 
 
+def _their_warnings(env, name):
+    """A neighbor speaks of itself as local; say which device it is."""
+    return [name + w[len(LOCAL):] if w.startswith(LOCAL + ":") else w for w in env.get("warnings", [])]
+
+
+def _inventory_of(env, name):
+    """`skill ls --json --host local` on a neighbor -> its inventory {"dirs", "skills", "warnings"}."""
+    if "dirs" not in env:  # {"devices": {"local": inventory}, "issues", "warnings"}
+        (inv,) = env["devices"].values()
+        env = dict(inv, warnings=env.get("warnings", []))
+    return dict(env, warnings=_their_warnings(env, name))
+
+
+def _stats_of(env, inv, name):
+    """`skill stats --json --host local` on a neighbor, plus its inventory -> what local() returns for stats."""
+    if "installed" in env:
+        return dict(env, warnings=_their_warnings(env, name))
+    rows = [{k: v for k, v in r.items() if k != "device"} for r in env["rows"]]  # grouped by device,agent
+    return {"first_day": env["first_day"], "installed": sorted({s["name"] for s in inv["skills"]}),
+            "rows": rows, "warnings": _their_warnings(env, name) + inv["warnings"]}
+
+
 def fan_out(argv, hosts):
-    """Run `mnemo skill <argv> --json --host local` on each wanted neighbor in parallel.
+    """Each wanted neighbor's answer to `skill <argv>`, in the shape local() returns, asked in parallel.
 
     hosts: None or "all" for every direct neighbor, else a list of names ("local"
-    is answered by the caller). Returns ({name: parsed JSON}, warnings). A device
-    on an older mnemo has no `skill` command; it is skipped with a warning.
+    is answered by the caller). Returns ({name: answer}, warnings). A neighbor is
+    asked through the public read-only views (`mnemo skill ... --json --host local`,
+    the only skill commands a link lets in), whose JSON wraps the device's answer,
+    so the reply is unwrapped here: ls and search need the folder inventory, both
+    from `skill ls`; stats takes the use rows from `skill stats` and what is
+    installed from `skill ls`. A device on an older mnemo has no `skill` command;
+    it is skipped with a warning.
     """
     from concurrent.futures import ThreadPoolExecutor
 
@@ -486,11 +513,18 @@ def fan_out(argv, hosts):
     remotes = [r for r in remotes if remote_mod._link_up(r)]  # a laptop that linked in may be asleep
     missing = sorted(set(wanted or ()) - {r["name"] for r in remotes})
     warnings = ["%s: no such device or not linked right now" % m for m in missing]
+    sub = argv[0]
+    today = argv[argv.index("--today"):argv.index("--today") + 2] if "--today" in argv else []
+
+    def ask(r, args):
+        return json.loads(remote_mod.remote_exec(r, ["skill"] + args + ["--json", "--host", "local"], timeout=120))
 
     def one(r):
         try:
-            out = remote_mod.remote_exec(r, ["skill"] + list(argv) + ["--json", "--host", "local"], timeout=120)
-            return r["name"], json.loads(out), None
+            inv = _inventory_of(ask(r, ["ls"] + today), r["name"])
+            if sub in ("ls", "search"):
+                return r["name"], inv, None
+            return r["name"], _stats_of(ask(r, list(argv)), inv, r["name"]), None
         except remote_mod.RemoteError as exc:
             msg = str(exc)
             if "invalid choice: 'skill'" in msg:
@@ -498,6 +532,9 @@ def fan_out(argv, hosts):
             return r["name"], None, msg
         except ValueError:
             return r["name"], None, "%s: answered with something other than JSON" % r["name"]
+        except (KeyError, TypeError):
+            return r["name"], None, "%s: answered in a shape this mnemo does not read (mnemo remote upgrade %s)" \
+                % (r["name"], r["name"])
 
     results = {}
     if remotes:

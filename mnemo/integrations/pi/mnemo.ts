@@ -57,7 +57,7 @@ export default function (pi) {
       cwd: Type.Optional(
         Type.String({ description: "only sessions whose working directory contains this" })
       ),
-      since: Type.Optional(Type.String({ description: "YYYY-MM-DD" })),
+      since: Type.Optional(Type.String({ description: "Nd (e.g. 30d) or YYYY-MM-DD" })),
       host: Type.Optional(
         Type.String({
           description:
