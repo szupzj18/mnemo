@@ -12,6 +12,7 @@ from .index import DEFAULT_DB_PATH, SCHEMA_VERSION, Index, IndexTooNew
 from . import remote as remote_mod
 from .fingerprint import code_fingerprint
 from .remote import LOCAL, RemoteError, fan_out_search, remote_context, remote_session
+from .search import since_start
 from .search import (CONTEXT_MAX_CHARS, DEFAULT_KINDS, archived_count, caller_session_ids, clip_bodies,
                      context_max_chars, get_context, get_session, origin, raw_context, raw_session, recent,
                      split_ids)
@@ -49,13 +50,15 @@ def _hl(text, use_color):
 
 
 def _since(value):
-    if not value:
-        return None
-    if len(value) == 10:
-        value += "T00:00:00Z"
-    elif "T" not in value:
-        value += "T00:00:00Z"
-    return value
+    return since_start(value)
+
+
+def _since_arg(value):
+    """argparse type for --since: a bad value is a usage error (exit 2), not an empty result."""
+    try:
+        return since_start(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc))
 
 
 def _human_size(n):
@@ -1032,7 +1035,7 @@ def main(argv=None):
     sp.add_argument("--kind", help="comma-separated kinds: text,summary,tool_call,tool_result,reasoning")
     sp.add_argument("--all-kinds", action="store_true")
     sp.add_argument("--cwd", help="substring match on working directory")
-    sp.add_argument("--since", help="YYYY-MM-DD")
+    sp.add_argument("--since", type=_since_arg, help="Nd (e.g. 30d) or YYYY-MM-DD")
     sp.add_argument("--limit", type=int, default=20)
     sp.add_argument("--host", help="comma-separated devices or routes, e.g. local,devbox-109/devbox-126 "
                                    "(default: everything reachable)")
@@ -1157,7 +1160,7 @@ def main(argv=None):
     sp = sub.add_parser("recent", help="most recently started sessions with their first task")
     sp.add_argument("--source", help="comma-separated subset of: %s" % ",".join(SOURCES))
     sp.add_argument("--cwd", help="substring match on working directory")
-    sp.add_argument("--since", help="YYYY-MM-DD")
+    sp.add_argument("--since", type=_since_arg, help="Nd (e.g. 30d) or YYYY-MM-DD")
     sp.add_argument("--limit", type=int, default=25)
     sp.add_argument("--no-sync", action="store_true", help="skip the incremental sync first")
     sp.add_argument("--json", action="store_true")

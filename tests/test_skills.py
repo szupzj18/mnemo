@@ -365,6 +365,85 @@ class ReportTest(unittest.TestCase):
             skills.parse_since("last month", TODAY)
 
 
+class NeighborAnswerTest(unittest.TestCase):
+    """A neighbor answers through the public JSON views; fan_out unwraps them into what local() returns."""
+
+    INV = {"dirs": [{"agent": "claude", "account": ".claude", "path": "/h/.claude/skills", "also": [],
+                     "skills": 1, "managed": []}],
+           "skills": [{"name": "read-pr", "agent": "claude", "account": ".claude", "dir": "/h/.claude/skills",
+                       "kind": "dir", "hash": "abc", "desc": "Read a pull request before reviewing it"}]}
+
+    def setUp(self):
+        from unittest import mock
+
+        from mnemo import remote as remote_mod
+
+        row = ReportTest.row("codex", "read-pr", 3, 2)
+        envelopes = {
+            "ls": {"devices": {"local": self.INV}, "issues": [], "warnings": ["local: index refreshed 2 days ago"]},
+            "stats": skills.report({"local": {"first_day": "2026-09-24", "installed": ["read-pr"], "rows": [row]}},
+                                   ["device", "agent"], "30d"),
+        }
+        self.asked = []
+
+        def remote_exec(r, argv, timeout=60):
+            self.asked.append(argv)
+            return json.dumps(envelopes[argv[1]])
+
+        patches = [mock.patch.object(remote_mod, "load_remotes", lambda: [{"name": "devbox"}]),
+                   mock.patch.object(remote_mod, "_link_up", lambda r: True),
+                   mock.patch.object(remote_mod, "remote_exec", remote_exec)]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_ls_unwraps_the_inventory_and_names_the_device_in_warnings(self):
+        devices, warnings = skills.collect("ls", ":memory:", host="devbox")
+        self.assertEqual(devices["devbox"]["skills"][0]["name"], "read-pr")
+        self.assertEqual(warnings, ["devbox: index refreshed 2 days ago"])
+        self.assertEqual(skills.issues(devices), [])
+        self.assertTrue(all(a[-3:] == ["--json", "--host", "local"] for a in self.asked), self.asked)
+
+    def test_search_reads_the_inventory(self):
+        devices, _ = skills.collect("search", ":memory:", host="devbox", query="pull request")
+        hits = skills.search(devices, "pull request")
+        self.assertEqual([h["skill"] for h in hits], ["read-pr"])
+        self.assertEqual([a[1] for a in self.asked], ["ls"])
+
+    def test_stats_takes_rows_from_stats_and_installed_from_ls(self):
+        devices, _ = skills.collect("stats", ":memory:", host="devbox", since="30d", today="2026-10-23")
+        answer = devices["devbox"]
+        self.assertEqual(answer["installed"], ["read-pr"])
+        self.assertEqual([(r["agent"], r["skill"], r["calls"]) for r in answer["rows"]], [("codex", "read-pr", 3)])
+        self.assertNotIn("device", answer["rows"][0])
+        out = skills.report(devices, ["device"], "30d", True, True)
+        self.assertEqual((out["rows"][0]["device"], out["unused"]), ("devbox", []))
+        self.assertEqual(sorted(a[1] for a in self.asked), ["ls", "stats"])
+        self.assertTrue(all(link.allowed(a) for a in self.asked), "every question passes a link's policy")
+
+
+class SinceTest(unittest.TestCase):
+    def test_nd_dates_and_forwarded_timestamps(self):
+        from mnemo.search import since_start
+
+        self.assertEqual(since_start("30d", TODAY), "2026-09-24T00:00:00Z")
+        self.assertEqual(since_start("1d", TODAY), "2026-10-23T00:00:00Z")
+        self.assertEqual(since_start("2026-10-01", TODAY), "2026-10-01T00:00:00Z")
+        self.assertEqual(since_start("2026-10-01T08:30:00Z", TODAY), "2026-10-01T08:30:00Z")
+        self.assertIsNone(since_start(None, TODAY))
+        with self.assertRaises(ValueError):
+            since_start("last month", TODAY)
+
+    def test_cli_rejects_a_since_it_cannot_read(self):
+        from mnemo import cli
+
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as cm:
+            cli.main(["recent", "--since", "last month"])
+        self.assertEqual(cm.exception.code, 2)
+        self.assertIn("--since takes Nd", err.getvalue())
+
+
 class LinkPolicyTest(unittest.TestCase):
     def test_only_read_only_skill_views_for_this_device(self):
         self.assertTrue(link.allowed(["skill", "stats", "--since", "30d", "--json", "--host", "local"]))

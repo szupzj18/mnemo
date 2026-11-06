@@ -1,6 +1,8 @@
 import base64
+import datetime
 import json
 import os
+import re
 
 from .model import CJK_RUN, has_cjk
 from .sources import SOURCES
@@ -232,6 +234,27 @@ def clip_bodies(rows, max_chars, hint="full=true"):
                 r["clipped"] = True
                 r["chars" if key == "text" else "body_chars"] = len(value)
     return rows
+
+
+def since_start(value, today=None):
+    """--since for search, recent and the MCP tools -> ISO start timestamp, or None when unset.
+
+    Takes Nd (N days counting today, as `skill stats` does), YYYY-MM-DD, or a full
+    timestamp (what a neighbor is forwarded). Anything else raises ValueError instead
+    of silently matching nothing.
+    """
+    if not value:
+        return None
+    value = value.strip()
+    m = re.match(r"^(\d+)d$", value)
+    if m:
+        day = (today or datetime.date.today()) - datetime.timedelta(days=max(1, int(m.group(1))) - 1)
+        return day.isoformat() + "T00:00:00Z"
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", value):
+        return value + "T00:00:00Z"
+    if re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", value):
+        return value
+    raise ValueError("--since takes Nd (e.g. 30d) or YYYY-MM-DD, not %r" % value)
 
 
 def recent(index, sources=None, cwd=None, since=None, limit=25):
