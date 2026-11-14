@@ -64,13 +64,17 @@ class SinceFilterTest(unittest.TestCase):
         self.demo.deactivate()
         self.demo.cleanup()
 
+    def every_session(self):
+        # Counted, not hard-coded: a source added to the demo HOME must not break these.
+        return self.idx.db.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+
     def test_recent_keeps_only_the_last_n_days(self):
         # '3d' used to be compared as text: '2026-…' < '3d…' matched nothing, and
         # '10d' matched everything because '2026-…' > '10d…'.
         three = recent(self.idx, since=since_ts("3d", NOW))
         self.assertEqual([r["started_ts"][:10] for r in three], ["2026-09-26", "2026-09-25"])
         self.assertEqual(len(recent(self.idx, since=since_ts("8d", NOW))), 4)
-        self.assertEqual(len(recent(self.idx, since=since_ts("10d", NOW))), 5)
+        self.assertEqual(len(recent(self.idx, since=since_ts("10d", NOW))), self.every_session())
 
     def test_search_keeps_only_the_last_n_days(self):
         hits = search(self.idx, "backoff", since=since_ts("3d", NOW))
@@ -89,7 +93,7 @@ class SinceFilterTest(unittest.TestCase):
     def test_cli_recent_takes_days(self):
         code, out, _ = self.run_cli("recent", "--since", "100000d", "--no-sync", "--json")
         self.assertEqual(code, 0)
-        self.assertEqual(len(json.loads(out)), 5)
+        self.assertEqual(len(json.loads(out)), self.every_session())
         code, out, _ = self.run_cli("recent", "--since", "0d", "--no-sync", "--json")
         self.assertEqual((code, json.loads(out)), (0, []))
 
@@ -119,7 +123,7 @@ class SinceFilterTest(unittest.TestCase):
 
     def test_mcp_recent_takes_days(self):
         result = mcp_server.handle_call("list_recent_sessions", {"since": "100000d"}, self.idx)
-        self.assertEqual(len(json.loads(result["content"][0]["text"])), 5)
+        self.assertEqual(len(json.loads(result["content"][0]["text"])), self.every_session())
         with self.assertRaises(ValueError):
             mcp_server.handle_call("list_recent_sessions", {"since": "3x"}, self.idx)
 
