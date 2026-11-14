@@ -9,6 +9,11 @@ import tempfile
 from ..model import Msg, clip, norm_ts
 
 
+# Zstandard suffixes a session log can carry on disk beside its logical .jsonl
+# path: Codex compresses cold rollouts to .zst, DSH writes .zstd by default.
+COMPRESSED_SUFFIXES = (".zst", ".zstd")
+
+
 class SourceUnavailable(Exception):
     """A source's store exists but cannot be read right now (permissions, locked,
     unexpected format). Sync skips that source and keeps what it already indexed,
@@ -35,6 +40,11 @@ class Source:
     # A session file that can change without changing size (a database updated in
     # place): its archived copy is current only with the very same mtime.
     EXACT_MTIME = False
+    # A compressed log the agent appends to frame by frame: a read that catches
+    # the newest frame half-written keeps the complete lines before it instead
+    # of failing the file (see open_jsonl). The next sync sees the new size and
+    # reads the finished frame.
+    PARTIAL_TAIL = False
 
     def __init__(self, home=None):
         self.home = os.path.expanduser(home or "~")
@@ -147,9 +157,9 @@ class Source:
         """
         raise NotImplementedError
 
-    @staticmethod
-    def read_jsonl(path):
-        with open_jsonl(path) as f:
+    def read_jsonl(self, path):
+        partial = self._note_partial if self.PARTIAL_TAIL else None
+        with open_jsonl(path, on_partial=partial) as f:
             for lineno, line in enumerate(f, 1):
                 line = line.strip()
                 if not line:
@@ -159,21 +169,63 @@ class Source:
                 except (ValueError, UnicodeDecodeError):
                     continue
 
+    def _note_partial(self, path):
+        # Only the latest: readers other than sync (session, raw) never take it.
+        self._partial = path
+
+    def take_partial_read(self):
+        """The file last read only up to a half-written final frame, once; else None."""
+        path, self._partial = getattr(self, "_partial", None), None
+        return path
+
+
+# Where package managers put zstd. An agent started from a desktop launcher
+# (Finder, a dock) hands its MCP servers a PATH of /usr/bin:/bin only, which
+# misses Homebrew's and MacPorts' tools even when the user's shell has them.
+ZSTD_DIRS = ("/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin", "/home/linuxbrew/.linuxbrew/bin")
+
+
+def find_zstd():
+    """The zstd executable: on PATH, else in a usual install folder; None if there is none."""
+    found = shutil.which("zstd")
+    if found:
+        return found
+    for folder in ZSTD_DIRS:
+        candidate = os.path.join(folder, "zstd")
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
+# What zstd prints for input that stops inside a frame (a log caught mid-append),
+# as opposed to corrupt or unsupported data.
+_TRUNCATED = "premature end"
+
 
 @contextlib.contextmanager
-def open_jsonl(path):
-    # Codex changes a cold rollout's representation without changing its logical path.
-    compressed = path.endswith(".jsonl.zst")
-    if not compressed and not os.path.exists(path) and os.path.exists(path + ".zst"):
-        path += ".zst"
-        compressed = True
+def open_jsonl(path, on_partial=None):
+    """A text stream over a JSONL log, decompressing a Zstandard one.
+
+    A compressed file that ends inside a frame raises SourceUnavailable, unless
+    on_partial is given: then the lines before the cut are the content, and
+    on_partial(path) is told so its caller can report the partial read.
+    """
+    # Codex may compress a cold rollout and DSH writes compressed logs by default;
+    # both keep a logical suffix on disk, so resolve the sibling that exists.
+    compressed = path.endswith(COMPRESSED_SUFFIXES)
+    if not compressed and not os.path.exists(path):
+        for suffix in COMPRESSED_SUFFIXES:
+            if os.path.exists(path + suffix):
+                path += suffix
+                compressed = True
+                break
     if not compressed:
         with open(path, "r", encoding="utf-8", errors="replace") as stream:
             yield stream
         return
-    binary = shutil.which("zstd")
+    binary = find_zstd()
     if not binary:
-        raise SourceUnavailable("compressed Codex logs require the optional zstd executable")
+        raise SourceUnavailable("compressed session logs require the optional zstd executable")
     # stderr goes to a file so a corrupt stream cannot fill a pipe and deadlock stdout.
     with tempfile.TemporaryFile() as errors:
         process = subprocess.Popen([binary, "-dc", "--", path], stdout=subprocess.PIPE,
@@ -183,8 +235,11 @@ def open_jsonl(path):
             yield process.stdout
             if process.wait():
                 errors.seek(0)
-                raise SourceUnavailable("cannot decompress %s: %s" %
-                                        (path, errors.read(2048).decode("utf-8", "replace")))
+                reason = errors.read(2048).decode("utf-8", "replace")
+                if on_partial is not None and _TRUNCATED in reason.lower():
+                    on_partial(path)
+                else:
+                    raise SourceUnavailable("cannot decompress %s: %s" % (path, reason.strip()))
         finally:
             process.stdout.close()
             if process.poll() is None:

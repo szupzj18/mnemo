@@ -64,8 +64,8 @@ class IndexTest(unittest.TestCase):
         checks = doctor.check_index(self.demo.db, full=True, now=NOW)
         self.assertEqual([(c.name, c.status) for c in checks],
                          [("index", doctor.OK), ("archive", doctor.OK), ("integrity", doctor.OK)])
-        self.assertIn("5 sessions", checks[0].detail)
-        self.assertIn("5 session files", checks[1].detail)
+        self.assertIn("6 sessions", checks[0].detail)
+        self.assertIn("6 session files", checks[1].detail)
 
     def test_archive_off_is_reported_with_the_switch(self):
         os.environ["MNEMO_ARCHIVE"] = "off"
@@ -99,6 +99,30 @@ class AgentsTest(unittest.TestCase):
         self.assertEqual(got["Codex"], (doctor.WARN, "mnemo setup"))
         self.assertEqual(got["OpenCode"][0], doctor.WARN)
         self.assertEqual(got["Pi"], (doctor.SKIP, None))
+
+
+class ZstdTest(unittest.TestCase):
+    def test_reported_only_when_compressed_logs_exist(self):
+        import shutil
+        import tempfile
+        root = tempfile.mkdtemp(prefix="mnemo-doctor-zstd-")
+        try:
+            home = os.path.join(root, "home")
+            folder = os.path.join(home, ".dsh", "sessions", "--p--", "session-a")
+            os.makedirs(folder)
+            plain = os.path.join(folder, "session.v4.jsonl")
+            open(plain, "w").close()
+            # A plaintext DSH backend needs nothing.
+            self.assertIsNone(doctor.check_zstd(home, find=lambda: None))
+            os.rename(plain, plain + ".zstd")
+            ok = doctor.check_zstd(home, find=lambda: "/usr/bin/zstd")
+            self.assertEqual((ok.name, ok.status), ("zstd", doctor.OK))
+            self.assertIn("DeepSeek Harness", ok.detail)
+            missing = doctor.check_zstd(home, find=lambda: None)
+            self.assertEqual(missing.status, doctor.WARN)
+            self.assertIn("install zstd", missing.fix)
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
 
 
 class DevicesTest(unittest.TestCase):

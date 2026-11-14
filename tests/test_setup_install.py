@@ -24,7 +24,7 @@ exit 0
 class AgentHome:
     """A throwaway HOME with a fake `claude` CLI first on PATH."""
 
-    def __init__(self, agents=("claude", "codex", "opencode", "pi", "agy", "grok")):
+    def __init__(self, agents=("claude", "codex", "dsh", "opencode", "pi", "agy", "grok")):
         self.root = tempfile.mkdtemp(prefix="mnemo-setup-")
         self.home = os.path.join(self.root, "home")
         self.bin = os.path.join(self.root, "bin")
@@ -38,6 +38,8 @@ class AgentHome:
             os.chmod(path, os.stat(path).st_mode | stat.S_IEXEC)
         if "codex" in agents:
             os.makedirs(os.path.join(self.home, ".codex"))
+        if "dsh" in agents:
+            os.makedirs(os.path.join(self.home, ".dsh"))
         if "opencode" in agents:
             os.makedirs(os.path.join(self.home, ".config", "opencode"))
         if "pi" in agents:
@@ -47,7 +49,7 @@ class AgentHome:
         if "grok" in agents:
             os.makedirs(os.path.join(self.home, ".grok"))
         self._saved = {k: os.environ.get(k)
-                       for k in ("HOME", "PATH", "FAKE_CLAUDE_LOG", "XDG_CONFIG_HOME", "XDG_DATA_HOME")}
+                       for k in ("HOME", "PATH", "FAKE_CLAUDE_LOG", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "DSH_HOME")}
 
     def __enter__(self):
         os.environ["HOME"] = self.home
@@ -89,6 +91,8 @@ class SetupTest(unittest.TestCase):
                 ("claude", "MCP server"): "added",
                 ("claude", "skill"): "added",
                 ("codex", "MCP server"): "added",
+                ("dsh", "MCP server"): "added",
+                ("dsh", "skill"): "added",
                 ("opencode", "MCP server"): "added",
                 ("pi", "extension"): "added",
                 ("agy", "MCP server"): "added",
@@ -245,6 +249,84 @@ class AgySetupTest(unittest.TestCase):
                 f.write("#!/bin/sh\n")
             os.chmod(agy, 0o755)
             self.assertEqual(statuses(setup.run())[("agy", "MCP server")], "added")
+
+
+class DshSetupTest(unittest.TestCase):
+    def patch_file(self, h):
+        return h.path(".dsh", "cordis.patch.yml")
+
+    def read(self, path):
+        with open(path, encoding="utf-8") as f:
+            return f.read()
+
+    def test_inserts_the_server_into_the_home_patch_layer_and_links_the_skill(self):
+        with AgentHome(agents=("dsh",)) as h:
+            self.assertEqual(statuses(setup.run(dry_run=True))[("dsh", "MCP server")], "added")
+            self.assertFalse(os.path.exists(self.patch_file(h)))
+            result = statuses(setup.run())
+            self.assertEqual((result[("dsh", "MCP server")], result[("dsh", "skill")]), ("added", "added"))
+            text = self.read(self.patch_file(h))
+            # An id-only patch would override a missing entry; a new plugin is an insert.
+            self.assertIn("- insert:\n    - id: mcp-mnemo\n", text)
+            self.assertIn('name: "@deepseek-ai/dsh-mcp-client"', text)
+            self.assertIn("serverName: mnemo", text)
+            self.assertIn('args: ["mcp"]', text)
+            self.assertNotIn("env:", text)
+            self.assertEqual(os.path.realpath(h.path(".dsh", "skills", "mnemo")), os.path.realpath(setup.SKILL_SRC))
+            self.assertEqual(statuses(setup.run(agents=["dsh"])),
+                             {("dsh", "MCP server"): "ok", ("dsh", "skill"): "ok"})
+            self.assertEqual(self.read(self.patch_file(h)).count("serverName: mnemo"), 1)
+
+    def test_appends_to_an_existing_list_and_backs_it_up(self):
+        with AgentHome(agents=("dsh",)) as h:
+            mine = "# mine\n- id: ui-chat\n  config:\n    transcriptView: standard\n"
+            with open(self.patch_file(h), "w") as f:
+                f.write(mine)
+            self.assertEqual(statuses(setup.run())[("dsh", "MCP server")], "added")
+            text = self.read(self.patch_file(h))
+            self.assertTrue(text.startswith(mine))
+            self.assertIn("\n- insert:\n", text)
+            self.assertEqual(len([p for p in os.listdir(h.path(".dsh")) if ".bak-" in p]), 1)
+
+    def test_replaces_an_empty_flow_list(self):
+        with AgentHome(agents=("dsh",)) as h:
+            with open(self.patch_file(h), "w") as f:
+                f.write("# empty\n[]\n")
+            setup.run()
+            text = self.read(self.patch_file(h))
+            self.assertTrue(text.startswith("# empty\n\n# mnemo"), text)
+            self.assertNotIn("[]", text)
+
+    def test_leaves_other_yaml_alone_and_says_what_to_add(self):
+        with AgentHome(agents=("dsh",)) as h:
+            with open(self.patch_file(h), "w") as f:
+                f.write("[{id: ui-chat}]\n")
+            step = [s for s in setup.run() if s.action == "MCP server"][0]
+            self.assertEqual(step.status, "skipped")
+            self.assertIn("- insert:", step.detail)
+            self.assertEqual(self.read(self.patch_file(h)), "[{id: ui-chat}]\n")
+
+    def test_a_server_in_a_profile_layer_counts(self):
+        with AgentHome(agents=("dsh",)) as h:
+            profile = h.path(".dsh", "profiles", "web")
+            os.makedirs(profile)
+            with open(os.path.join(profile, "cordis.patch.yml"), "w") as f:
+                f.write("- insert:\n    - name: '@deepseek-ai/dsh-mcp-client'\n      config:\n"
+                        "        serverName: 'mnemo'\n        transport: stdio\n        command: mnemo\n")
+            self.assertEqual(statuses(setup.run())[("dsh", "MCP server")], "ok")
+            self.assertFalse(os.path.exists(self.patch_file(h)))
+
+    def test_follows_dsh_home_and_passes_it_to_the_server(self):
+        with AgentHome(agents=()) as h:
+            moved = os.path.join(h.root, "dsh-home")
+            os.makedirs(moved)
+            os.environ["DSH_HOME"] = moved
+            self.assertEqual(statuses(setup.run())[("dsh", "MCP server")], "added")
+            text = self.read(os.path.join(moved, "cordis.patch.yml"))
+            # DSH starts MCP servers without its DSH_* variables.
+            self.assertIn('env: {"DSH_HOME": %s}' % json.dumps(moved), text)
+            self.assertTrue(os.path.islink(os.path.join(moved, "skills", "mnemo")))
+            self.assertFalse(os.path.exists(h.path(".dsh")))
 
 
 class GrokSetupTest(unittest.TestCase):
@@ -447,7 +529,7 @@ class InstallScriptTest(unittest.TestCase):
                 second = run()
                 self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
                 self.assertIn("updating", second.stdout)
-                self.assertIn("verified and swapped in: 5 sessions, 45 messages", second.stdout)
+                self.assertIn("verified and swapped in: 6 sessions, 53 messages", second.stdout)
                 self.assertTrue(os.listdir(os.path.join(demo.home, ".mnemo", "backups")))
         finally:
             demo.cleanup()

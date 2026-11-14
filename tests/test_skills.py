@@ -96,6 +96,10 @@ class EventRulesTest(unittest.TestCase):
                          [("commit", "read")])
         self.assertEqual(ev("opencode", "assistant", "tool_call", 'skill({"name": "x", "path": "/h/.agents/skills/x/SKILL.md"})'),
                          [("x", "read")])
+        self.assertEqual(ev("dsh", "assistant", "tool_call", 'skill({"name": "mnemo"})'), [("mnemo", "tool")])
+        self.assertEqual(ev("dsh", "assistant", "tool_call",
+                            'read({"file_path": "/h/.agents/skills/mnemo/SKILL.md", "limit": 40})'),
+                         [("mnemo", "read")])
 
     def test_mentions_that_are_not_uses(self):
         ev = skills.events

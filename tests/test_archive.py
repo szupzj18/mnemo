@@ -182,7 +182,7 @@ class ArchivedSessionTest(ArchiveCase):
         self.addCleanup(os.umask, 0o022)
         path = self.claude(".claude-work", "w1", "quokka")
         stats = self.sync()
-        self.assertEqual(stats["files_archived"], 6)  # 5 demo sessions + this one
+        self.assertEqual(stats["files_archived"], 7)  # 6 demo sessions + this one
         copy = os.path.join(self.idx.archive.root, "claude", ".claude-work", "projects", "-w", "w1.jsonl")
         with open(path, "rb") as a, open(copy, "rb") as b:
             self.assertEqual(a.read(), b.read())
@@ -316,7 +316,7 @@ class CliTest(unittest.TestCase):
                 self.assertEqual(p.returncode, 0, p.stderr)
                 return p.stdout
 
-            self.assertIn("6 copied to the archive", mnemo("index"))
+            self.assertIn("7 copied to the archive", mnemo("index"))
             os.remove(path)
             text = mnemo("search", "quokka", "--host", "local")
             self.assertIn("[local/claude .claude-work]", text)
@@ -324,7 +324,7 @@ class CliTest(unittest.TestCase):
             self.assertIn("archived: the original log is gone", mnemo("session", path))
             self.assertIn("archived: the original log is gone", mnemo("context", path, "1"))
             status = json.loads(mnemo("status", "--json"))["archive"]
-            self.assertEqual((status["enabled"], status["files"], status["sessions_archived"]), (True, 6, 1))
+            self.assertEqual((status["enabled"], status["files"], status["sessions_archived"]), (True, 7, 1))
             self.assertIn("archive  off", mnemo("node", "--archive", "off"))
             self.assertFalse(json.loads(mnemo("node", "--json"))["archive"])
             self.assertIn("1 removed", mnemo("index"))

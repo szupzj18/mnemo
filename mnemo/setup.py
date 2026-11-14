@@ -4,6 +4,7 @@ Idempotent: anything already configured is left alone and reported as such,
 so it is safe to re-run after installing a new agent or upgrading mnemo.
 Config files are backed up before they are edited.
 """
+import glob
 import json
 import os
 import re
@@ -20,7 +21,7 @@ PI_SRC = os.path.join(INTEGRATIONS, "pi", "mnemo.ts")
 
 from . import xdg
 
-AGENTS = ("claude", "codex", "opencode", "pi", "agy", "grok")
+AGENTS = ("claude", "codex", "dsh", "opencode", "pi", "agy", "grok")
 
 
 class Step:
@@ -69,6 +70,7 @@ def detect():
     return {
         "claude": bool(shutil.which("claude") or os.path.isdir(home(".claude"))),
         "codex": bool(shutil.which("codex") or os.path.isdir(home(".codex"))),
+        "dsh": bool(shutil.which("dsh") or os.path.isdir(dsh_home())),
         "opencode": bool(shutil.which("opencode") or os.path.isdir(os.path.join(xdg.config(), "opencode"))
                          or os.path.isdir(os.path.join(xdg.data(), "opencode"))),
         "pi": bool(shutil.which("pi") or os.path.isdir(home(".pi", "agent"))),
@@ -165,6 +167,83 @@ def setup_codex(cmd, dry_run):
     if "[mcp_servers.mnemo]" in text:
         return [Step("codex", "MCP server", "%s already has [mcp_servers.mnemo]" % config, "ok")]
     return _append_toml_server("codex", config, text, cmd, dry_run)
+
+
+def dsh_home():
+    """Where DeepSeek Harness keeps its config, skills and sessions: $DSH_HOME, else ~/.dsh."""
+    value = os.environ.get("DSH_HOME", "")
+    return os.path.abspath(os.path.expanduser(value)) if value else home(".dsh")
+
+
+# DSH composes each profile from patch layers; $DSH_HOME/cordis.patch.yml applies
+# to every profile. A patch with an id only overrides an existing entry, so a new
+# plugin entry goes in an `insert` list. Strings are JSON, which YAML reads as is.
+DSH_PATCH = """\
+# mnemo: search past coding-agent sessions (added by mnemo setup)
+- insert:
+    - id: mcp-mnemo
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        serverName: mnemo
+        transport: stdio
+        command: {command}
+        args: {args}
+        toolCallTimeoutMs: 120000
+"""
+# DSH launches MCP servers without any DSH_* variable, so a moved home is passed on.
+DSH_ENV = "        env: {{\"DSH_HOME\": {home}}}\n"
+_DSH_SERVER = re.compile(r"""^[ \t-]*serverName:[ \t]*["']?mnemo["']?[ \t]*(?:#.*)?$""", re.M)
+_DSH_HEADER = """\
+# Your home patch layer for every dsh profile: a top-level YAML array of loader
+# patch entries, applied after each profile's own cordis.patch.yml.
+"""
+
+
+def dsh_patch(cmd):
+    block = DSH_PATCH.format(command=json.dumps(cmd[0]), args=json.dumps(cmd[1:] + ["mcp"]))
+    if dsh_home() != home(".dsh"):
+        block += DSH_ENV.format(home=json.dumps(dsh_home()))
+    return block
+
+
+def _dsh_merge(text, block):
+    """text with block appended as more entries of its top-level list, or None if it is not a block list."""
+    content = [l for l in text.splitlines() if l.strip() and not l.lstrip().startswith("#")]
+    if not content:
+        return (text.rstrip("\n") + "\n\n" if text.strip() else _DSH_HEADER) + block
+    if [l.strip() for l in content] == ["[]"]:  # the empty list `dsh` writes into a new profile
+        return re.sub(r"(?m)^[ \t]*\[\][ \t]*\n?", "", text, count=1).rstrip("\n") + "\n\n" + block
+    if content[0].startswith("-"):
+        return text.rstrip("\n") + "\n\n" + block
+    return None
+
+
+def setup_dsh(cmd, dry_run):
+    root = dsh_home()
+    config = os.path.join(root, "cordis.patch.yml")
+    block = dsh_patch(cmd)
+    # The server may be wired in the home layer or any profile's own layer; a
+    # second entry with the same serverName would fail to load.
+    layers = [config] + sorted(glob.glob(os.path.join(glob.escape(root), "profiles", "*", "cordis.patch.yml")))
+    found = next((p for p in layers if _DSH_SERVER.search(_read(p))), None)
+    if found:
+        step = Step("dsh", "MCP server", "%s already has serverName: mnemo" % found, "ok")
+    else:
+        text = _read(config)
+        merged = _dsh_merge(text, block)
+        if merged is None:
+            step = Step("dsh", "MCP server", "%s is not a plain YAML list, so it was left alone\n"
+                        "add this entry to it:\n%s" % (config, block.rstrip("\n")), "skipped")
+        else:
+            detail = config
+            if not dry_run:
+                os.makedirs(root, exist_ok=True)
+                if text:
+                    detail = "%s (backup: %s)" % (config, _backup(config))
+                with open(config, "w", encoding="utf-8") as f:
+                    f.write(merged)
+            step = Step("dsh", "MCP server", detail, "added")
+    return [step, _link("dsh", "skill", SKILL_SRC, os.path.join(root, "skills", "mnemo"), dry_run)]
 
 
 def opencode_entry(cmd):
@@ -277,8 +356,8 @@ def setup_grok(cmd, dry_run):
     return _append_toml_server("grok", config, text, cmd, dry_run)
 
 
-SETUPS = {"claude": setup_claude, "codex": setup_codex, "opencode": setup_opencode, "pi": setup_pi,
-          "agy": setup_agy, "grok": setup_grok}
+SETUPS = {"claude": setup_claude, "codex": setup_codex, "dsh": setup_dsh, "opencode": setup_opencode,
+          "pi": setup_pi, "agy": setup_agy, "grok": setup_grok}
 
 
 def run(agents=None, dry_run=False):
@@ -298,8 +377,8 @@ def run(agents=None, dry_run=False):
 
 # ------------------------------------------------------------------- output
 
-NAMES = {"claude": "Claude Code", "codex": "Codex", "opencode": "OpenCode", "pi": "Pi", "agy": "Antigravity CLI",
-         "grok": "Grok CLI"}
+NAMES = {"claude": "Claude Code", "codex": "Codex", "dsh": "DeepSeek Harness", "opencode": "OpenCode", "pi": "Pi",
+         "agy": "Antigravity CLI", "grok": "Grok CLI"}
 ICONS = {"added": "+", "fixed": "\u21bb", "ok": "\u2713", "skipped": "\u00b7", "failed": "\u2717"}
 ASCII_ICONS = {"added": "+", "fixed": "~", "ok": "=", "skipped": "-", "failed": "!"}
 COLORS = {"added": "34", "fixed": "33", "ok": "32", "skipped": "2", "failed": "31"}
@@ -368,8 +447,8 @@ def render(steps, dry_run=False, color=False, unicode=True, home_dir=None):
     elif found:
         nxt = "Everything is already set up."
     else:
-        nxt = ("No agents found. Install Claude Code, Codex, OpenCode, Pi, Antigravity CLI or Grok CLI,"
-               " then run mnemo setup again.")
+        nxt = ("No agents found. Install Claude Code, Codex, DeepSeek Harness, OpenCode, Pi, Antigravity CLI"
+               " or Grok CLI, then run mnemo setup again.")
     if nxt:
         lines.append("  " + paint("1", arrow + " " + nxt))
     if by_hand and not counts["failed"]:

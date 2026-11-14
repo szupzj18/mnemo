@@ -4,7 +4,7 @@
 
 - Python 3.7 or newer, standard library only
 - SQLite built with FTS5 (the default on macOS and on current Linux distributions)
-- One or more of: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), [Pi](https://github.com/badlogic/pi-mono), [OpenCode](https://github.com/sst/opencode) [Antigravity CLI](https://antigravity.google) (`agy`) or Grok CLI (`grok`)
+- One or more of: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), [Pi](https://github.com/badlogic/pi-mono), [OpenCode](https://github.com/sst/opencode), DeepSeek Harness (`dsh`), [Antigravity CLI](https://antigravity.google) (`agy`) or Grok CLI (`grok`)
 
 Check FTS5:
 
@@ -42,11 +42,14 @@ The first `mnemo index` parses every session file. Expect about 30 s for a few t
 | Claude Code | `~/.claude/projects/**/*.jsonl`, and the same under every `~/.claude-*` account and `$CLAUDE_CONFIG_DIR` |
 | Codex | `~/.codex/sessions/**` and `~/.codex/archived_sessions/**`, and the same under every `~/.codex-*` account and `$CODEX_HOME` |
 | Pi | `~/.pi/agent/sessions/**` |
+| DeepSeek Harness | `~/.dsh/sessions/<project key>/<session id>/session.v4.jsonl.zstd` (older sessions may still be `session.v3.jsonl.zstd`), and the same under `$DSH_HOME`; logs use the highest format generation in the session folder |
 | OpenCode | `~/.local/share/opencode/opencode.db` (SQLite) |
 | Antigravity CLI | `~/.gemini/antigravity-cli/conversations/<conversation id>.db` (SQLite, one per conversation) |
 | Grok CLI | `~/.grok/sessions/<URL-encoded cwd>/<session id>/updates.jsonl`, and the same under every `~/.grok-*` home and `$GROK_HOME` |
 
-Every account folder counts: one made per account by a switcher (`~/.claude-work`, `~/.codex-team`) is indexed like the default, and results name it as the hit's `account`. A folder that is a symlink to one already read is read once. `$CLAUDE_CONFIG_DIR`, `$CODEX_HOME` and `$GROK_HOME` apply to your own home only, like the XDG variables; once an account outside your home has been indexed, the archive remembers it, so searches started without the variable (by another agent, say) still cover it.
+Every account folder counts: one made per account by a switcher (`~/.claude-work`, `~/.codex-team`) is indexed like the default, and results name it as the hit's `account`. A folder that is a symlink to one already read is read once. `$CLAUDE_CONFIG_DIR`, `$CODEX_HOME`, `$DSH_HOME` and `$GROK_HOME` apply to your own home only, like the XDG variables; once an account outside your home has been indexed, the archive remembers it, so searches started without the variable (by another agent, say) still cover it.
+
+DeepSeek Harness compresses its logs with Zstandard. Mnemo shells out to the `zstd` executable to read them (Codex's cold compressed rollouts use the same path). It looks on `PATH` first, then in `/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin` and `/home/linuxbrew/.linuxbrew/bin`, because an agent started from a desktop launcher (the DeepSeek Harness app, say) gives its MCP servers a `PATH` without them; without it those sessions are skipped with a warning and stay at their last indexed state. Install it with your package manager (for example `brew install zstd` or `apt install zstd`); `mnemo doctor` warns when compressed logs are present and `zstd` is not.
 
 Mnemo keeps its own state in `~/.mnemo/`:
 
@@ -60,7 +63,7 @@ Mnemo keeps its own state in `~/.mnemo/`:
 
 ### The session archive
 
-Claude Code deletes session logs older than `cleanupPeriodDays` (30 days unless you change it), and Codex threads, Pi sessions, Antigravity CLI conversations and Grok CLI sessions can be deleted by hand. When a log is gone, its session would normally leave the index with it. To prevent that, every sync copies each Claude Code, Codex, Pi, Antigravity CLI and Grok CLI log it indexes to
+Claude Code deletes session logs older than `cleanupPeriodDays` (30 days unless you change it), and Codex threads, Pi sessions, DeepSeek Harness sessions, Antigravity CLI conversations and Grok CLI sessions can be deleted by hand. When a log is gone, its session would normally leave the index with it. To prevent that, every sync copies each Claude Code, Codex, Pi, DeepSeek Harness, Antigravity CLI and Grok CLI log it indexes to
 
 ```text
 ~/.mnemo/archive/<source>/<account>/<path inside the account>
@@ -77,7 +80,7 @@ and once the original is gone, Mnemo keeps the session and reads the copy. Searc
 
 ## Connect your agents
 
-`mnemo setup` does all of the below for every agent it detects (a CLI on `PATH` or its config directory): it registers the MCP server with `claude mcp add`, appends `[mcp_servers.mnemo]` to `~/.codex/config.toml` after backing it up, adds `mcp.mnemo` to OpenCode's `opencode.json` and `mcpServers.mnemo` to Antigravity CLI's `~/.gemini/config/mcp_config.json` (both backed up first), appends `[mcp_servers.mnemo]` to Grok CLI's `~/.grok/config.toml` unless grok already imports Claude Code's server, and links the Claude skill and the Pi extension. Stale symlinks from an older checkout are repaired; real files are never replaced. `--dry-run` previews, `--agent codex` limits it. The manual steps:
+`mnemo setup` does all of the below for every agent it detects (a CLI on `PATH` or its config directory): it registers the MCP server with `claude mcp add`, appends `[mcp_servers.mnemo]` to `~/.codex/config.toml` after backing it up, inserts the server into DeepSeek Harness's `~/.dsh/cordis.patch.yml` (backed up first), adds `mcp.mnemo` to OpenCode's `opencode.json` and `mcpServers.mnemo` to Antigravity CLI's `~/.gemini/config/mcp_config.json` (both backed up first), appends `[mcp_servers.mnemo]` to Grok CLI's `~/.grok/config.toml` unless grok already imports Claude Code's server, and links the Claude and DeepSeek Harness skill and the Pi extension. Stale symlinks from an older checkout are repaired; real files are never replaced. `--dry-run` previews, `--agent codex` limits it. The manual steps:
 
 ### Claude Code
 
@@ -145,6 +148,27 @@ startup_timeout_sec = 120
 ```
 
 grok also loads Claude Code's user-scope MCP servers from `~/.claude.json` unless `[compat.claude] mcps = false`, so once Claude Code has `mnemo`, grok has it too and `mnemo setup` leaves its config alone. Its own default start-up timeout is 30 s. Sessions are indexed from `~/.grok/sessions/` as source `grok`: Mnemo reads each session folder's `updates.jsonl`, the conversation log grok resumes from, and skips the model-context copy (`chat_history.jsonl`) and the metadata beside it. Every `~/.grok-*` home is indexed too, and `$GROK_HOME` like `$CODEX_HOME`. The Grok desktop app keeps its chats elsewhere and is not indexed.
+
+### DeepSeek Harness
+
+```yaml
+# ~/.dsh/cordis.patch.yml (or $DSH_HOME/cordis.patch.yml), applied to every dsh profile
+- insert:
+    - id: mcp-mnemo
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        serverName: mnemo
+        transport: stdio
+        command: "/Users/you/.local/bin/mnemo"
+        args: ["mcp"]
+        toolCallTimeoutMs: 120000
+```
+
+```bash
+ln -s ~/mnemo/integrations/skills/mnemo ~/.dsh/skills/mnemo   # optional but recommended
+```
+
+A patch entry with only an `id` overrides an entry a bundle already has, so a new plugin goes in an `insert` list. DSH starts MCP servers without its `DSH_*` variables: if you moved `$DSH_HOME`, add `env: {"DSH_HOME": "/path/to/it"}` under `config` so mnemo finds the sessions there (`mnemo setup` does). `dsh --dump-config` shows the composed tree, and the server's tools appear as `mcp__mnemo__search_sessions` and so on. DSH also reads skills from `~/.agents/skills`.
 
 ### Pi
 

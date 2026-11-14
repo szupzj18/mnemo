@@ -12,8 +12,9 @@ DEFAULT_KINDS = ("text", "summary", "tool_call", "tool_result")
 # Session ids the calling agent exports to the commands it runs. Claude Code sets
 # CLAUDE_CODE_SESSION_ID for shell commands and MCP servers; Codex sets
 # CODEX_THREAD_ID (this thread) and CODEX_SESSION_ID (its root session) for shell
-# commands, and sends the same pair as threadId/sessionId in an MCP call's _meta.
-CALLER_SESSION_ENV = ("CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "CODEX_SESSION_ID")
+# commands, and sends the same pair as threadId/sessionId in an MCP call's _meta;
+# DeepSeek Harness sets DSH_SESSION_ID (the id its session log is filed under).
+CALLER_SESSION_ENV = ("CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "CODEX_SESSION_ID", "DSH_SESSION_ID")
 CALLER_SESSION_META = ("threadId", "sessionId")
 
 

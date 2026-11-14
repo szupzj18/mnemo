@@ -9,7 +9,7 @@ Three read-only views, all answered by the device that holds the data:
 
 Uses come in three kinds (TRIGGERS): the user asked for the skill by name
 (/name, $name, /skill:name), Claude Code's Skill tool loaded it (the model chose
-it), or an agent read its SKILL.md by path (how Codex, Pi, agy and Grok load a
+it), or an agent read its SKILL.md by path (how Codex, Pi, DeepSeek Harness, agy and Grok load a
 skill they chose, and also how any agent follows an instruction to read one).
 
 Only the standard library is imported at module level: the event rules must run
@@ -30,7 +30,9 @@ SLASH, LOAD = "slash", "load"
 
 # --------------------------------------------------------------------- events
 
-_SKILL_TOOL = re.compile(r"^Skill\((\{.*\})\)\s*$", re.S)
+# Claude Code's Skill tool and DeepSeek Harness's `skill` tool name the skill in
+# the arguments; the key is "skill" for one and "name" for the other.
+_SKILL_TOOL = re.compile(r"^(?:Skill|skill)\((\{.*\})\)\s*$", re.S)
 _BASE_DIR = re.compile(r"^Base directory for this skill: (\S+)")
 _SLASH = re.compile(r"<command-name>/([\w.:-]+)</command-name>")
 _CODEX_INJECT = re.compile(r"<skill>\s*<name>([^<]+)</name>")
@@ -43,12 +45,13 @@ _READ = {
     "codex": re.compile(r'^exec_command\((?:\[[^\]]*"-lc", "|\{"cmd":\s*")(?:cat|sed -n \S+|head(?: -\S+)*|nl -ba|bat)'
                         r'\s+[^"]*?/skills/([\w.-]+)/SKILL\.md'),
     "pi": re.compile(r'^read\(\{.*"path": "[^"]*/skills/([\w.-]+)/SKILL\.md"'),
+    "dsh": re.compile(r'^read\(\{.*"file_path":\s*"[^"]*/skills/([\w.-]+)/SKILL\.md"'),
     "agy": re.compile(r'^view_file\(\{"AbsolutePath":"[^"]*/skills/([\w.-]+)/SKILL\.md"'),
     "grok": re.compile(r'^read_file\(\{"target_file": "[^"]*/skills/([\w.-]+)/SKILL\.md"'),
     "opencode": re.compile(r'^(?:read|skill)\(\{.*?/skills/([\w.-]+)/SKILL\.md'),
 }
 # Cheap substring test before any regex: almost no message mentions a skill.
-_MARKERS = ("SKILL.md", "Skill(", "<skill", "<command-name>/", "Base directory for this skill")
+_MARKERS = ("SKILL.md", "Skill(", "skill(", "<skill", "<command-name>/", "Base directory for this skill")
 
 
 def _bare(name):
@@ -66,11 +69,12 @@ def events(source, role, kind, body):
     if not body or not any(m in body for m in _MARKERS):
         return []
     if kind == "tool_call":
-        if source == "claude":
+        if source in ("claude", "dsh"):
             m = _SKILL_TOOL.match(body)
             if m:
                 try:
-                    name = json.loads(m.group(1)).get("skill") or ""
+                    args = json.loads(m.group(1))
+                    name = args.get("skill") or args.get("name") or ""
                 except (ValueError, AttributeError):
                     return []
                 return [(_bare(name), "tool")] if name else []
@@ -91,6 +95,7 @@ def events(source, role, kind, body):
 
 # SQL that finds every message events() could accept: the indexer runs events()
 # on each message it writes, and the v3 → v4 migration on rows matching this.
+# SQLite's LIKE ignores ASCII case, so 'Skill(%' also covers DSH's skill(...).
 CANDIDATES = (
     "(kind = 'tool_call' AND (COALESCE(body, text) LIKE 'Skill(%' OR COALESCE(body, text) LIKE '%SKILL.md%'))"
     " OR (role = 'user' AND kind = 'text' AND (COALESCE(body, text) LIKE 'Base directory for this skill:%'"
@@ -111,7 +116,8 @@ def agent_dirs(home=None):
 
     home = os.path.expanduser(home or "~")
     out = []
-    for name in ("claude", "codex", "grok"):
+    # <config dir>/skills of every account; DSH also reads ~/.agents/skills (below).
+    for name in ("claude", "codex", "dsh", "grok"):
         for config in get_sources([name], home=home)[0].config_dirs():
             out.append((name, os.path.basename(config.rstrip("/")), os.path.join(config, "skills")))
     out.append(("agents", ".agents", os.path.join(home, ".agents", "skills")))

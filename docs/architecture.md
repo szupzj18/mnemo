@@ -38,8 +38,8 @@ Each adapter yields `(session_id, cwd, [(lineno, Msg)])`, where `Msg = (ts, role
 - `role` ∈ `user | assistant | tool`
 - `kind` ∈ `text | summary | reasoning | tool_call | tool_result`
 - Tool calls are rendered as `name(args-json)`.
-- Noise is dropped: Codex `developer`/`system` messages and `<environment_context>` preambles, Claude Code command caveats and slash-command wrappers, image blocks, and encrypted reasoning without a summary.
-- `lineno` is the line in the source JSONL, which is what makes raw reads and deep links possible; for OpenCode it is the part's rowid, and for Antigravity CLI the step's index in its conversation database. Grok CLI's `updates.jsonl` is JSONL too: one update per line, the agent's streamed chunks joined.
+- Noise is dropped: Codex `developer`/`system` messages and `<environment_context>` preambles, Claude Code command caveats and slash-command wrappers, DeepSeek Harness's user-role context projections (workspace instructions, skill catalog, time/runtime snapshots), image blocks, and encrypted reasoning without a summary.
+- `lineno` is the line in the source JSONL, which is what makes raw reads and deep links possible; for OpenCode it is the part's rowid, and for Antigravity CLI the step's index in its conversation database. Grok CLI's `updates.jsonl` is JSONL too: one update per line, the agent's streamed chunks joined. DeepSeek Harness writes one compressed generation per session (`sources/dsh.py`), so its adapter yields the highest generation under `~/.dsh/sessions` and reads it through the optional `zstd` executable.
 
 ## Index
 

@@ -58,7 +58,7 @@ class DbOptionTest(unittest.TestCase):
         try:
             db = os.path.join(demo.root, "elsewhere.db")
             env = dict(os.environ, HOME=demo.home, MNEMO_ARCHIVE="off")
-            for k in ("CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "CODEX_SESSION_ID"):
+            for k in ("CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "CODEX_SESSION_ID", "DSH_SESSION_ID"):
                 env.pop(k, None)
             requests = [
                 {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}},

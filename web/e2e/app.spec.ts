@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 
 // Runs against `mnemo dashboard` over scripts/make-demo-home.py data:
-// 5 sessions (claude 2, codex 2, pi 1), 45 messages, no remotes. The demo HOME
+// 6 sessions (claude 2, codex 2, dsh 1, pi 1), 53 messages, no remotes. The demo HOME
 // has no OpenCode database, Antigravity CLI conversation or Grok CLI session, so those sources are listed with 0.
 
 const pageErrors = new WeakMap<Page, string[]>()
@@ -30,11 +30,11 @@ test.describe("dashboard", () => {
   test("shows index stats and the local device", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByTestId("page-title")).toHaveText("仪表盘")
-    await expect(page.getByTestId("stat").filter({ hasText: "索引会话" })).toContainText("5")
-    await expect(page.getByTestId("stat").filter({ hasText: "索引消息" })).toContainText("45")
+    await expect(page.getByTestId("stat").filter({ hasText: "索引会话" })).toContainText("6")
+    await expect(page.getByTestId("stat").filter({ hasText: "索引消息" })).toContainText("53")
     const local = page.locator('[data-testid="device-card"][data-device="local"]')
     await expect(local).toHaveAttribute("data-state", "ok")
-    await expect(local).toContainText("agy 0 · claude 2 · codex 2 · grok 0 · opencode 0 · pi 1")
+    await expect(local).toContainText("agy 0 · claude 2 · codex 2 · dsh 1 · grok 0 · opencode 0 · pi 1")
     await expect(page.getByText("还没有远程设备")).toBeVisible()
     await expect(page.getByTestId("app-version")).toHaveText(/^v\d+\.\d+\.\d+$/)
   })

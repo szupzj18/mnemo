@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+- DeepSeek Harness (`dsh`) sessions are indexed as source `dsh`, from `$DSH_HOME/sessions` (default `~/.dsh/sessions`), one JSONL log per session under `<project key>/<session id>/`. The adapter reads the highest format generation in each session folder (`session.v4.jsonl.zstd`, falling back to older `v3` logs), decompresses the Zstandard logs DSH writes by default (the optional `zstd` executable), and indexes prompts, replies, reasoning, tool calls, tool results and compaction summaries. Injected user-role context (workspace instructions, skill catalog, time/runtime snapshots, approval notices) is kept verbatim but excluded from search; compaction replacement nodes are skipped so the append-origin transcript is complete. A DSH log caught mid-append is read up to its last complete frame and finished on the next sync (only DSH logs get this; a truncated Codex rollout is still skipped with a warning). Sessions are archived like the other file-per-session logs, with their `.zstd` copies cleaned up like Codex's `.zst` ones, and `session.v3` results nested in the old shape are normalized too.
+- `mnemo setup` connects DeepSeek Harness: it inserts a `dsh-mcp-client` entry with `serverName: mnemo` into `$DSH_HOME/cordis.patch.yml` (default `~/.dsh/cordis.patch.yml`, the patch layer every profile applies; backed up first) and links the skill into `$DSH_HOME/skills/mnemo`. A moved `$DSH_HOME` is passed to the server in its `env`, because DSH starts MCP servers without its `DSH_*` variables. `mnemo skill ls` also lists `~/.dsh/skills`.
+- `mnemo doctor` reports `zstd` when this machine has compressed DeepSeek Harness or Codex logs, and warns with the install command when it is missing.
+- `zstd` is found in the usual install folders (`/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin`, `/home/linuxbrew/.linuxbrew/bin`) when it is not on `PATH`, so an MCP server started by a desktop app, whose `PATH` is only `/usr/bin:/bin`, still reads compressed DeepSeek Harness and Codex logs.
+- The demo HOME (`scripts/make-demo-home.py`) has a DeepSeek Harness session, so tests and the dashboard cover the `dsh` source: 6 sessions and 53 messages.
+
 ## [0.7.0] - 2026-10-26
 
 ### Added

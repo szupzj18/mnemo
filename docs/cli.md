@@ -19,7 +19,7 @@ Alias: `mnemo query`.
 | Option | Default | Description |
 |---|---|---|
 | `<keywords…>` | — | All keywords must match (AND). English matches word prefixes; Chinese matches substrings. |
-| `--source` | all | `claude,codex,opencode,pi,agy,grok` (comma-separated) |
+| `--source` | all | `claude,codex,dsh,opencode,pi,agy,grok` (comma-separated) |
 | `--kind` | `text,summary,tool_call,tool_result` | Message kinds to match |
 | `--all-kinds` | off | Also match `reasoning` |
 | `--cwd` | — | Substring of the session's working directory |
@@ -29,7 +29,7 @@ Alias: `mnemo query`.
 | `--no-sync` | off | Skip the local incremental sync (remotes still sync) |
 | `--include-injected` | off | Also match injected boilerplate bodies (workspace instructions, plugin suggestions, approval-review wraps) that are kept but hidden from search |
 | `--exclude-session ID` | — | Leave out this session; repeatable or comma-separated |
-| `--include-current` | off | Keep the calling agent's own session. It is left out by default when `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID` or `CODEX_SESSION_ID` is set, so a search run by an agent doesn't return the conversation running it. |
+| `--include-current` | off | Keep the calling agent's own session. It is left out by default when `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`, `CODEX_SESSION_ID` or `DSH_SESSION_ID` is set, so a search run by an agent doesn't return the conversation running it. |
 | `--json` | off | JSON array of hits |
 | `--coverage` | off | With `--json`, return `{hits, coverage, warnings, excluded_sessions}` |
 
@@ -76,7 +76,7 @@ mnemo skill stats [--since 30d|YYYY-MM-DD] [--by device,agent] [--unused] [--gap
 
 Read-only views of the agent skills on this device and, with `--host`, on registered devices. Nothing here writes to a skill folder.
 
-- **`ls`** lists every folder in the agents' user-level skill directories: `~/.claude/skills` and every `~/.claude-*/skills`, `~/.codex*/skills`, `~/.agents/skills`, `~/.pi/agent/skills`, `~/.grok*/skills`, OpenCode's `skills` under its config dir and `~/.gemini/config/skills`. A directory reached through a symlink (`~/.claude-work/skills -> ~/.claude/skills`) is listed once. Each skill is a `link`, a real `dir` or a `dangling` link, with a 12-digit hash of its content; inside a git repository only tracked files count, so a log a skill writes next to itself does not change it. Entries the agent manages itself (Claude Code's `synced/`, Codex's `.system/`) are left out. Problems are printed at the end: `dangling` links and `forked` names, a name whose copies hold different content. Default host: `local`.
+- **`ls`** lists every folder in the agents' user-level skill directories: `~/.claude/skills` and every `~/.claude-*/skills`, `~/.codex*/skills`, `~/.dsh/skills` (and `$DSH_HOME/skills`), `~/.agents/skills`, `~/.pi/agent/skills`, `~/.grok*/skills`, OpenCode's `skills` under its config dir and `~/.gemini/config/skills`. A directory reached through a symlink (`~/.claude-work/skills -> ~/.claude/skills`) is listed once. Each skill is a `link`, a real `dir` or a `dangling` link, with a 12-digit hash of its content; inside a git repository only tracked files count, so a log a skill writes next to itself does not change it. Entries the agent manages itself (Claude Code's `synced/`, Codex's `.system/`) are left out. Problems are printed at the end: `dangling` links and `forked` names, a name whose copies hold different content. Default host: `local`.
 - **`search`** matches every word against the name and the `description` in each `SKILL.md` front matter. Default host: `all`, this device and every registered device.
 - **`stats`** counts how often indexed sessions used each skill, from the `skill_events` table the indexer fills. Default host: `all`; each device counts its own sessions.
 
@@ -159,7 +159,7 @@ Incremental sync of local session logs. Files whose size or mtime are unchanged 
 ## mnemo setup
 
 ```bash
-mnemo setup [--agent claude,codex,opencode,pi,agy,grok] [--dry-run] [--json]
+mnemo setup [--agent claude,codex,dsh,opencode,pi,agy,grok] [--dry-run] [--json]
 ```
 
 Connects every coding agent found on this machine and reports each step as added, fixed, ok, skipped or failed:
@@ -168,6 +168,7 @@ Connects every coding agent found on this machine and reports each step as added
 |---|---|
 | Claude Code | `claude mcp add --scope user mnemo -- <mnemo> mcp`, and links the skill into `~/.claude/skills/mnemo` |
 | Codex | appends `[mcp_servers.mnemo]` to `~/.codex/config.toml` (backed up first) |
+| DeepSeek Harness | inserts a `dsh-mcp-client` entry with `serverName: mnemo` into `$DSH_HOME/cordis.patch.yml`, default `~/.dsh/cordis.patch.yml`, the patch layer every profile applies (backed up first), and links the skill into `$DSH_HOME/skills/mnemo`. Nothing to do when the home layer or a profile's own `cordis.patch.yml` already has the server. A file that isn't a plain YAML list is left alone, and the entry to add is printed instead |
 | OpenCode | adds `mcp.mnemo` to `opencode.json` (or an existing `opencode.jsonc`) under `$XDG_CONFIG_HOME/opencode`, default `~/.config/opencode` (backed up first). A `.jsonc` with comments is left alone, and the block to add is printed instead |
 | Pi | links the extension into `~/.pi/agent/extensions/mnemo.ts` |
 | Antigravity CLI | adds `mcpServers.mnemo` to `~/.gemini/config/mcp_config.json` (backed up first; agy creates it empty). A file that isn't plain JSON is left alone, and the block to add is printed instead |
@@ -230,6 +231,7 @@ mnemo doctor · laptop
   This machine
     ✓ mnemo          0.4.1 + 5 unreleased commits · checkout · latest release
     ✓ index          834 sessions · 1.0 GB · synced 3 min ago
+    ✓ zstd           reads the compressed DeepSeek Harness and Codex logs
     ✓ processes      none running old code
   Agents
     ✓ Claude Code    MCP server + skill
@@ -249,7 +251,7 @@ mnemo doctor · laptop
 
 | Group | What it checks |
 |---|---|
-| mnemo | a newer release on PyPI (skip with `--offline`); the index opens, has the current schema and no rows from an older mnemo; no long-running mnemo process still runs old code. `--full` also runs SQLite's `quick_check` on the index (a few seconds on a large one) |
+| mnemo | a newer release on PyPI (skip with `--offline`); the index opens, has the current schema and no rows from an older mnemo; `zstd` is installed when DeepSeek Harness or Codex logs are compressed; no long-running mnemo process still runs old code. `--full` also runs SQLite's `quick_check` on the index (a few seconds on a large one) |
 | Agents | the same checks as `mnemo setup --dry-run` |
 | Devices | every device a search reaches, through relays too: reachable, same code, relay setting; a device that linked in is fine while asleep |
 | Links | each `mnemo link` service is connected |

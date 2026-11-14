@@ -19,6 +19,9 @@ const root = mkdtempSync(join(tmpdir(), "mnemo-e2e-"))
 const home = join(root, "home")
 // Link services (mnemo link --install) run as plain background processes here.
 const env = { ...process.env, HOME: home, TZ: "UTC", MNEMO_DASHBOARD_TOKEN: "", MNEMO_SERVICE_MANAGER: "background" }
+// A developer's own agent stores (this suite may run inside one) must not leak
+// into the throwaway HOME: it would index real sessions and skew the counts.
+for (const key of ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "DSH_HOME", "GROK_HOME", "MNEMO_ARCHIVE"]) delete env[key]
 
 const mnemo = (args, h = home) =>
   execFileSync(python, [join(repo, "bin", "mnemo"), ...args], { env: { ...env, HOME: h }, stdio: "inherit" })

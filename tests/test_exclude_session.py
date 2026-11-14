@@ -17,9 +17,10 @@ MNEMO = [sys.executable, os.path.join(REPO, "bin", "mnemo")]
 
 
 class CallerSessionIdsTest(unittest.TestCase):
-    def test_reads_claude_and_codex_variables(self):
-        env = {"CLAUDE_CODE_SESSION_ID": "c1", "CODEX_THREAD_ID": "t1", "CODEX_SESSION_ID": "s1", "OTHER": "x"}
-        self.assertEqual(caller_session_ids(env), ["c1", "t1", "s1"])
+    def test_reads_agent_variables(self):
+        env = {"CLAUDE_CODE_SESSION_ID": "c1", "CODEX_THREAD_ID": "t1", "CODEX_SESSION_ID": "s1",
+               "DSH_SESSION_ID": "d1", "OTHER": "x"}
+        self.assertEqual(caller_session_ids(env), ["c1", "t1", "s1", "d1"])
 
     def test_reads_codex_mcp_meta_and_drops_duplicates(self):
         # A Codex root thread's threadId and sessionId are the same id.
