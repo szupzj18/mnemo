@@ -1,11 +1,11 @@
 ---
 name: mnemo
-description: Search past conversations across all local coding agents (Claude Code, Codex, OpenCode, Pi, Antigravity CLI, Grok CLI) and registered remote devboxes. Use when the user wants to recall, find, or check what was previously discussed, decided, tried, or written in any agent session on any device — including sessions that ran in a different agent or on a devbox rather than this machine. 跨 agent、跨设备搜索历史会话：当用户想找以前（在本机或 devbox 上）在 claude / codex / opencode / pi / agy（任意一家）里讨论过的内容、做过的决定、试过的方案或写过的代码时使用。
+description: Search past conversations across all local coding agents (Claude Code, Codex, DeepSeek Harness, OpenCode, Pi, Antigravity CLI, Grok CLI) and registered remote devboxes. Use when the user wants to recall, find, or check what was previously discussed, decided, tried, or written in any agent session on any device — including sessions that ran in a different agent or on a devbox rather than this machine. 跨 agent、跨设备搜索历史会话：当用户想找以前（在本机或 devbox 上）在 claude / codex / dsh / opencode / pi / agy（任意一家）里讨论过的内容、做过的决定、试过的方案或写过的代码时使用。
 ---
 
 # mnemo
 
-Full-text search over the session histories of Claude Code, Codex, OpenCode, Pi, Antigravity CLI (`agy`), and Grok CLI (`grok`), across this machine and registered remote devboxes.
+Full-text search over the session histories of Claude Code, Codex, DeepSeek Harness (`dsh`), OpenCode, Pi, Antigravity CLI (`agy`), and Grok CLI (`grok`), across this machine and registered remote devboxes.
 All agents on every device are indexed in one view; the current agent can read the other agents' and other machines' sessions.
 
 ## When to use
@@ -27,7 +27,7 @@ mnemo search "关键词" --json --coverage
 - Multiple keywords are AND-ed; English matches word prefixes, Chinese matches substrings (bigrams), so `订阅` matches `订阅支出` and `refact` matches `refactoring`.
 - By default every reachable device is searched in parallel (local + devboxes), and results are merged by rank.
 - Filters (all optional):
-  - `--source claude,codex,opencode,pi,agy,grok` — restrict to agents
+  - `--source claude,codex,dsh,opencode,pi,agy,grok` — restrict to agents
   - `--host local,devbox-109` — restrict to devices
   - `--cwd <substring>` — restrict to working directory, e.g. `--cwd my-service`
   - `--since 30d` or `--since YYYY-MM-DD`
@@ -35,11 +35,11 @@ mnemo search "关键词" --json --coverage
   - `--kind text,summary,tool_call,tool_result,reasoning` (default excludes reasoning; pass `--all-kinds` to include it)
   - `--include-injected` — also match injected boilerplate (workspace instructions, plugin suggestions, slash-command output, Codex approval-review wraps); hidden by default
   - `--exclude-session <id>` — leave out a session (repeatable)
-- Your own session is left out automatically (Claude Code and Codex export its id), so hits are about other sessions. Pass `--include-current` (MCP: `include_current_session: true`) only when you want to search this conversation too.
+- Your own session is left out automatically (Claude Code, Codex and DeepSeek Harness export its id), so hits are about other sessions. Pass `--include-current` (MCP: `include_current_session: true`) only when you want to search this conversation too.
 
 The response is `{hits, coverage, warnings, excluded_sessions}`. Inspect each device's status and index refresh; older devices report unknown freshness. Indexed bodies may stop at 20k characters, so zero hits do not establish that the original logs lack the text.
 
-Each hit contains: `host`, `source`, `account`, `cwd`, `ts`, `role`, `kind`, `snippet`, `path`, `lineno`, `archived` (plus `envelope: 1` when the match is inside injected text). `account` is the agent config dir the session came from (`.claude`, `.claude-work`, `.codex`, …): every Claude Code and Codex account on the device is searched. `archived: true` means the agent has since deleted the original log; mnemo kept a copy, and `context`/`session` (and `--raw`) read it under the same `path`. Injected boilerplate is kept verbatim but excluded from default search, so a keyword that only appears in the agent's `AGENTS.md` does not surface every session; genuine user replies inside such messages are still searchable.
+Each hit contains: `host`, `source`, `account`, `cwd`, `ts`, `role`, `kind`, `snippet`, `path`, `lineno`, `archived` (plus `envelope: 1` when the match is inside injected text). `account` is the agent config dir the session came from (`.claude`, `.claude-work`, `.codex`, `.dsh`, …): every Claude Code and Codex account on the device is searched. `archived: true` means the agent has since deleted the original log; mnemo kept a copy, and `context`/`session` (and `--raw`) read it under the same `path`. Injected boilerplate is kept verbatim but excluded from default search, so a keyword that only appears in the agent's `AGENTS.md` does not surface every session; genuine user replies inside such messages are still searchable.
 Warnings list unreachable devices and incomplete index refreshes; results cover only the indexed content on devices that answered.
 
 ## Recalling recent sessions

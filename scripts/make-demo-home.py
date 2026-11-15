@@ -1,4 +1,4 @@
-"""Generate a synthetic HOME with Claude Code / Codex / Pi session logs.
+"""Generate a synthetic HOME with Claude Code / Codex / Pi / DeepSeek Harness session logs.
 
 Usage: python3 scripts/make-demo-home.py /tmp/demo-home && HOME=/tmp/demo-home mnemo index
 Used for docs screenshots and manual testing without touching real sessions.
@@ -111,6 +111,40 @@ def pi(project, start, steps):
     write(os.path.join(d, "%s_%s.jsonl" % (start.strftime("%Y-%m-%dT%H-%M-%S-000Z"), sid)), rows)
 
 
+def dsh(project, start, steps):
+    # DeepSeek Harness writes session.v4.jsonl.zstd by default; its plaintext
+    # backend writes session.v4.jsonl, which keeps the demo free of zstd.
+    sid = "session-" + sid_for("dsh", project, start)
+    cwd = USER_HOME + "/" + project
+    ms = lambda t: int(t.timestamp() * 1000)
+    t = start
+    rows = [{"type": "session", "version": 4, "id": sid, "createdAt": ms(t), "cwd": cwd,
+             "isSeeded": False, "delegationDepth": 0, "agentPreset": "standard"}]
+    calls = 0
+    for seq, (dt, kind, *p) in enumerate(steps, 1):
+        t += timedelta(seconds=dt)
+        event = {"seq": seq, "time": ms(t), "surfaceOp": "append"}
+        if kind == "user":
+            event.update(type="user/message", data={"id": "m%d" % seq, "role": "user", "source": {"kind": "user"},
+                                                    "content": [{"type": "text", "text": p[0]}]})
+        elif kind == "result":
+            event.update(type="tool/result", data={"turn": 1, "step": seq, "message": {
+                "role": "tool", "toolCallId": "call-%d" % calls, "content": [{"type": "text", "text": p[0]}]}})
+        else:
+            if kind == "say":
+                block = {"type": "text", "text": p[0]}
+            elif kind == "think":
+                block = {"type": "reasoning", "text": p[0]}
+            else:
+                calls += 1
+                block = {"type": "tool-call", "id": "call-%d" % calls, "name": p[0], "arguments": json.dumps(p[1])}
+            event.update(type="assistant/message", data={"turn": 1, "step": seq, "message": {
+                "role": "assistant", "content": [block]}})
+        rows.append(event)
+    d = os.path.join(HOME, ".dsh", "sessions", "--" + cwd.strip("/").replace("/", "-") + "--", sid)
+    write(os.path.join(d, "session.v4.jsonl"), rows)
+
+
 TZ = timezone(timedelta(hours=8))
 D = lambda day, h, m: datetime(2026, 9, day, h, m, 0, tzinfo=TZ)
 
@@ -177,6 +211,18 @@ codex("relay", D(26, 11, 5), [
     (2, "call", "apply_patch", {"input": "*** Update File: relay/backoff.py\n-    return random.uniform(0, min(cap, base * 2 ** attempt))\n+    return min(cap, random.uniform(0, base * 2 ** attempt))"}),
     (1, "result", "Success. Updated the following files:\nM relay/backoff.py"),
     (2, "say", "Fixed and verified with 1000 runs: no failures."),
+])
+
+# 6. DeepSeek Harness: a database migration in another project (its own source and cwd)
+dsh("ledger", D(18, 16, 20), [
+    (0, "user", "Adding the account_id index locked ledger_entries for minutes in staging. Make the migration safe for production."),
+    (3, "think", "A plain CREATE INDEX holds a SHARE lock and blocks writes. CONCURRENTLY avoids that but cannot run inside a transaction block."),
+    (2, "call", "bash", {"command": "rg -n create_index migrations/0042_entries_account_idx.py"}),
+    (3, "result", "7:    op.create_index('ix_entries_account', 'ledger_entries', ['account_id'])"),
+    (4, "say", "The migration builds the index with a plain `CREATE INDEX`, which blocks every insert into `ledger_entries` until it finishes. I'll build it `CONCURRENTLY`, outside Alembic's transaction, with `autocommit_block()`."),
+    (2, "call", "edit", {"file_path": "migrations/0042_entries_account_idx.py", "old_string": "op.create_index(", "new_string": "with op.get_context().autocommit_block():\n        op.create_index(postgresql_concurrently=True, "}),
+    (1, "result", "Updated migrations/0042_entries_account_idx.py"),
+    (3, "say", "Done. The index now builds concurrently, so inserts keep flowing during the migration. If a build fails halfway, drop the INVALID index before running it again."),
 ])
 
 print("demo home:", HOME)

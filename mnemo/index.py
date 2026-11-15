@@ -359,8 +359,13 @@ class Index:
             # An archived session is parsed from its copy but keeps its own path.
             session_id, cwd, msgs = source.parse(read_path or path)
         except Exception as exc:  # corrupt or unexpected file: skip, don't crash sync
+            source.take_partial_read()
             log("skip %s: %s" % (path, exc))
             return
+        if source.take_partial_read():
+            # Not a "skip" warning: the agent was writing it, and the next sync
+            # reads the rest once the size changes.
+            log("%s: read up to its last complete frame (still being written)" % path)
         if not msgs:
             with self._write():
                 self._drop_path(path)

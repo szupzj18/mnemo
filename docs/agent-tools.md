@@ -28,7 +28,7 @@ Full-text search over user prompts, assistant replies, summaries, tool calls and
 | Parameter | Type | Default | Notes |
 |---|---|---|---|
 | `query` | string | required | Whitespace-separated keywords, all of which must match. English matches word prefixes (`refact` → `refactoring`); Chinese matches substrings (`订阅` → `订阅支出`). |
-| `source` | string | all | Comma-separated subset of `claude,codex,opencode,pi,agy,grok` |
+| `source` | string | all | Comma-separated subset of `claude,codex,dsh,opencode,pi,agy,grok` |
 | `kinds` | string | `text,summary,tool_call,tool_result` | Add `reasoning` to search model reasoning too. The CLI flags are `--kind` and `--all-kinds`. |
 | `cwd` | string | — | Substring of the session's working directory, e.g. `infra` |
 | `since` | string | — | `YYYY-MM-DD` |
@@ -44,6 +44,7 @@ Full-text search over user prompts, assistant replies, summaries, tool calls and
 |---|---|
 | Claude Code | `CLAUDE_CODE_SESSION_ID`, set for shell commands and MCP servers |
 | Codex | `threadId`/`sessionId` in each MCP call's `_meta`; `CODEX_THREAD_ID`/`CODEX_SESSION_ID` for shell commands. `CODEX_SESSION_ID` is the root session, so a subagent's search also leaves out its parent thread. |
+| DeepSeek Harness | `DSH_SESSION_ID` for shell commands (the id its session log is filed under). DSH starts MCP servers without its `DSH_*` variables and sends no session id in calls, so over MCP pass `exclude_session_ids` yourself |
 | Pi | the extension passes its current session id |
 
 `excluded_sessions` in the response lists what was left out. Claude Code's MCP servers keep the id they were started with, so after `/clear` the earlier conversation is excluded instead of the new one; pass `exclude_session_ids` when that matters. Neighbors are not sent the ids (older builds would reject them); their hits are filtered on return, so a device can contribute fewer than `limit`.
@@ -133,7 +134,7 @@ Lists recently started sessions newest-first, titled with the first real user pr
 
 | Parameter | Type | Default | Notes |
 |---|---|---|---|
-| `source` | string | all | Comma-separated subset of `claude,codex,opencode,pi,agy,grok` |
+| `source` | string | all | Comma-separated subset of `claude,codex,dsh,opencode,pi,agy,grok` |
 | `cwd` | string | — | Substring of the working directory |
 | `since` | string | — | `YYYY-MM-DD` |
 | `limit` | integer | 25 | Capped at 100 over MCP |

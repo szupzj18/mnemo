@@ -36,7 +36,7 @@ class UpgradeTest(unittest.TestCase):
         first = upgrade.backup(self.demo.db, keep=2)
         self.assertTrue(os.path.basename(first).startswith("index-v%s-" % SCHEMA_VERSION))
         copy = Index(first)
-        self.assertEqual(sum(c["messages"] for c in copy.counts().values()), 45)
+        self.assertEqual(sum(c["messages"] for c in copy.counts().values()), 53)
         copy.close()
         for label in ("a", "b", "c"):
             upgrade.backup(self.demo.db, keep=2, label=label)
@@ -49,8 +49,8 @@ class UpgradeTest(unittest.TestCase):
 
     def test_rebuild_swaps_in_a_verified_index(self):
         stats, counts = upgrade.rebuild(self.demo.db, home=self.demo.home)
-        self.assertEqual(stats["files_new"], 5)
-        self.assertEqual(sum(c["messages"] for c in counts.values()), 45)
+        self.assertEqual(stats["files_new"], 6)
+        self.assertEqual(sum(c["messages"] for c in counts.values()), 53)
         idx = Index(self.demo.db)
         self.assertEqual(upgrade.verify(idx), [])
         idx.close()
@@ -77,7 +77,7 @@ class UpgradeTest(unittest.TestCase):
         self.assertEqual(source, saved)
         self.assertTrue(os.path.isfile(safety))
         idx = Index(self.demo.db)
-        self.assertEqual(sum(c["files"] for c in idx.counts().values()), 5)
+        self.assertEqual(sum(c["files"] for c in idx.counts().values()), 6)
         idx.close()
 
     # ------------------------------------------------------- safety nets
@@ -112,7 +112,7 @@ class UpgradeTest(unittest.TestCase):
         idx.sync(home=self.demo.home)
         self.assertEqual(idx.stored_version, SCHEMA_VERSION)
         self.assertEqual(idx.db.execute("SELECT COUNT(*) FROM messages WHERE body = text").fetchone()[0], 0)
-        self.assertEqual(sum(c["messages"] for c in idx.counts().values()), 45)
+        self.assertEqual(sum(c["messages"] for c in idx.counts().values()), 53)
         idx.close()
         self.assertTrue(upgrade.schema_current(self.demo.db))
 
@@ -131,7 +131,7 @@ class UpgradeTest(unittest.TestCase):
             idx.db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0], "99",
             "must not re-stamp the version of a newer index",
         )
-        self.assertEqual(sum(c["messages"] for c in idx.counts().values()), 45, "reads still work")
+        self.assertEqual(sum(c["messages"] for c in idx.counts().values()), 53, "reads still work")
         idx.close()
 
         warnings = []
@@ -150,7 +150,7 @@ class UpgradeTest(unittest.TestCase):
         r = run("upgrade")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("backup:", r.stdout)
-        self.assertIn("verified and swapped in: 5 sessions, 45 messages", r.stdout)
+        self.assertIn("verified and swapped in: 6 sessions, 53 messages", r.stdout)
         self.assertEqual(len(upgrade.list_backups(self.demo.db)), 1)
         self.assertIn("index-v%s-" % SCHEMA_VERSION, run("upgrade", "--list").stdout)
         r = run("upgrade", "--restore")

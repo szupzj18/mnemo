@@ -186,6 +186,35 @@ def check_skills(inv=None):
     return Check(MACHINE, "skills", WARN, detail + " · " + "; ".join(parts), "mnemo skill ls")
 
 
+ZSTD_SOURCES = ("dsh", "codex")  # DSH writes .zstd logs by default; Codex compresses cold rollouts
+
+
+def _compressed_sources(home=None):
+    """Agents with at least one Zstandard-compressed session log on this machine."""
+    from .sources import SOURCES
+
+    out = []
+    for name in ZSTD_SOURCES:
+        source = SOURCES[name](home)
+        if any(source.actual(p) != p for p in source.files()):
+            out.append(name)
+    return out
+
+
+def check_zstd(home=None, find=None):
+    """Compressed logs need the zstd executable; without them there is nothing to check."""
+    from .sources.base import find_zstd
+
+    names = [st.NAMES[n] for n in _compressed_sources(home)]
+    if not names:
+        return None
+    found = (find or find_zstd)()
+    if found:
+        return Check(MACHINE, "zstd", OK, "reads the compressed %s logs" % st._and(names))
+    return Check(MACHINE, "zstd", WARN, "not installed: compressed %s logs are not indexed" % st._and(names),
+                 "install zstd (brew install zstd, apt install zstd)")
+
+
 def check_processes():
     stale = upgrade.stale_processes()
     if not stale:
@@ -293,7 +322,8 @@ def _devices_or_error():
 def plan(full=False, offline=False):
     """(group, run) pairs in report order, so the report can print each group as it finishes."""
     return [
-        (MACHINE, lambda: [check_version(offline)] + check_index(full=full) + [check_processes(), check_skills()]),
+        (MACHINE, lambda: [check_version(offline)] + check_index(full=full)
+         + [c for c in (check_zstd(), check_processes(), check_skills()) if c]),
         ("Agents", check_agents),
         ("Devices", _devices_or_error),
         ("Links", check_links),

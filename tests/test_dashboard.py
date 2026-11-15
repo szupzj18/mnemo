@@ -140,7 +140,7 @@ class DashboardServerTest(unittest.TestCase):
         res, body = self.request("GET", "/api/status", token=TOKEN)
         self.assertEqual(res.status, 200)
         status = json.loads(body)
-        self.assertEqual(sum(v["files"] for v in status["sources"].values()), 5)
+        self.assertEqual(sum(v["files"] for v in status["sources"].values()), 6)
         self.assertEqual(status["version"], mnemo.__version__)
 
         res, body = self.request("POST", "/api/search", {"query": "backoff", "limit": 20}, token=TOKEN)

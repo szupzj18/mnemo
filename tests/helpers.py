@@ -12,13 +12,13 @@ if REPO not in sys.path:
 # A developer's own XDG settings, agent config dirs and archive switch must not
 # reach the throwaway HOMEs tests use (here or in the mnemo subprocesses they
 # start); tests of these variables set them explicitly.
-for _var in ("XDG_DATA_HOME", "XDG_CONFIG_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "GROK_HOME",
+for _var in ("XDG_DATA_HOME", "XDG_CONFIG_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "DSH_HOME", "GROK_HOME",
              "GROK_CLAUDE_MCPS_ENABLED", "MNEMO_ARCHIVE"):
     os.environ.pop(_var, None)
 
 
 class DemoHome:
-    """A throwaway HOME filled by scripts/make-demo-home.py (5 sessions, 45 messages)."""
+    """A throwaway HOME filled by scripts/make-demo-home.py (6 sessions, 53 messages)."""
 
     def __init__(self):
         self.root = tempfile.mkdtemp(prefix="mnemo-test-")

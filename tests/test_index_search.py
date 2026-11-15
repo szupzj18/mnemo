@@ -29,10 +29,10 @@ class IndexTest(unittest.TestCase):
         self.demo.cleanup()
 
     def test_full_index(self):
-        self.assertEqual(self.stats["files_new"], 5)
-        self.assertEqual(self.stats["messages"], 45)
+        self.assertEqual(self.stats["files_new"], 6)
+        self.assertEqual(self.stats["messages"], 53)
         counts = self.idx.counts()
-        self.assertEqual({k: v["files"] for k, v in counts.items()}, {"claude": 2, "codex": 2, "pi": 1})
+        self.assertEqual({k: v["files"] for k, v in counts.items()}, {"claude": 2, "codex": 2, "dsh": 1, "pi": 1})
 
     def test_incremental_sync_is_a_noop_when_nothing_changed(self):
         stats = self.idx.sync(home=self.demo.home)

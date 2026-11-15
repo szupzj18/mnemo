@@ -145,7 +145,7 @@ class RetrievalTest(unittest.TestCase):
         self.assertEqual(raw_session(self.index, self.path)["messages"], before["messages"])
         self.assertEqual(len([p for p in CodexSource(self.demo.home).files() if "paging" in p]), 1)
         self.index.db.execute("DELETE FROM meta WHERE key=?", ("adapter:codex:" + self.path,))
-        with patch("mnemo.sources.base.shutil.which", return_value=None):
+        with patch("mnemo.sources.base.find_zstd", return_value=None):
             self.index.sync(home=self.demo.home)
         self.assertEqual(get_session(self.index, self.path), before)
         coverage = []
@@ -161,7 +161,7 @@ class RetrievalTest(unittest.TestCase):
             stream.write(b"synthetic compressed representation; decoder unavailable")
         plain = self.demo.path(".codex", "sessions", "new-plain.jsonl")
         write_log(plain, [response("plainpelicanneedle")])
-        with patch("mnemo.sources.base.shutil.which", return_value=None):
+        with patch("mnemo.sources.base.find_zstd", return_value=None):
             self.index.sync(home=self.demo.home)
         self.assertEqual(len(search(self.index, "plainpelicanneedle")), 1)
         self.assertEqual(get_session(self.index, self.path), before)

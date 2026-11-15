@@ -22,6 +22,8 @@ import json
 import os
 import threading
 
+from .sources.base import COMPRESSED_SUFFIXES
+
 ENV = "MNEMO_ARCHIVE"
 ORIGIN = "origin.json"
 OFF = ("0", "off", "false", "no")
@@ -176,7 +178,7 @@ class Archive:
         if not copy:
             raise OSError("not inside a known config dir")
         actual = source.actual(path)
-        target = copy + actual[len(path):]  # Codex: keep the .zst of a compressed log
+        target = copy + actual[len(path):]  # keep the .zst / .zstd of a compressed log
         st = source.stat(path)
         self._makedirs(os.path.dirname(target))
         tmp = self._tmp_name(target)
@@ -194,14 +196,19 @@ class Archive:
                 os.remove(tmp)
             raise
         # One representation per session: drop the plain copy once it is compressed.
-        for other in (copy, copy + ".zst"):
+        for other in self._representations(copy):
             if other != target and os.path.exists(other):
                 os.remove(other)
 
     def remove(self, copy):
-        for path in (copy, copy + ".zst"):
+        for path in self._representations(copy):
             if os.path.exists(path):
                 os.remove(path)
+
+    @staticmethod
+    def _representations(copy):
+        """Every file a session copy can be on disk: plain, or compressed (Codex .zst, DSH .zstd)."""
+        return (copy,) + tuple(copy + suffix for suffix in COMPRESSED_SUFFIXES)
 
     def sync(self, source, live, log=lambda m: None):
         """Mirror the live session files; return the archived ones to index in their place.

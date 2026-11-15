@@ -9,6 +9,7 @@ const OPENAI =
 const TILE: Record<string, string> = {
   claude: "bg-[#d97757] text-white",
   codex: "bg-[#0f1115] text-white dark:bg-black dark:ring-1 dark:ring-white/15",
+  dsh: "bg-[#4d6bfe] text-white",
   pi: "bg-white ring-1 ring-black/10 dark:bg-muted dark:ring-white/15",
   opencode: "bg-[#131010] text-white dark:ring-1 dark:ring-white/15",
   agy: "bg-[#3279f9] text-white",
@@ -33,6 +34,11 @@ export function SourceIcon({ source, className }: { source: string; className?: 
         <svg viewBox="0 0 24 24" fill="currentColor" role="img" aria-label="Codex" className="size-[19px]">
           <path d={OPENAI} />
         </svg>
+      ) : source === "dsh" ? (
+        // DeepSeek Harness: its command name as a monogram, like the others.
+        <span role="img" aria-label="DeepSeek Harness" className="font-mono text-[11px] font-bold tracking-tight">
+          dsh
+        </span>
       ) : source === "pi" ? (
         <svg viewBox="165 165 470 470" role="img" aria-label="Pi" className="size-[18px]">
           <path fill="#F09082" d="M165.29 165.29H517.36V400H400V282.65H165.29Z" />
