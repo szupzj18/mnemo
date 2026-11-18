@@ -113,6 +113,7 @@ search_sessions ──▶ get_context ──▶ get_session
 - **跨 Agent**：Claude Code、Codex（含归档会话）、DeepSeek Harness（`dsh`）、OpenCode、Pi、Antigravity CLI（`agy`）、Grok CLI（`grok`）统一进一个索引，归一成同一套消息结构；所有账号目录都会被索引（`~/.claude-*`、`$CLAUDE_CONFIG_DIR`、`~/.codex-*`、`$CODEX_HOME`、`~/.dsh`/`$DSH_HOME`、`~/.grok-*`、`$GROK_HOME`）。
 - **Agent 删了也还在**：Mnemo 把每个会话日志复制一份到 `~/.mnemo/archive`，Claude Code 30 天自动清理、删掉的 Codex 线程、agy 对话或 grok 会话之后，会话照样能搜、能读（不需要可以 `mnemo node --archive off` 关闭）。
 - **跨设备**：查询经 SSH 并行扇出到各台 devbox，按排名融合；会话正文不离开产生它的机器。
+- **验证实际连通性**：`mnemo doctor` 通过 SSH 或反向链接向每台直连设备发起一次搜索，不刷新索引、不继续转发，并报告超时或请求被拒绝的原因。
 - **对 Agent 省 token**：搜索返回的是排序后的片段而不是原始日志，10 条命中约 1.9k token。对照实验中，Agent 比用 grep 少用 23% 的 token、少调用 52% 的工具（见[评测](#评测)）。
 - **中英文都能搜**：英文前缀匹配，中文子串匹配（unigram + bigram），BM25 排序。
 - **快**：在 23.6 万条消息的索引上搜索约 60–100 ms，空闲增量同步约 0.1 s；打开长会话只读命中附近的一页（133 KB），不再整段加载（19 MB）。
