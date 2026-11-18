@@ -3,12 +3,14 @@ import contextlib
 import io
 import json
 import os
+import sqlite3
 import subprocess
 import unittest
+from unittest import mock
 
 from helpers import REPO, DemoHome
 
-from test_mesh import MNEMO
+from test_mesh import MNEMO, Device
 
 from mnemo import doctor, remote
 from mnemo import setup as st
@@ -164,6 +166,94 @@ class DevicesTest(unittest.TestCase):
         remote.save_remotes([])
         [c] = doctor.check_devices({"neighbors": []})
         self.assertEqual(c.status, doctor.SKIP)
+
+
+class ConnectivityTest(unittest.TestCase):
+    def setUp(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.demo = DemoHome()
+        self.demo.activate()
+
+    def tearDown(self):
+        self.demo.deactivate()
+        self.demo.cleanup()
+
+    def response(self, **extra):
+        return json.dumps(dict({"hits": [], "warnings": [],
+                                "coverage": [{"host": "local", "status": "searched"}]}, **extra))
+
+    def test_direct_link_and_legacy_searches_do_not_refresh_or_forward(self):
+        remote.save_remotes([{"name": "box", "host": "ssh-box"},
+                             {"name": "lap", "host": "link:lap", "transport": "link"},
+                             {"name": "old", "host": "old", "proto": 1}])
+
+        def answer(device, argv, timeout):
+            self.assertEqual(timeout, doctor.CONNECTIVITY_TIMEOUT)
+            self.assertIn("--no-sync", argv)
+            self.assertEqual(argv[argv.index("--host") + 1], "local")
+            self.assertEqual(argv[argv.index("--limit") + 1], "1")
+            if device["name"] == "old":
+                self.assertNotIn("--relay", argv)
+                return "[]"
+            self.assertIn("--relay", argv)
+            self.assertEqual(argv[argv.index("--ttl") + 1], "0")
+            return self.response()
+
+        with mock.patch.object(remote, "remote_exec", side_effect=answer) as execute, \
+                mock.patch.object(doctor.link, "is_up", return_value=True):
+            checks = doctor.check_connectivity()
+        self.assertEqual(execute.call_count, 3)
+        self.assertTrue(all(c.status == doctor.OK for c in checks), checks)
+        self.assertIn("reverse link", checks[1].detail)
+
+    def test_disconnected_link_is_skipped_but_a_stale_socket_is_not_healthy(self):
+        remote.save_remotes([{"name": "lap", "host": "link:lap", "transport": "link"}])
+        with mock.patch.object(doctor.link, "is_up", return_value=False), \
+                mock.patch.object(remote, "remote_exec") as execute:
+            [check] = doctor.check_connectivity()
+        self.assertEqual(check.status, doctor.SKIP)
+        execute.assert_not_called()
+        with mock.patch.object(doctor.link, "is_up", return_value=True), \
+                mock.patch.object(remote, "remote_exec", side_effect=remote.RemoteError("lap: timed out")):
+            [check] = doctor.check_connectivity()
+        self.assertEqual(check.status, doctor.WARN)
+        self.assertIn("timed out", check.detail)
+        self.assertIn("mnemo link", check.fix)
+
+    def test_a_successful_process_must_confirm_a_search_and_report_its_warnings(self):
+        remote.save_remotes([{"name": "box", "host": "box"}])
+        for reply, reason in [
+            ("not json", "search failed"),
+            ("[]", "invalid search response"),
+            ("{}", "invalid search response"),
+            (self.response(coverage=[]), "did not confirm"),
+            (self.response(coverage=[{"host": "local", "status": "failed"}]), "did not confirm"),
+            (self.response(warnings=["index unavailable"]), "index unavailable"),
+        ]:
+            with self.subTest(reply=reply), mock.patch.object(remote, "remote_exec", return_value=reply):
+                [check] = doctor.check_connectivity()
+            self.assertEqual(check.status, doctor.WARN)
+            self.assertIn(reason, check.detail)
+            self.assertIn("ssh box", check.fix)
+
+    def test_real_search_does_not_sync_or_reach_the_neighbors_neighbor(self):
+        box, other = Device("box", self.demo.root), Device("other", self.demo.root)
+        box.node(forward=True)
+        box.link(other)
+        env = dict(os.environ, HOME=box.home)
+        subprocess.run(MNEMO + ["index"], env=env, check=True, capture_output=True)
+        db = os.path.join(box.config, "index.db")
+        with sqlite3.connect(db) as connection:
+            connection.execute("UPDATE meta SET value='0' WHERE key='last_sync'")
+        connection.close()
+        with open(db, "rb") as f:
+            before = f.read()
+        remote.save_remotes([{"name": "box", "host": "local:box", "transport": "local", "home": box.home}])
+        [check] = doctor.check_connectivity()
+        self.assertEqual(check.status, doctor.OK, check.detail)
+        with open(db, "rb") as f:
+            self.assertEqual(f.read(), before, "the connectivity search must not refresh the index")
+        self.assertFalse(os.path.exists(os.path.join(other.config, "index.db")), "the probe must not forward")
 
 
 class LinksTest(unittest.TestCase):

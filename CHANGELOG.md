@@ -10,6 +10,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `mnemo doctor` reports `zstd` when this machine has compressed DeepSeek Harness or Codex logs, and warns with the install command when it is missing.
 - `zstd` is found in the usual install folders (`/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin`, `/home/linuxbrew/.linuxbrew/bin`) when it is not on `PATH`, so an MCP server started by a desktop app, whose `PATH` is only `/usr/bin:/bin`, still reads compressed DeepSeek Harness and Codex logs.
 - The demo HOME (`scripts/make-demo-home.py`) has a DeepSeek Harness session, so tests and the dashboard cover the `dsh` source: 6 sessions and 53 messages.
+- `mnemo doctor` checks actual search requests to every direct device over SSH or a reverse link, in a new Connectivity group. Probes do not refresh indexes or forward to other devices. Empty results pass; timeouts, rejected requests and invalid or incomplete responses produce warnings with a next step. Disconnected reverse links are skipped.
 
 ## [0.7.0] - 2026-10-26
 

@@ -241,6 +241,9 @@ mnemo doctor · laptop
   Devices            latency   code    relay
     ✓ devbox-109     160 ms    same    off
     ! devbox-126     169 ms    other   off
+  Connectivity
+    ✓ devbox-109     search answered · 180 ms · direct
+    ✓ devbox-126     search answered · 190 ms · direct
   Links
     ✓ devbox-109     connected for 35 min
 
@@ -254,9 +257,12 @@ mnemo doctor · laptop
 | mnemo | a newer release on PyPI (skip with `--offline`); the index opens, has the current schema and no rows from an older mnemo; `zstd` is installed when DeepSeek Harness or Codex logs are compressed; no long-running mnemo process still runs old code. `--full` also runs SQLite's `quick_check` on the index (a few seconds on a large one) |
 | Agents | the same checks as `mnemo setup --dry-run` |
 | Devices | every device a search reaches, through relays too: reachable, same code, relay setting; a device that linked in is fine while asleep |
+| Connectivity | one actual search to each registered direct device over SSH or a reverse link, without refreshing its index or forwarding; timeouts, rejected requests and invalid responses are warnings; disconnected reverse links are skipped |
 | Links | each `mnemo link` service is connected |
 
 `✓` ok, `!` warning (works, worth fixing), `✗` problem, `·` does not apply. Each group is printed as soon as it is checked (on a terminal, a line says what is running meanwhile). Devices are a table: latency (highlighted over 1 s), whether they run this device's code, and their relay setting. A git checkout shows how many commits it is past its release. It exits 1 when there is a problem. `--json` for scripts.
+
+Connectivity probes run in parallel with a 15-second execution timeout per request (reverse links allow another 15 seconds for the reply). An empty result is fine: a current device must confirm that its local index was searched. The displayed time includes request execution and search processing. `--offline` skips only the PyPI update check; it still checks device connections.
 
 ## mnemo status
 

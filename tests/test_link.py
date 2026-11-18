@@ -7,6 +7,7 @@ import contextlib
 import io
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import time
@@ -123,6 +124,25 @@ class LinkTest(unittest.TestCase):
         # Once A relays, C is reachable from B through the link.
         self.a.node(forward=True)
         self.assertEqual(self.search(self.b, "wordC"), ["A/C"])
+
+    def test_doctor_checks_a_real_reverse_link_without_syncing_or_forwarding(self):
+        self.a.node(forward=True)
+        for dev in (self.a, self.b):
+            self.mnemo(dev, "index")
+        self.start_link(self.a, self.b)
+        db = os.path.join(self.a.config, "index.db")
+        with sqlite3.connect(db) as connection:
+            connection.execute("UPDATE meta SET value='0' WHERE key='last_sync'")
+        connection.close()
+        with open(db, "rb") as f:
+            before = f.read()
+        result = json.loads(self.mnemo(self.b, "doctor", "--offline", "--json").stdout)
+        [check] = [c for c in result["checks"] if c["group"] == "Connectivity"]
+        self.assertEqual((check["name"], check["status"]), ("A", "ok"), check)
+        self.assertIn("reverse link", check["detail"])
+        with open(db, "rb") as f:
+            self.assertEqual(f.read(), before)
+        self.assertFalse(os.path.exists(os.path.join(self.c.config, "index.db")))
 
     def test_a_closed_link_is_skipped_quietly(self):
         p = self.start_link(self.a, self.b)

@@ -5,6 +5,7 @@ or skip (does not apply here). It reuses the commands' own logic: `setup
 --dry-run` for agents, the topology probe for devices, the link services'
 state, `upgrade`'s stale-process scan.
 """
+import concurrent.futures
 import json
 import os
 import sqlite3
@@ -22,9 +23,10 @@ from .remote import RemoteError
 OK, WARN, FAIL, SKIP = "ok", "warn", "fail", "skip"
 PYPI = "https://pypi.org/pypi/mnemo-search/json"
 MACHINE = "This machine"
-GROUPS = (MACHINE, "Agents", "Devices", "Links")
+GROUPS = (MACHINE, "Agents", "Devices", "Connectivity", "Links")
 DEVICE_COLUMNS = ("latency", "code", "relay")
 SLOW_MS = 1000
+CONNECTIVITY_TIMEOUT = 15
 
 
 class Check:
@@ -289,6 +291,50 @@ def check_devices(topology=None):
     return out
 
 
+def _check_connection(remote):
+    name = remote["name"]
+    inbound = remote.get("transport") == "link"
+    if inbound and not link.is_up(remote):
+        return Check("Connectivity", name, SKIP, "not linked right now")
+    relay = inbound or remote.get("proto", 2) >= 2
+    argv = ["search", "mnemo", "--json", "--limit", "1", "--no-sync", "--host", "local"]
+    if relay:
+        argv += ["--relay", "--ttl", "0"]
+    fix = ("check the mnemo link connection from %s" % name if inbound
+           else "check the connection: ssh %s" % remote["host"])
+    started = time.monotonic()
+    try:
+        result = json.loads(remote_mod.remote_exec(remote, argv, timeout=CONNECTIVITY_TIMEOUT))
+        if relay:
+            if not isinstance(result, dict) or not isinstance(result.get("hits"), list):
+                raise ValueError("invalid search response")
+            warnings = result.get("warnings", [])
+            if not isinstance(warnings, list) or not all(isinstance(w, str) for w in warnings):
+                raise ValueError("invalid search warnings")
+            if warnings:
+                raise ValueError("search reported: %s" % "; ".join(warnings))
+            coverage = result.get("coverage")
+            if not isinstance(coverage, list) or not any(
+                    isinstance(c, dict) and c.get("host") == "local" and c.get("status") == "searched"
+                    for c in coverage):
+                raise ValueError("search did not confirm the device's local index was searched")
+        elif not isinstance(result, list):
+            raise ValueError("invalid search response")
+    except (RemoteError, ValueError) as exc:
+        return Check("Connectivity", name, WARN, "search failed: %s" % exc, fix)
+    ms = int((time.monotonic() - started) * 1000)
+    return Check("Connectivity", name, OK, "search answered \u00b7 %d ms \u00b7 %s" % (
+        ms, "reverse link" if inbound else "direct"))
+
+
+def check_connectivity():
+    remotes = remote_mod.load_remotes()
+    if not remotes:
+        return []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(remotes)) as pool:
+        return list(pool.map(_check_connection, remotes))
+
+
 def check_links(items=None, now=None):
     items = service.status() if items is None else items
     out = []
@@ -326,6 +372,7 @@ def plan(full=False, offline=False):
          + [c for c in (check_zstd(), check_processes(), check_skills()) if c]),
         ("Agents", check_agents),
         ("Devices", _devices_or_error),
+        ("Connectivity", check_connectivity),
         ("Links", check_links),
     ]
 

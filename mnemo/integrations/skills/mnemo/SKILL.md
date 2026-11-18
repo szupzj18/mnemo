@@ -94,6 +94,7 @@ Every search syncs each device's index incrementally first (sub-second when idle
 ```bash
 mnemo index      # local incremental, usually under a second when idle
 mnemo status     # counts per source, last sync, registered remotes
+mnemo doctor     # health and actual SSH/reverse-link searches; probes do not refresh indexes or forward
 ```
 
 Manage devices (run from this machine; installs code over SSH and builds the remote index):
