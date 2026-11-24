@@ -11,6 +11,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `zstd` is found in the usual install folders (`/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin`, `/home/linuxbrew/.linuxbrew/bin`) when it is not on `PATH`, so an MCP server started by a desktop app, whose `PATH` is only `/usr/bin:/bin`, still reads compressed DeepSeek Harness and Codex logs.
 - The demo HOME (`scripts/make-demo-home.py`) has a DeepSeek Harness session, so tests and the dashboard cover the `dsh` source: 6 sessions and 53 messages.
 - `mnemo doctor` checks actual search requests to every direct device over SSH or a reverse link, in a new Connectivity group. Probes do not refresh indexes or forward to other devices. Empty results pass; timeouts, rejected requests and invalid or incomplete responses produce warnings with a next step. Disconnected reverse links are skipped.
+- `mnemo backup`: on-demand, scheduled and index-triggered automatic backups of `index.db` via SQLite's online backup API (to `~/.mnemo/backups/` or a custom `--dest`, retaining the newest `--keep` snapshots). `--install` sets up a macOS `launchd` agent or Linux `systemd --user` timer (`--uninstall` removes it); `--auto on` triggers a periodic backup after `mnemo index` when due (off by default, never on the `search` hot path; skip once with `mnemo index --no-backup`). Also supports `--if-due`, `--every`, `--list`, `--prune`, `--restore` and `--status`, and `mnemo status` now summarizes backup state.
 
 ## [0.7.0] - 2026-10-26
 

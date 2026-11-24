@@ -217,6 +217,25 @@ The safe way to adopt a new index schema after updating Mnemo:
 
 `--remotes` instead rsyncs the code to every registered device and runs a full upgrade there, even on devices already current. `--restore` puts back a backup (the newest by default) after saving the current index as a `pre-restore` backup.
 
+## mnemo backup
+
+```bash
+mnemo backup [--keep 3] [--dest DIR] [--label TEXT] [--if-due] [--every daily] [--json]
+mnemo backup --install [--every daily] [--keep 3] [--dest DIR]
+mnemo backup --uninstall
+mnemo backup --auto on|off [--every daily] [--keep 3] [--dest DIR]
+mnemo backup --list [--dest DIR] [--json]
+mnemo backup --prune [--keep 3] [--dest DIR] [--json]
+mnemo backup --restore [BACKUP] [--dest DIR]
+mnemo backup --status [--json]
+```
+
+Snapshots `index.db` with SQLite's online backup API (safe while searches or MCP calls are running) into `~/.mnemo/backups/` (or `--dest`), keeping the newest `--keep` copies:
+
+- **Scheduled background backups (`--install`)**: installs a macOS `launchd` LaunchAgent (`dev.mnemo.backup`) or a Linux `systemd --user` timer (`mnemo-backup.timer`) that runs `mnemo backup --if-due` on the chosen interval (`hourly`, `daily`, `weekly`, or `<N><m|h|d|w>` such as `12h` or `7d`) without touching search latency. Remove with `--uninstall`.
+- **Periodic backup on `mnemo index` (`--auto on`)**: after each `mnemo index`, takes a snapshot if no backup exists or the newest one is older than `--every`. Off by default, never runs on `mnemo search`, and can be skipped for a single run with `mnemo index --no-backup`.
+- **Inspect, prune and restore**: `--status` shows the saved policy, scheduler state and stored size; `--list` lists snapshots; `--prune` removes snapshots beyond `--keep`; `--restore` puts back the newest (or named) backup after saving a `pre-restore` copy.
+
 ## mnemo doctor
 
 ```bash

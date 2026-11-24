@@ -56,24 +56,26 @@ def schema_current(db_path):
     return os.path.isfile(db_path) and _stored_version(db_path) == SCHEMA_VERSION
 
 
-def backup(db_path, keep=BACKUP_KEEP, label=None):
-    """Snapshot db_path into backups/; keep the newest `keep`. Returns the path or None."""
+def backup(db_path, keep=BACKUP_KEEP, label=None, dest_dir=None):
+    """Snapshot db_path into dest_dir (default: backups/); keep the newest `keep`. Returns the path or None."""
     if not os.path.isfile(db_path):
         return None
-    folder = backup_dir(db_path)
+    folder = os.path.abspath(os.path.expanduser(dest_dir)) if dest_dir else backup_dir(db_path)
     os.makedirs(folder, exist_ok=True)
     name = "index-v%s-%s%s.db" % (
         _stored_version(db_path), time.strftime("%Y%m%d-%H%M%S"), "-" + label if label else "")
     dest = os.path.join(folder, name)
     _copy_db(db_path, dest)
-    for old in list_backups(db_path)[keep:]:
-        os.remove(old)
+    if keep is not None and keep > 0:
+        for old in list_backups(db_path, dest_dir=folder)[keep:]:
+            os.remove(old)
     return dest
 
 
-def list_backups(db_path):
+def list_backups(db_path, dest_dir=None):
     """Backups, newest first."""
-    paths = glob.glob(os.path.join(backup_dir(db_path), "index-*.db"))
+    folder = os.path.abspath(os.path.expanduser(dest_dir)) if dest_dir else backup_dir(db_path)
+    paths = glob.glob(os.path.join(folder, "index-*.db"))
     return sorted(paths, key=os.path.getmtime, reverse=True)
 
 
@@ -142,13 +144,13 @@ def migrate(db_path, logger=lambda m: None):
     return uses, counts
 
 
-def restore(db_path, source=None):
+def restore(db_path, source=None, dest_dir=None):
     """Replace db_path with a backup (default: the newest). The current index is backed up first."""
-    backups = list_backups(db_path)
+    backups = list_backups(db_path, dest_dir=dest_dir)
     source = source or (backups[0] if backups else None)
     if not source or not os.path.isfile(source):
         raise UpgradeError("no backup to restore")
-    safety = backup(db_path, keep=BACKUP_KEEP + 1, label="pre-restore")
+    safety = backup(db_path, keep=BACKUP_KEEP + 1, label="pre-restore", dest_dir=dest_dir)
     tmp = db_path + ".restore"
     _copy_db(source, tmp)
     os.replace(tmp, db_path)

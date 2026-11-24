@@ -327,7 +327,167 @@ def cmd_setup(args):
                     unicode=encoding.startswith("utf")))
     return 1 if failed else 0
 
+def cmd_backup(args):
+    from . import backup as backup_mod
+    from . import upgrade as up
+
+    if args.status:
+        st = backup_mod.status(args.db)
+        if args.json:
+            print(json.dumps(st, ensure_ascii=False, indent=2))
+            return 0
+        print("auto (on index): %s" % ("on" if st["auto"] else "off"))
+        sched = "on (%s)" % st["schedule_manager"] if st["schedule_installed"] else "off"
+        print("schedule:        %s" % sched)
+        print("every:           %s" % st["every"])
+        print("keep:            %d" % st["keep"])
+        print("dest:            %s" % st["dest"])
+        if st["latest"]:
+            when = datetime.datetime.fromtimestamp(st["latest_mtime"]).strftime("%Y-%m-%d %H:%M:%S")
+            print("latest:          %s (%s)" % (st["latest"], when))
+        else:
+            print("latest:          none")
+        print("stored:          %d file(s), %s" % (st["count"], _human_size(st["bytes"])))
+        if st["schedule_installed"]:
+            print("log:             %s" % st["log"])
+        return 0
+
+    if args.list:
+        cfg = backup_mod.load_config()
+        dest = backup_mod.resolve_dest(args.db, args.dest if args.dest is not None else cfg["dest"])
+        backups = up.list_backups(args.db, dest_dir=dest)
+        if args.json:
+            items = []
+            for b in backups:
+                items.append({
+                    "path": b,
+                    "bytes": os.path.getsize(b),
+                    "mtime": os.path.getmtime(b),
+                })
+            print(json.dumps({"dest": dest, "backups": items}, ensure_ascii=False, indent=2))
+            return 0
+        if not backups:
+            print("no backups in %s" % dest)
+        for b in backups:
+            when = datetime.datetime.fromtimestamp(os.path.getmtime(b)).strftime("%Y-%m-%d %H:%M")
+            print("%s  %s  %s" % (_human_size(os.path.getsize(b)).rjust(9), when, b))
+        return 0
+
+    if args.restore is not None:
+        cfg = backup_mod.load_config()
+        dest = backup_mod.resolve_dest(args.db, args.dest if args.dest is not None else cfg["dest"])
+        try:
+            source, safety = up.restore(args.db, args.restore or None, dest_dir=dest)
+        except up.UpgradeError as exc:
+            print("error: %s" % exc, file=sys.stderr)
+            return 1
+        if args.json:
+            print(json.dumps({"restored": source, "safety_backup": safety}, ensure_ascii=False, indent=2))
+            return 0
+        print("restored %s" % source)
+        if safety:
+            print("the index it replaced is saved as %s" % safety)
+        return 0
+
+    if args.prune:
+        try:
+            removed = backup_mod.prune(args.db, keep=args.keep, dest=args.dest)
+        except ValueError as exc:
+            print("error: %s" % exc, file=sys.stderr)
+            return 2
+        if args.json:
+            print(json.dumps({"removed": removed}, ensure_ascii=False, indent=2))
+            return 0
+        if not removed:
+            print("nothing to prune")
+        else:
+            for p in removed:
+                print("removed %s" % p)
+        return 0
+
+    if args.uninstall:
+        try:
+            m = backup_mod.uninstall_schedule()
+        except RemoteError as exc:
+            print("error: %s" % exc, file=sys.stderr)
+            return 1
+        if args.json:
+            print(json.dumps({"uninstalled": True, "manager": m}, ensure_ascii=False, indent=2))
+            return 0
+        print("removed scheduled backup (%s)" % m)
+        return 0
+
+    if args.auto is not None or args.install:
+        try:
+            if args.auto is not None:
+                cfg = backup_mod.save_config(
+                    auto=(args.auto == "on"),
+                    every=args.every,
+                    keep=args.keep,
+                    dest=args.dest,
+                )
+            else:
+                cfg = None
+            sched_mgr = None
+            if args.install:
+                sched_mgr, cfg = backup_mod.install_schedule(
+                    every=args.every,
+                    keep=args.keep,
+                    dest=args.dest,
+                    db_path=args.db,
+                )
+        except ValueError as exc:
+            print("error: %s" % exc, file=sys.stderr)
+            return 2
+        except RemoteError as exc:
+            print("error: %s" % exc, file=sys.stderr)
+            return 1
+        if args.json:
+            out = dict(cfg)
+            if sched_mgr:
+                out["installed"] = True
+                out["manager"] = sched_mgr
+                out["log"] = backup_mod.log_path()
+            print(json.dumps(out, ensure_ascii=False, indent=2))
+            return 0
+        if args.auto is not None:
+            print("auto backup on `mnemo index`: %s (every %s, keep %d, dest %s)" % (
+                "on" if cfg["auto"] else "off", cfg["every"], cfg["keep"],
+                backup_mod.resolve_dest(args.db, cfg["dest"]),
+            ))
+        if sched_mgr:
+            print("scheduled backup installed via %s (every %s, keep %d, dest %s)" % (
+                sched_mgr, cfg["every"], cfg["keep"], backup_mod.resolve_dest(args.db, cfg["dest"]),
+            ))
+            print("log: %s   status: mnemo backup --status   remove: mnemo backup --uninstall"
+                  % backup_mod.log_path())
+        return 0
+
+    try:
+        res = backup_mod.run_backup(
+            args.db,
+            keep=args.keep,
+            dest=args.dest,
+            label=args.label,
+            if_due=args.if_due,
+            every=args.every,
+        )
+    except ValueError as exc:
+        print("error: %s" % exc, file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(res, ensure_ascii=False, indent=2))
+        return 0
+    if res["skipped"]:
+        print("backup skipped: %s" % res["reason"])
+    else:
+        print("backup: %s (%s)" % (res["created"], _human_size(res["size"])))
+    return 0
+
+
 def cmd_index(args):
+    from . import backup as backup_mod
+
     idx = Index(args.db)
     names = args.source.split(",") if args.source else None
     log = (lambda m: print(m, file=sys.stderr)) if args.verbose else None
@@ -339,11 +499,21 @@ def cmd_index(args):
     except IndexTooNew as exc:
         print("error: %s" % exc, file=sys.stderr)
         return 1
+    finally:
+        idx.close()
     print(
         "indexed: +{files_new} new, {files_updated} updated, {files_removed} removed,"
         " {messages} messages".format(**stats)
         + (", {files_archived} copied to the archive".format(**stats) if stats.get("files_archived") else "")
     )
+    if not getattr(args, "no_backup", False):
+        try:
+            res = backup_mod.maybe_auto_backup(args.db)
+        except Exception as exc:
+            print("warning: auto backup failed (%s)" % exc, file=sys.stderr)
+            res = None
+        if res and res.get("created"):
+            print("auto backup: %s (%s)" % (res["created"], _human_size(res["size"])))
     return 0
 
 
@@ -859,6 +1029,8 @@ def cmd_skill_rollback(args):
 
 
 def cmd_status(args):
+    from . import backup as backup_mod
+
     idx = Index(args.db)
     counts = idx.counts()
     last = idx.last_sync()
@@ -866,6 +1038,7 @@ def cmd_status(args):
     files, size = idx.archive.usage()
     archive = {"enabled": archive_mod.enabled(), "path": idx.archive.root, "files": files, "bytes": size,
                "sessions_archived": archived_count(idx)}
+    bstat = backup_mod.status(args.db)
     if args.json:
         print(json.dumps({
             "db": args.db,
@@ -874,6 +1047,7 @@ def cmd_status(args):
                 name: counts.get(name, {"files": 0, "messages": 0}) for name in sorted(SOURCES)
             },
             "archive": archive,
+            "backup": bstat,
             "remotes": remotes,
         }, ensure_ascii=False, indent=2))
         return 0
@@ -886,6 +1060,10 @@ def cmd_status(args):
     print("archive:  %s, %d files (%s) in %s; %d sessions kept after their logs were deleted" % (
         "on" if archive["enabled"] else "off", files, _human_size(size), idx.archive.root,
         archive["sessions_archived"]))
+    print("backup:   auto %s, schedule %s, %d file(s) (%s) in %s" % (
+        "on" if bstat["auto"] else "off",
+        bstat["schedule_manager"] if bstat["schedule_installed"] else "off",
+        bstat["count"], _human_size(bstat["bytes"]), bstat["dest"]))
     for r in remotes:
         print("remote:   %s → %s (%s)" % (r["name"], r["host"], r["bin"]))
     return 0
@@ -993,8 +1171,31 @@ def main(argv=None):
     sp.add_argument("--source", help="comma-separated: %s" % ",".join(SOURCES))
     sp.add_argument("--rebuild", action="store_true",
                     help="drop the index and reparse every session from scratch")
+    sp.add_argument("--no-backup", action="store_true",
+                    help="skip periodic auto-backup even when `mnemo backup --auto on` is set")
     sp.add_argument("-v", "--verbose", action="store_true")
     sp.set_defaults(func=cmd_index)
+
+    sp = sub.add_parser("backup", help="back up the index now, on a schedule, or periodically after `mnemo index`")
+    sp.add_argument("--keep", type=int, help="backups to keep (default: configured value, initially 3)")
+    sp.add_argument("--dest", help="backup directory (default: ~/.mnemo/backups)")
+    sp.add_argument("--label", help="optional suffix added to the backup filename")
+    sp.add_argument("--if-due", action="store_true",
+                    help="only back up if no backup exists or the newest is older than --every")
+    sp.add_argument("--every", help="backup interval: hourly, daily, weekly, or <N><m|h|d|w> (e.g. 12h, 7d)")
+    sp.add_argument("--auto", choices=("on", "off"),
+                    help="run a periodic backup after `mnemo index` when due (off by default)")
+    sp.add_argument("--install", action="store_true",
+                    help="install a periodic OS backup job (macOS launchd / Linux systemd timer)")
+    sp.add_argument("--uninstall", action="store_true",
+                    help="remove the periodic OS backup job")
+    sp.add_argument("--list", action="store_true", help="list backups")
+    sp.add_argument("--prune", action="store_true", help="delete backups older than --keep")
+    sp.add_argument("--restore", nargs="?", const="", metavar="BACKUP",
+                    help="replace the index with a backup (default: the newest)")
+    sp.add_argument("--status", action="store_true", help="show backup settings, schedule and stored snapshots")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_backup)
 
     sp = sub.add_parser("doctor", help="check the index, agents, devices and links, and say how to fix what is off")
     sp.add_argument("--full", action="store_true", help="also verify the index file (takes a few seconds)")
