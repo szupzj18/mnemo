@@ -87,6 +87,10 @@ mnemo skill stats --since 30d --by device,agent --json [--unused] [--gaps]
 
 Over MCP these are `list_skills` (with `query` for a search) and `skill_usage`. In stats, `user` means the user asked for the skill by name, `tool` that Claude Code's Skill tool loaded it, and `read` that an agent read its SKILL.md (how Codex, Pi, agy and Grok load a skill, but also any read on request). These commands only read; never change a skill folder because of them unless the user asks.
 
+## Knowledge cards (experimental)
+
+Only when the knowledge base is on (`mnemo node --json` shows `"kb": true`). Search hits with `kind: knowledge` come first and carry a `card` (`type`, `status`, `scope`, `sources`, `verified`): a claim distilled from earlier sessions. Prefer a card over raw messages, open its `sources` with `context` before acting on a detail, and treat `status: expired` as possibly out of date. To distill sessions into cards, follow [distill.md](distill.md); over MCP the tools are `list_undistilled_sessions`, `get_digest`, `list_cards`, `save_card` and `mark_distilled` (listed only while the kb is on).
+
 ## Keeping the index fresh
 
 Every search syncs each device's index incrementally first (sub-second when idle), so sessions from moments ago, in any agent on any device, are searchable without extra steps. To force a sync or inspect the index:

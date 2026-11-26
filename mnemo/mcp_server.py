@@ -6,6 +6,7 @@ from . import __version__
 from .index import Index, IndexTooNew
 from . import remote as remote_mod
 from .remote import LOCAL, fan_out_search, remote_context, remote_session
+from . import kb as kb_mod
 from .search import since_start
 from .search import (CONTEXT_MAX_CHARS, DEFAULT_KINDS, caller_session_ids, clip_bodies, context_max_chars,
                      get_context, get_session, raw_context, raw_session, recent, split_ids)
@@ -188,7 +189,168 @@ def build_tools():
                 },
             },
         },
+    ] + (kb_tools() if kb_mod.enabled() else [])
+
+
+WRITES_KB = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True}
+
+
+def kb_tools():
+    """Knowledge-base tools (experimental), listed only while the kb is on."""
+    return [
+        {
+            "name": "list_undistilled_sessions",
+            "annotations": READ_ONLY,
+            "description": (
+                "Experimental knowledge base: sessions on this device with messages not yet distilled into"
+                " knowledge cards, newest first, each with the lineno range still to read. Also returns"
+                " `guide`, the distilling procedure: read it once before distilling, it says what is worth"
+                " a card and how to write one. Then for each session: get_digest, decide, save_card,"
+                " mark_distilled."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "since": {"type": "string", "description": "last message on or after: Nd or YYYY-MM-DD (default 7d)"},
+                    "min_user": {"type": "integer", "description": "skip sessions with fewer user messages (default 2)"},
+                    "limit": {"type": "integer", "description": "max sessions (default 50)"},
+                },
+            },
+        },
+        {
+            "name": "get_digest",
+            "annotations": READ_ONLY,
+            "description": (
+                "The dense parts of one session past its ledger entry, by turn: each user message with its"
+                " ts (UTC) and date (this device's, the one cards use), the last tool calls for it and the"
+                " answer that closed it, clipped. Plus `cards` (cards citing this session) and `related`"
+                " (live cards sharing its distinctive words), which it may confirm or contradict. Read a"
+                " clipped line in full with get_context before copying a command or value into a card."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "session path from list_undistilled_sessions"},
+                    "from": {"type": "integer", "description": "first lineno (default: past the ledger entry)"},
+                },
+                "required": ["path"],
+            },
+        },
+        {
+            "name": "list_cards",
+            "annotations": READ_ONLY,
+            "description": (
+                "Knowledge cards with id, title, type, status (active/expired/superseded), scope, sources,"
+                " verified and header errors. With id, that one card including its body, to update it."
+                " stale=N lists only active cards not verified in N days."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "stale": {"type": "integer"},
+                },
+            },
+        },
+        {
+            "name": "save_card",
+            "annotations": WRITES_KB,
+            "description": (
+                "Create or update one knowledge card (one claim). New card: id, title, type, scope, sources,"
+                " verified are required. Update: pass the id and only what changes; sources are added to the"
+                " card's own, and verified (the date of the latest turn that showed the claim) never moves"
+                " back. When a later turn shows a card is wrong, save the new card with supersedes=<old id>;"
+                " the old card is kept and marked superseded. Never put credentials or document contents in"
+                " a card. Rejected input changes nothing and the error lists every problem."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string", "description": "lowercase letters, digits and -, naming the claim"},
+                    "title": {"type": "string", "description": "the claim, one line"},
+                    "body": {"type": "string", "description": "Markdown: what a future agent needs to act on it; names in backticks"},
+                    "type": {"type": "string", "enum": list(kb_mod.TYPES)},
+                    "scope": {"type": "array", "items": {"type": "string"},
+                              "description": "global, host:<device name> or cwd:<absolute path>"},
+                    "sources": {"type": "array", "items": {"type": "string"},
+                                "description": "<source>@<host>:<path>#<lineno> of the message that shows the claim"},
+                    "verified": {"type": "string", "description": "YYYY-MM-DD: the turn's date from get_digest"},
+                    "expires": {"type": "string", "description": "YYYY-MM-DD, only for facts with a known end"},
+                    "supersedes": {"type": "string", "description": "id of the card this one replaces"},
+                },
+                "required": ["id"],
+            },
+        },
+        {
+            "name": "mark_distilled",
+            "annotations": WRITES_KB,
+            "description": (
+                "Record that a session was distilled up to a lineno (get_digest's session.to), with the ids"
+                " of every card created, updated or superseded from it. Call it even when nothing was worth"
+                " a card (cards empty), or the session is listed again next time."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "upto": {"type": "integer"},
+                    "cards": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["path", "upto"],
+            },
+        },
     ]
+
+
+def handle_kb_call(name, args, index, meta=None):
+    if not kb_mod.enabled():
+        raise ValueError("the knowledge base is off (experimental); turn it on with `mnemo node --kb on`")
+    directory = kb_mod.kb_dir()
+    host = remote_mod.load_node()["name"]
+    if name == "list_undistilled_sessions":
+        index.sync_if_stale()
+        sessions = kb_mod.pending(index, directory, host, since=_since(args.get("since") or "7d"),
+                                  min_user=int(args.get("min_user", 2)),
+                                  exclude_sessions=_excluded_sessions(args, meta),
+                                  limit=min(int(args.get("limit", 50)), 200))
+        return _text_result({"sessions": sessions, "kb_dir": directory, "host": host, "guide": kb_mod.guide()})
+    if name == "get_digest":
+        try:
+            return _text_result(kb_mod.material(index, directory, host, args["path"], start=args.get("from")))
+        except KeyError as exc:
+            raise ValueError(exc.args[0])
+    if name == "list_cards":
+        cards = kb_mod.cards(directory)
+        if args.get("id"):
+            card = next((c for c in cards if c["id"] == args["id"]), None)
+            if card is None:
+                raise ValueError("no card %s in %s" % (args["id"], directory))
+            return _text_result(dict(kb_mod.card_view(card), body=card.get("body"), created=card.get("created")))
+        if args.get("stale") is not None:
+            import datetime
+            cutoff = (datetime.date.today() - datetime.timedelta(days=int(args["stale"]))).isoformat()
+            cards = [c for c in cards if c.get("status") == "active" and (c.get("verified") or "") < cutoff]
+        return _text_result({"cards": [kb_mod.card_view(c) for c in cards], "kb_dir": directory})
+    if name == "save_card":
+        out = kb_mod.save_card(directory, args.get("id"), title=args.get("title"), body=args.get("body"),
+                               type_=args.get("type"), scope=args.get("scope"), sources=args.get("sources"),
+                               verified=args.get("verified"), expires=args.get("expires"),
+                               supersedes=args.get("supersedes"))
+        return _text_result(out)
+    if name == "mark_distilled":
+        row = index.db.execute("SELECT source FROM files WHERE path = ?", (args["path"],)).fetchone()
+        if row is None:
+            raise ValueError("not an indexed session: %s" % args["path"])
+        known = {c["id"] for c in kb_mod.cards(directory)}
+        ids = list(args.get("cards") or [])
+        missing = [c for c in ids if c not in known]
+        if missing:
+            raise ValueError("no such card(s): %s" % ", ".join(missing))
+        return _text_result(kb_mod.record(directory, host, row["source"], args["path"], int(args["upto"]), ids))
+    raise ValueError("unknown tool: %s" % name)
+
+
+KB_TOOLS = ("list_undistilled_sessions", "get_digest", "list_cards", "save_card", "mark_distilled")
 
 
 def _text_result(obj):
@@ -211,6 +373,8 @@ def handle_call(name, args, index):
     args = dict(args or {})
     # The client's request _meta (Codex sends threadId/sessionId), forwarded by run().
     meta = args.pop("_meta", None)
+    if name in KB_TOOLS:
+        return handle_kb_call(name, args, index, meta)
     if name == "search_sessions":
         query = args.get("query", "").strip()
         if not query:
@@ -225,7 +389,7 @@ def handle_call(name, args, index):
             index,
             query,
             sources=sources.split(",") if sources else None,
-            kinds=kinds.split(",") if kinds else list(DEFAULT_KINDS),
+            kinds=kinds.split(",") if kinds else kb_mod.default_kinds(DEFAULT_KINDS),
             cwd=args.get("cwd"),
             since=_since(args.get("since")),
             limit=min(int(args.get("limit", 20)), 100),

@@ -4,6 +4,7 @@ import json
 import os
 import re
 
+from . import kb as kb_mod
 from .model import CJK_RUN, has_cjk
 from .sources import SOURCES
 
@@ -124,12 +125,36 @@ def search(
     if exclude_sessions:
         where.append("session_id NOT IN (%s)" % ",".join("?" * len(exclude_sessions)))
         params.extend(exclude_sessions)
-    params.append(limit)
-
-    rows = [dict(r) for r in index.db.execute(search_sql(where), params).fetchall()]
+    rows = _knowledge_first(index, where, params, kinds, limit)
     for r in rows:  # keep the documented JSON field name
         r["rank"] = r.pop("score")
     return annotate(index, rows)
+
+
+def _knowledge_first(index, where, params, kinds, limit):
+    """Ranked rows, with knowledge cards (kb.py) ahead of session messages.
+
+    Cards are queried on their own so a limit filled by session messages cannot
+    push them out; superseded cards are left out, and each card hit carries its
+    header as `card`.
+    """
+    if kb_mod.KIND not in (kinds or ()) and kinds:
+        return [dict(r) for r in index.db.execute(search_sql(where), params + [limit]).fetchall()]
+    cards = []
+    if not kinds or kb_mod.KIND in kinds:
+        for r in index.db.execute(search_sql(where + ["kind = ?"]), params + [kb_mod.KIND, limit]):
+            r = dict(r)
+            try:
+                card = kb_mod.load_card(r["path"])
+            except (OSError, UnicodeDecodeError):
+                continue
+            if card["status"] == "superseded":
+                continue
+            r["card"] = kb_mod.card_view(card)
+            cards.append(r)
+    rest = [dict(r) for r in index.db.execute(
+        search_sql(where + ["kind <> ?"]), params + [kb_mod.KIND, limit]).fetchall()]
+    return (cards + rest)[:limit]
 
 
 def _source(name, cache):

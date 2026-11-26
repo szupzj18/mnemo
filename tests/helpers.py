@@ -13,7 +13,7 @@ if REPO not in sys.path:
 # reach the throwaway HOMEs tests use (here or in the mnemo subprocesses they
 # start); tests of these variables set them explicitly.
 for _var in ("XDG_DATA_HOME", "XDG_CONFIG_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "DSH_HOME", "GROK_HOME",
-             "GROK_CLAUDE_MCPS_ENABLED", "MNEMO_ARCHIVE"):
+             "GROK_CLAUDE_MCPS_ENABLED", "MNEMO_ARCHIVE", "MNEMO_KB", "MNEMO_KB_DIR"):
     os.environ.pop(_var, None)
 
 

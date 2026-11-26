@@ -12,11 +12,12 @@ from .index import DEFAULT_DB_PATH, SCHEMA_VERSION, Index, IndexTooNew
 from . import remote as remote_mod
 from .fingerprint import code_fingerprint
 from .remote import LOCAL, RemoteError, fan_out_search, remote_context, remote_session
+from . import kb as kb_mod
 from .search import since_start
 from .search import (CONTEXT_MAX_CHARS, DEFAULT_KINDS, archived_count, caller_session_ids, clip_bodies,
                      context_max_chars, get_context, get_session, origin, raw_context, raw_session, recent,
                      split_ids)
-from .sources import SOURCES
+from .sources import SOURCES, status_source_counts
 from .sources.base import SourceUnavailable
 
 BOLD = "\033[1m"
@@ -524,7 +525,7 @@ def cmd_search(args):
     elif args.kind:
         kinds = args.kind.split(",")
     else:
-        kinds = DEFAULT_KINDS
+        kinds = kb_mod.default_kinds(DEFAULT_KINDS)
     hosts = [h.strip() for h in args.host.split(",")] if args.host else None
     coverage = [] if args.coverage else None
     if args.relay:
@@ -563,6 +564,15 @@ def cmd_search(args):
         return 1
     color = color_enabled()
     for i, h in enumerate(hits, 1):
+        card = h.get("card")
+        if card:
+            print("%s%d.%s %s[%s/kb]%s card %s%s%s  %s, %s, verified %s%s" % (
+                BOLD, i, RESET, BOLD, h.get("host", LOCAL), RESET, BOLD, card["id"], RESET,
+                card.get("type") or "?", card.get("status") or "?", card.get("verified") or "?",
+                ", expires %s" % card["expires"] if card.get("expires") else ""))
+            print("   " + _hl(" ".join(h["snippet"].split()), color))
+            print("   %s→ %s%s" % (DIM, h["path"], RESET))
+            continue
         print(
             "%s%d.%s %s[%s/%s%s]%s %s/%s  %s%s%s  %s%s%s"
             % (
@@ -573,7 +583,7 @@ def cmd_search(args):
                 DIM, h["cwd"], RESET,
             )
         )
-        print("   " + _hl(h["snippet"], color))
+        print("   " + _hl(" ".join(h["snippet"].split()), color))
         print("   %s→ %s:%d%s%s" % (DIM, h["path"], h["lineno"], "  (archived)" if h.get("archived") else "", RESET))
     return 0
 
@@ -641,12 +651,15 @@ def cmd_node(args):
         node["forward"] = args.forward == "on"
     if args.archive:
         node["archive"] = args.archive == "on"
-    if args.name is not None or args.forward or args.archive:
+    if args.kb:
+        node["kb"] = args.kb == "on"
+    if args.name is not None or args.forward or args.archive or args.kb:
         remote_mod.save_node(node)
     neighbors = [{"name": r["name"], "host": r["host"], "node_id": r.get("node_id"), "proto": r.get("proto")}
                  for r in remote_mod.load_remotes()]
     if args.json:
-        print(json.dumps(dict(node, archive=archive_mod.enabled(), code=code_fingerprint(), neighbors=neighbors),
+        print(json.dumps(dict(node, archive=archive_mod.enabled(), kb=kb_mod.enabled(), code=code_fingerprint(),
+                              neighbors=neighbors),
                          ensure_ascii=False, indent=2))
         return 0
     print("name     %s" % node["name"])
@@ -660,6 +673,11 @@ def cmd_node(args):
         "session logs are copied to %s and stay searchable after their agent deletes them"
         % archive_mod.root_for(args.db) if archiving else "sessions leave the index when their agent deletes the log",
         "; set by %s" % archive_mod.ENV if archive_mod.overridden() else ""))
+    print("kb       %s  (%s%s)" % (
+        "on" if kb_mod.enabled() else "off",
+        "experimental: cards in %s are indexed and searched first" % kb_mod.kb_dir()
+        if kb_mod.enabled() else "experimental knowledge base, see docs/design/knowledge-base.md",
+        "; set by %s" % kb_mod.ENV if kb_mod.overridden() else ""))
     for n in neighbors:
         print("neighbor %-16s %-24s %s" % (n["name"], n["host"], (n["node_id"] or "id not learned yet")[:12]))
     return 0
@@ -1043,9 +1061,7 @@ def cmd_status(args):
         print(json.dumps({
             "db": args.db,
             "last_sync": last,
-            "sources": {
-                name: counts.get(name, {"files": 0, "messages": 0}) for name in sorted(SOURCES)
-            },
+            "sources": status_source_counts(counts),
             "archive": archive,
             "backup": bstat,
             "remotes": remotes,
@@ -1053,6 +1069,9 @@ def cmd_status(args):
         return 0
     for name in sorted(SOURCES):
         c = counts.get(name, {"files": 0, "messages": 0})
+        if name == "kb":
+            print("%-8s %5d cards     %s" % (name, c["files"], "" if kb_mod.enabled() else "(knowledge base off)"))
+            continue
         print("%-8s %5d sessions  %8d messages" % (name, c["files"], c["messages"]))
     if last:
         print("last sync:", datetime.datetime.fromtimestamp(last).strftime("%Y-%m-%d %H:%M:%S"))
@@ -1094,6 +1113,93 @@ def cmd_recent(args):
         print("   " + r["title"])
         print("   %s%d msgs -> %s%s%s" % (DIM, r["messages"] or 0, r["path"],
                                         "  (archived)" if r.get("archived") else "", RESET))
+    return 0
+
+
+
+# ------------------------------------------------------------------ knowledge base
+
+def _kb_ready():
+    if kb_mod.enabled():
+        return True
+    print("error: the knowledge base is off (experimental); turn it on with `mnemo node --kb on`"
+          " or MNEMO_KB=on", file=sys.stderr)
+    return False
+
+
+def cmd_digest_pending(args):
+    if not _kb_ready():
+        return 1
+    idx = Index(args.db)
+    if not args.no_sync:
+        idx.sync_if_stale()
+    excluded = [] if args.include_current else caller_session_ids()
+    rows = kb_mod.pending(idx, kb_mod.kb_dir(), remote_mod.load_node()["name"], since=_since(args.since),
+                          min_user=args.min_user, exclude_sessions=excluded, limit=args.limit)
+    if args.json:
+        print(json.dumps(rows, ensure_ascii=False, indent=2))
+        return 0
+    if not rows:
+        print("nothing to distill")
+        return 0
+    for r in rows:
+        print("%s%s/%s%s  %s  lines %d-%d  %d user msg  %s%s%s" % (
+            BOLD, r["source"], (r["last_ts"] or "")[:16].replace("T", " "), RESET, (r["title"] or "")[:60],
+            r["from"], r["to"], r["user_msgs"], DIM, r["path"], RESET))
+    return 0
+
+
+def cmd_digest_show(args):
+    if not _kb_ready():
+        return 1
+    idx = Index(args.db)
+    try:
+        out = kb_mod.material(idx, kb_mod.kb_dir(), remote_mod.load_node()["name"], args.path, start=args.start)
+    except KeyError as exc:
+        print("error: %s" % exc.args[0], file=sys.stderr)
+        return 1
+    print(json.dumps(out, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_digest_done(args):
+    if not _kb_ready():
+        return 1
+    idx = Index(args.db)
+    row = idx.db.execute("SELECT source FROM files WHERE path = ?", (args.path,)).fetchone()
+    if row is None:
+        print("error: not an indexed session: %s" % args.path, file=sys.stderr)
+        return 1
+    directory = kb_mod.kb_dir()
+    known = {c["id"] for c in kb_mod.cards(directory)}
+    ids = [c for c in (args.cards or "").split(",") if c]
+    missing = [c for c in ids if c not in known]
+    if missing:
+        print("error: no such card(s) in %s: %s" % (directory, ", ".join(missing)), file=sys.stderr)
+        return 1
+    entry = kb_mod.record(directory, remote_mod.load_node()["name"], row["source"], args.path, args.upto, ids)
+    print(json.dumps(entry, ensure_ascii=False))
+    return 0
+
+
+def cmd_kb_ls(args):
+    if not _kb_ready():
+        return 1
+    rows = kb_mod.cards(kb_mod.kb_dir())
+    if args.stale is not None:
+        cutoff = (datetime.date.today() - datetime.timedelta(days=args.stale)).isoformat()
+        rows = [c for c in rows if c.get("status") == "active" and (c.get("verified") or "") < cutoff]
+    if args.json:
+        print(json.dumps([dict(kb_mod.card_view(c), path=c["path"]) for c in rows], ensure_ascii=False, indent=2))
+        return 0
+    if not rows:
+        print("no cards in %s" % kb_mod.kb_dir())
+        return 0
+    for c in rows:
+        flag = "  %s!! %s%s" % (BOLD, "; ".join(c["errors"]), RESET) if c.get("errors") else ""
+        print("%-10s %-8s %s  %s%s%s%s" % (
+            c.get("status") or "invalid", c.get("type") or "-", c.get("verified") or "----------",
+            c["id"], DIM, "  " + (c.get("title") or ""), RESET) + flag)
     return 0
 
 
@@ -1296,6 +1402,8 @@ def main(argv=None):
     sp.add_argument("--archive", choices=("on", "off"),
                     help="keep a copy of every session log beside the index, so sessions stay searchable "
                          "after Claude Code, Codex or Pi delete them (default: on)")
+    sp.add_argument("--kb", choices=("on", "off"),
+                    help="experimental: index knowledge cards and search them first (default: off)")
     sp.add_argument("--json", action="store_true")
     # Protocol 2, used between devices and by the dashboard: map the reachable network.
     sp.add_argument("--probe", action="store_true", help=argparse.SUPPRESS)
@@ -1357,6 +1465,33 @@ def main(argv=None):
     sp = sub.add_parser("status", help="index stats")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_status)
+
+    sp = sub.add_parser("digest", help="experimental: sessions to distill into knowledge cards, and their dense parts")
+    dsub = sp.add_subparsers(dest="digest_cmd", required=True)
+    dsp = dsub.add_parser("pending", help="sessions with messages past their ledger entry, newest first")
+    dsp.add_argument("--since", default="7d", help="last message on or after: Nd or YYYY-MM-DD (default: 7d)")
+    dsp.add_argument("--min-user", type=int, default=2, help="skip sessions with fewer user messages (default: 2)")
+    dsp.add_argument("--limit", type=int, default=50)
+    dsp.add_argument("--include-current", action="store_true", help="also list the calling agent's own session")
+    dsp.add_argument("--no-sync", action="store_true")
+    dsp.add_argument("--json", action="store_true")
+    dsp.set_defaults(func=cmd_digest_pending)
+    dsp = dsub.add_parser("show", help="the dense parts of one session as JSON, from past its ledger entry")
+    dsp.add_argument("path")
+    dsp.add_argument("--from", dest="start", type=int, help="first lineno (default: past the ledger entry)")
+    dsp.set_defaults(func=cmd_digest_show)
+    dsp = dsub.add_parser("done", help="record that a session was distilled up to a lineno")
+    dsp.add_argument("path")
+    dsp.add_argument("--upto", type=int, required=True, help="last lineno distilled (the material's session.to)")
+    dsp.add_argument("--cards", help="comma-separated ids of the cards written or updated")
+    dsp.set_defaults(func=cmd_digest_done)
+
+    sp = sub.add_parser("kb", help="experimental: knowledge cards")
+    ksub2 = sp.add_subparsers(dest="kb_cmd", required=True)
+    ksp = ksub2.add_parser("ls", help="cards with status, type, verified date and header errors")
+    ksp.add_argument("--stale", type=int, metavar="DAYS", help="only active cards not verified in DAYS days")
+    ksp.add_argument("--json", action="store_true")
+    ksp.set_defaults(func=cmd_kb_ls)
 
     sp = sub.add_parser("recent", help="most recently started sessions with their first task")
     sp.add_argument("--source", help="comma-separated subset of: %s" % ",".join(SOURCES))

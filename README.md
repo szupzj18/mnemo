@@ -209,6 +209,8 @@ Click a hit to open the full session as a chat thread. Matches are highlighted a
 
 The dashboard also covers index stats, per-device health, device add/update/remove, a topology map of every device reachable through relays, and search diagnostics (latency and hits per device). It has light and dark themes.
 
+A device's source counts include `kb` only when its experimental knowledge base is enabled.
+
 ## Multiple machines
 
 ```bash
