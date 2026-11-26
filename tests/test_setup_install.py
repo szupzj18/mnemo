@@ -91,11 +91,13 @@ class SetupTest(unittest.TestCase):
                 ("claude", "MCP server"): "added",
                 ("claude", "skill"): "added",
                 ("codex", "MCP server"): "added",
+                ("codex", "skill"): "added",
                 ("dsh", "MCP server"): "added",
                 ("dsh", "skill"): "added",
                 ("opencode", "MCP server"): "added",
                 ("pi", "extension"): "added",
                 ("agy", "MCP server"): "added",
+                ("agy", "skill"): "added",
                 ("grok", "MCP server"): "added",
             })
             with open(h.path(".config", "opencode", "opencode.json")) as f:
@@ -150,7 +152,8 @@ class SetupTest(unittest.TestCase):
             self.assertEqual(result[("opencode", "detect")], "skipped")
             self.assertEqual(result[("pi", "extension")], "added")
             only = statuses(setup.run(agents=["codex"]))
-            self.assertEqual(list(only), [("codex", "MCP server")])
+            self.assertEqual(list(only), [("codex", "MCP server"), ("codex", "skill")])
+            self.assertTrue(os.path.islink(h.path(".codex", "skills", "mnemo")))
             self.assertTrue(os.path.isfile(h.path(".codex", "config.toml")))
 
 

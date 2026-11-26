@@ -1,29 +1,42 @@
 # Distilling sessions into knowledge cards
 
 Experimental. Only when the knowledge base is on (`mnemo node --json` shows `"kb": true`, or `MNEMO_KB=on`).
-Run from the kb dir (`~/.mnemo/kb`, or `$MNEMO_KB_DIR`), so this session is not itself queued for distilling.
+
+Each step has an MCP tool and a CLI command; use the MCP tools when you have them. They write cards through mnemo,
+which checks every field, so they work from any directory and inside an agent's sandbox. With the CLI, write the
+card files yourself and run from the kb dir (`~/.mnemo/kb`, or `$MNEMO_KB_DIR`).
 
 ## Loop
 
-1. `mnemo digest pending --json` lists sessions with undistilled messages, newest first.
-2. For each one, `mnemo digest show <path>` prints its material: `session`, then `turns` (each user message, the
-   last tool calls for it, and the answer that closed it), `cards` (cards citing this session) and `related` (live
-   cards scoped to the same device or directory).
-3. Decide what in it is worth keeping (below). For each candidate card, look for one that already covers it:
-   `cards` and `related` in the material first, then `mnemo search <one or two distinctive words> --kind knowledge
-   --json`. Search ANDs every word, so a long query finds nothing; search for `IPQoS`, not "ssh mac mini hangs".
-   - Same knowledge, still true: add the source, and move `verified` to that turn's `date` if it is later. Do not
-     create a card. When the session adds a detail to the same claim, fold it into the body; when the detail would
-     be looked up on its own (another port, another device), it is a new card.
-   - The session shows a card is now wrong (an address changed, a decision was reversed) and its turn is later than
-     the card's `verified`: write the new card and set `superseded_by: <new id>` on the old one. Never edit an old
-     card's content into a different claim. An older session that disagrees changes nothing: it is history.
-   - Nothing covers it: write a new card.
-   - A `related` card the session neither confirms nor contradicts: leave it alone.
-4. `mnemo digest done <path> --upto <session.to> --cards id-1,id-2`: comma-separated, every card you created,
-   re-verified or superseded from this session. Do this even when nothing was worth keeping (omit `--cards`), or the
-   session comes back every run.
-5. `mnemo kb ls` at the end: every card must parse (no `!!` errors).
+| step | MCP tool | CLI |
+|---|---|---|
+| 1. sessions with undistilled messages, newest first | `list_undistilled_sessions` | `mnemo digest pending --json` |
+| 2. one session's material | `get_digest(path)` | `mnemo digest show <path>` |
+| 3. find a card that already covers a claim | `search_sessions(query, kinds="knowledge")`, `list_cards(id)` | `mnemo search <words> --kind knowledge --json` |
+| 4. create, update or supersede a card | `save_card` | edit `<kb dir>/<id>.md` |
+| 5. record the session as distilled | `mark_distilled(path, upto, cards)` | `mnemo digest done <path> --upto N --cards a,b` |
+| 6. check every card parses | `list_cards` (no `errors`) | `mnemo kb ls` (no `!!`) |
+
+The material (step 2) has `session`, then `turns` (each user message, the last tool calls for it, and the answer
+that closed it), `cards` (cards citing this session) and `related` (live cards sharing its distinctive words).
+
+Decide what in it is worth keeping (below). For each candidate claim, look for a card that already covers it:
+`cards` and `related` first, then search with one or two distinctive words. Search ANDs every word, so a long
+query finds nothing; search for `IPQoS`, not "ssh mac mini hangs".
+
+- Same knowledge, still true: add the source, and move `verified` to that turn's `date` if it is later. Do not
+  create a card. When the session adds a detail to the same claim, fold it into the body; when the detail would be
+  looked up on its own (another port, another device), it is a new card. With `save_card`, pass the id and only
+  what changes: sources are added to the card's own.
+- The session shows a card is now wrong (an address changed, a decision was reversed) and its turn is later than
+  the card's `verified`: write the new card and mark the old one superseded (`save_card(..., supersedes=<old id>)`,
+  or `superseded_by: <new id>` in the old file). Never edit an old card's content into a different claim. An older
+  session that disagrees changes nothing: it is history.
+- Nothing covers it: write a new card.
+- A `related` card the session neither confirms nor contradicts: leave it alone.
+
+Then record the session (step 5) with `upto` = the material's `session.to` and every card you created, updated or
+superseded from it. Do this even when nothing was worth keeping (no cards), or the session comes back every run.
 
 Material is clipped: answers at 800 characters (2000 for the last turn), tool calls at 200, results at 160, and
 only the last 4 tool calls of a turn (`tools_dropped` counts the rest). Before copying a command or a value into a
@@ -43,7 +56,7 @@ that session instead.
 | `howto` | a procedure that worked, with the exact commands | delete from iCloud only after SHA-256 of original, NAS copy and manifest all match |
 | `gotcha` | a failure, its cause and the fix | the Mac mini's remote shell is zsh: an unquoted `$a` does not split on spaces |
 | `decision` | a choice made and why | iCloud backups go under `iCloudBackup/` on the NAS, mirroring the iCloud path |
-| `preference` | how the user wants things done, often learned from a correction ("不是…", "不用管", "别…") | verify a backup before deleting anything |
+| `preference` | how the user wants things done, often learned from a correction ("不是…", "不用管", "别…"); the rule itself, which holds beyond one task. The steps that carried it out are a separate `howto` | verify a backup before deleting anything |
 
 Skip: one-off answers (a single lookup, a translation), anything found in the repo or its docs, chit-chat, and the
 content of files or media; setup an agent can rediscover in one command (`mnemo doctor`, `which x`) unless finding
@@ -70,6 +83,8 @@ verified: 2026-11-26
 
 The NAS is `192.168.1.30`. ...
 ```
+
+With `save_card` you pass these as arguments and mnemo writes the file; by hand:
 
 - Header: one `key: value` per line; list fields (`scope`, `sources`) with `- item` lines below the key; no quotes,
   no nesting. Required: `type`, `scope`, `sources`, `created`, `verified`. Optional: `expires`, `superseded_by`.

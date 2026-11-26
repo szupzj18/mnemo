@@ -165,8 +165,10 @@ def setup_codex(cmd, dry_run):
     config = home(".codex", "config.toml")
     text = _read(config)
     if "[mcp_servers.mnemo]" in text:
-        return [Step("codex", "MCP server", "%s already has [mcp_servers.mnemo]" % config, "ok")]
-    return _append_toml_server("codex", config, text, cmd, dry_run)
+        steps = [Step("codex", "MCP server", "%s already has [mcp_servers.mnemo]" % config, "ok")]
+    else:
+        steps = _append_toml_server("codex", config, text, cmd, dry_run)
+    return steps + [_link("codex", "skill", SKILL_SRC, home(".codex", "skills", "mnemo"), dry_run)]
 
 
 def dsh_home():
@@ -291,6 +293,11 @@ def agy_entry(cmd):
 
 
 def setup_agy(cmd, dry_run):
+    skill = _link("agy", "skill", SKILL_SRC, home(".gemini", "config", "skills", "mnemo"), dry_run)
+    return _setup_agy_mcp(cmd, dry_run) + [skill]
+
+
+def _setup_agy_mcp(cmd, dry_run):
     # Antigravity CLI reads its global MCP servers from the "mcpServers" map in
     # this file, which it creates empty.
     config = home(".gemini", "config", "mcp_config.json")

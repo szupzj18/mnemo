@@ -89,7 +89,7 @@ Over MCP these are `list_skills` (with `query` for a search) and `skill_usage`. 
 
 ## Knowledge cards (experimental)
 
-Only when the knowledge base is on (`mnemo node --json` shows `"kb": true`). Search hits with `kind: knowledge` come first and carry a `card` (`type`, `status`, `scope`, `sources`, `verified`): a claim distilled from earlier sessions. Prefer a card over raw messages, open its `sources` with `context` before acting on a detail, and treat `status: expired` as possibly out of date. To distill sessions into cards, follow [distill.md](distill.md).
+Only when the knowledge base is on (`mnemo node --json` shows `"kb": true`). Search hits with `kind: knowledge` come first and carry a `card` (`type`, `status`, `scope`, `sources`, `verified`): a claim distilled from earlier sessions. Prefer a card over raw messages, open its `sources` with `context` before acting on a detail, and treat `status: expired` as possibly out of date. To distill sessions into cards, follow [distill.md](distill.md); over MCP the tools are `list_undistilled_sessions`, `get_digest`, `list_cards`, `save_card` and `mark_distilled` (listed only while the kb is on).
 
 ## Keeping the index fresh
 

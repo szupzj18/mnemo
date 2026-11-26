@@ -142,7 +142,9 @@ stateDiagram-v2
 - **`cards` 为空也要写一条记录**。没有提炼出任何内容的会话，同样要标记为已读，否则每一轮都会重新选中它。
 - **台账放在知识库目录**，不放进 `index.db` 的 `meta` 表。台账是原始数据，必须和卡片一起备份，并且在重建索引后保留。
 - **待提炼会话**现算得出：`files` 表中的会话，去掉台账里 `upto` 已达到该会话最大 `lineno` 的。
-- **提炼会话本身不参与提炼**。提炼任务约定在知识库目录里运行，`cwd` 位于知识库目录下的会话一律排除，不需要额外的状态。
+- **提炼会话本身不参与提炼**，按两条规则排除，都不需要额外的状态：
+  - `cwd` 位于知识库目录下的会话。通过 CLI 提炼时约定在知识库目录里运行。
+  - 记录过提炼的会话：有工具调用是 `mark_distilled`（Claude Code 记为 `mcp__mnemo__mark_distilled(`，Codex 记为 `mnemo/mark_distilled(`，agy 记为 `call_mcp_tool(…"mark_distilled"…)`），或在 shell 里执行了 `mnemo digest done <路径>`。子 agent 的 `cwd` 往往不是知识库目录，靠这条规则排除。只是在文件内容里提到这些名字的会话不受影响。
 
 ## 索引中的表示
 
@@ -183,6 +185,24 @@ CREATE INDEX IF NOT EXISTS kb_cards_id ON kb_cards(id);
 - 卡片命中在现有结果字段之外多一个 `card` 对象：`{id, type, status, scope, sources, verified, expires}`，其中 `status` 是读取时推算出来的。
 - `cwd` 列只存 `scope` 中的第一个 `cwd:`，这是为了复用现有的 `cwd` 过滤。多个 `cwd:` 的卡片在 `kb_cards.scope` 中保留完整列表，过滤时再查这张表。
 - 归档（`archive.py`）跳过 `kb` 这个 source。卡片文件本身就是原始数据，删除卡片即表示用户不再需要它，不应该从归档里把它找回来。
+
+## 接入方式
+
+提炼的每一步都有 MCP 工具和 CLI 命令两种入口。MCP 工具只在开关打开时出现在 `tools/list` 里，每次调用和其他工具一样在新进程里执行。
+
+| 步骤 | MCP 工具 | 只读 | CLI |
+|---|---|---|---|
+| 待提炼会话 | `list_undistilled_sessions`，结果附带 `guide`（`distill.md` 全文） | 是 | `mnemo digest pending` |
+| 提炼素材 | `get_digest` | 是 | `mnemo digest show` |
+| 查卡片 | `list_cards`（带 `id` 时返回正文） | 是 | `mnemo kb ls` |
+| 写卡片 | `save_card` | 否 | 直接编辑卡片文件 |
+| 记台账 | `mark_distilled` | 否 | `mnemo digest done` |
+
+- **`save_card` 由 mnemo 写文件**。字段在写入前校验，有任何错误时文件保持原样，错误信息一次列出全部问题。更新时只传要改的字段：`sources` 和原有的合并，`verified` 不能往回改，传 `supersedes` 时同时给旧卡片写上 `superseded_by`。agent 不需要知道卡片文件格式，也不需要知识库目录的写权限，所以在沙箱里也能用。
+- **`guide` 随结果返回**，只接了 MCP、没装技能的客户端也能拿到提炼规则。`mnemo setup` 同时把技能链接到 `~/.codex/skills/mnemo` 和 `~/.gemini/config/skills/mnemo`。
+- **无人值守运行需要放行写入工具**。两个写入工具标为非只读，客户端会请求批准：
+  - agy 的 `-p` 模式不能弹出确认，会直接拒绝。需要给每个工具加放行规则 `mcp(mnemo/<工具名>)`，可以用 `--settings` 只对本次会话生效。
+  - Codex 的 `codex exec` 在调用写入工具前会发出权限请求，由配置的 `PermissionRequest` hook 或交互确认处理。
 
 ## 提炼素材
 

@@ -304,9 +304,34 @@ def _under(path, directory):
     return path == directory or path.startswith(directory + os.sep)
 
 
+# A tool call that records a distillation: the session making it is distilling others, so
+# its own messages are mostly digests of theirs. One form per agent's MCP call (Claude Code,
+# Codex, agy), and the CLI run from a shell (arguments are stored JSON-escaped).
+_RECORDS_DISTILL = re.compile(
+    r'^(?:mcp__mnemo__mark_distilled\(|mnemo/mark_distilled\(|call_mcp_tool\(.*"mark_distilled")'
+    r'|mnemo digest done\s+(?:\\"|["\'/$~])', re.S)
+
+
+def distilling_sessions(index):
+    """Paths of sessions that recorded a distillation (mark_distilled / `mnemo digest done <path>`)."""
+    out = set()
+    for r in index.db.execute(
+        "SELECT path, text FROM messages WHERE kind = 'tool_call'"
+        " AND (text LIKE '%mark_distilled%' OR text LIKE '%digest done%')"
+    ):
+        if _RECORDS_DISTILL.search(r["text"] or ""):
+            out.add(r["path"])
+    return out
+
+
 def pending(index, directory, host, since=None, min_user=1, exclude_sessions=(), limit=50):
-    """Sessions with messages past their ledger entry, newest activity first."""
+    """Sessions with messages past their ledger entry, newest activity first.
+
+    Left out: the caller's own session, sessions run in the kb dir, and sessions that
+    recorded a distillation themselves (distilling_sessions): both are distilling runs.
+    """
     done = ledger(directory)
+    distilling = distilling_sessions(index)
     rows = index.db.execute(
         "SELECT f.path, f.source, f.session_id, f.cwd, f.title, f.started_ts,"
         " (SELECT lineno FROM messages WHERE rowid = fr.hi) AS last_line,"
@@ -318,7 +343,7 @@ def pending(index, directory, host, since=None, min_user=1, exclude_sessions=(),
     ).fetchall()
     out = []
     for r in rows:
-        if r["session_id"] in exclude_sessions or _under(r["cwd"], directory):
+        if r["session_id"] in exclude_sessions or _under(r["cwd"], directory) or r["path"] in distilling:
             continue
         if since and (r["last_ts"] or "") < since:
             continue
@@ -499,3 +524,93 @@ def material(index, directory, host, path, start=None):
         "related": related_cards(directory, host, meta["cwd"], citing, _turns_text(turns)),
         "clipped": {"tools": dropped},
     }
+
+
+# ------------------------------------------------------------------ writing cards
+
+GUIDE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "integrations", "skills", "mnemo", "distill.md")
+
+
+def guide():
+    """The distilling procedure (the skill's distill.md), for agents that reach mnemo only over MCP."""
+    try:
+        with open(GUIDE, encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def render(fields, title, body):
+    lines = ["---", "type: " + fields["type"]]
+    for key in ("scope", "sources"):
+        lines.append(key + ":")
+        lines.extend("- " + v for v in fields[key])
+    for key in ("created", "verified", "expires", "superseded_by"):
+        if fields.get(key):
+            lines.append("%s: %s" % (key, fields[key]))
+    lines += ["---", "# " + title.strip(), ""]
+    if body.strip():
+        lines += [body.strip(), ""]
+    return "\n".join(lines)
+
+
+def _write(path, text):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
+def save_card(directory, card_id, title=None, body=None, type_=None, scope=None, sources=None,
+              verified=None, expires=None, created=None, supersedes=None, today=None):
+    """Create a card, or update one: given fields replace the card's, sources are added to its
+    own, and verified never moves back. With supersedes, that older card gets superseded_by.
+
+    Returns {"card": view, "created": bool, "superseded": id or None}; raises ValueError with
+    every problem found, leaving the files as they were.
+    """
+    today = today or datetime.date.today().isoformat()
+    if not CARD_ID.match(card_id or ""):
+        raise ValueError("id must be lowercase letters, digits and -")
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, card_id + ".md")
+    old = load_card(path, today) if os.path.exists(path) else None
+    if old and old["errors"]:
+        raise ValueError("%s does not parse (%s); fix the file by hand" % (path, "; ".join(old["errors"])))
+    body_text = old["body"].split("\n", 1)[1].strip() if old and "\n" in old["body"] else ""
+    fields = {
+        "type": type_ or (old and old["type"]),
+        "scope": list(scope) if scope else (old["scope"] if old else []),
+        "sources": list(old["sources"]) if old else [],
+        "created": (old and old["created"]) or created or today,
+        "verified": verified or (old and old["verified"]),
+        "expires": expires if expires is not None else (old and old["expires"]),
+        "superseded_by": old and old["superseded_by"],
+    }
+    for s in sources or []:
+        if s not in fields["sources"]:
+            fields["sources"].append(s)
+    errors = check_fields({k: v for k, v in fields.items() if v})
+    if old and verified and old["verified"] and verified < old["verified"]:
+        errors.append("verified only moves forward: the card says %s, not %s" % (old["verified"], verified))
+    title = title or (old and old["title"]) or ""
+    if not title.strip():
+        errors.append("title is required")
+    target = None
+    if supersedes:
+        target_path = os.path.join(directory, supersedes + ".md")
+        if supersedes == card_id or not os.path.exists(target_path):
+            errors.append("supersedes: no other card named %s" % supersedes)
+        else:
+            target = load_card(target_path, today)
+            if target["errors"]:
+                errors.append("supersedes: %s does not parse" % supersedes)
+    if errors:
+        raise ValueError("; ".join(errors))
+    _write(path, render(fields, title, body if body is not None else body_text))
+    if target:
+        t = dict(target, superseded_by=card_id)
+        tb = target["body"].split("\n", 1)[1].strip() if "\n" in target["body"] else ""
+        _write(target["path"], render(t, target["title"], tb))
+    return {"card": card_view(load_card(path, today)), "created": old is None,
+            "superseded": supersedes if target else None}

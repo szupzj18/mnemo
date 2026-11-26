@@ -13,7 +13,10 @@
 | CLI、MCP、dashboard 默认 kinds 加入 `knowledge` | 三处入口 | 已实现 |
 | `mnemo digest pending/show/done`、`mnemo kb ls [--stale]` | `mnemo/cli.py` | 已实现 |
 | 提炼流程 | `integrations/skills/mnemo/distill.md` | 已实现 |
-| 测试 | `tests/test_kb.py`（14 个） | 通过 |
+| MCP 工具 `list_undistilled_sessions`、`get_digest`、`list_cards`、`save_card`、`mark_distilled` | `mnemo/mcp_server.py`、`mnemo/kb.py` | 已实现 |
+| `mnemo setup` 为 Codex、agy 链接技能 | `mnemo/setup.py` | 已实现 |
+| 排除记录过提炼的会话（子 agent） | `mnemo/kb.py` | 已实现 |
+| 测试 | `tests/test_kb.py`（20 个） | 通过 |
 
 ## 与设计的差异
 
@@ -60,6 +63,14 @@
 - 网关会话的 `related` 为空：已有卡片和会话只共享一个关键词（网关的 `host:port` 地址），没达到两个词的下限。
 - 日期：素材原来只给 UTC 的 `ts`，agent 有时换算成本地日期，有时不换算。现在每轮增加 `date`（本机日期），卡片日期统一按它填写。
 
+## agy 与 Codex 通过 MCP 提炼（2026-11-26）
+
+- 两边都只用 mnemo 的 MCP 工具，不执行 shell 命令，在知识库目录里以非交互方式运行，各提炼一个会话。
+- agy（`agy -p`）：第一次运行时，写入工具在 headless 模式下被自动拒绝。用 `--settings` 只对本次会话放行 7 个 `mcp(mnemo/<工具名>)` 后，调用 16 次，新建 1 张卡片、更新 2 张（追加来源，`verified` 从 11-16 推到 11-17），并记了台账。只写 `mcp(mnemo)` 不起作用。
+- Codex（`codex exec`）：对 docker 会话增量提炼（第 604–667 行），调用 12 次，更新 2 张卡片，没有新建，台账 `upto` 推进到 667。两个写入工具调用前都触发了本机配置的 `PermissionRequest` hook，由 hook 批准。没有这个 hook 时的行为未验证。
+- 两次产出的卡片都没有凭据，`list_cards` 全部合法。
+- 发现的问题：前几轮试跑的子 agent 会话出现在待提炼列表里（`cwd` 不是知识库目录），已改为排除记录过提炼的会话。
+
 ## 待办
 - `preference` 卡片在第三轮没有出现：用户的纠正（“确认备份过然后删了吧”）被写成了 howto。需要在 `distill.md` 里说明偏好和操作步骤的区别。
 - `related` 的常见词杂讯（`code`、`claude`）：考虑按会话语料而不是卡片语料计算词频。
@@ -69,6 +80,6 @@
 - 回答里的 `<oai-mem-citation>`、`:codex-file-citation{…}` 标记进入了素材。
 
 - 根据本机试跑结果调整 `distill.md` 和素材截断参数。
-- 确认效果后：加 `kb_cards`（schema v5）、`include_superseded`、MCP 的 `digest` 工具。
+- 确认效果后：加 `kb_cards`（schema v5）、`include_superseded`。
 - 提炼的触发方式：手动、`agent-patrol` 每晚复盘，或 SessionEnd hook。
 - README、`docs/cli.md`、`docs/agent-tools.md` 在开关默认打开前补充。

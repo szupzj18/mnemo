@@ -199,3 +199,120 @@ class Digest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SaveCard(unittest.TestCase):
+    def setUp(self):
+        self.demo = DemoHome()
+        self.dir = os.path.join(self.demo.root, "kb")
+        self.new = dict(title="NAS address", body="The NAS is `192.168.1.30`.", type_="fact",
+                        scope=["host:demo"], sources=["claude@demo:/s.jsonl#3"], verified="2026-11-20",
+                        today="2026-11-26")
+
+    def tearDown(self):
+        self.demo.cleanup()
+
+    def test_create_then_update_merges_sources_and_keeps_the_rest(self):
+        out = kb.save_card(self.dir, "nas-address", **self.new)
+        self.assertTrue(out["created"])
+        out = kb.save_card(self.dir, "nas-address", sources=["codex@demo:/t.jsonl#9"], verified="2026-11-25",
+                           today="2026-11-26")
+        self.assertFalse(out["created"])
+        c = kb.load_card(os.path.join(self.dir, "nas-address.md"), today="2026-11-26")
+        self.assertEqual(c["errors"], [])
+        self.assertEqual(c["sources"], ["claude@demo:/s.jsonl#3", "codex@demo:/t.jsonl#9"])
+        self.assertEqual((c["verified"], c["created"], c["title"]), ("2026-11-25", "2026-11-26", "NAS address"))
+        self.assertIn("192.168.1.30", c["body"])
+
+    def test_rejections_change_nothing(self):
+        kb.save_card(self.dir, "nas-address", **self.new)
+        path = os.path.join(self.dir, "nas-address.md")
+        before = open(path, encoding="utf-8").read()
+        with self.assertRaisesRegex(ValueError, "only moves forward"):
+            kb.save_card(self.dir, "nas-address", verified="2026-11-01")
+        with self.assertRaisesRegex(ValueError, "type must be one of"):
+            kb.save_card(self.dir, "nas-address", type_="tip")
+        with self.assertRaisesRegex(ValueError, "verified is required"):
+            kb.save_card(self.dir, "other", title="x", type_="fact", scope=["global"], sources=["a@b:/c"])
+        self.assertEqual(open(path, encoding="utf-8").read(), before)
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "other.md")))
+
+    def test_supersede_marks_the_old_card(self):
+        kb.save_card(self.dir, "nas-address", **self.new)
+        new = dict(self.new, title="NAS moved", verified="2026-11-25")
+        out = kb.save_card(self.dir, "nas-address-v2", supersedes="nas-address", **new)
+        self.assertEqual(out["superseded"], "nas-address")
+        old = kb.load_card(os.path.join(self.dir, "nas-address.md"))
+        self.assertEqual((old["status"], old["superseded_by"]), ("superseded", "nas-address-v2"))
+        self.assertIn("192.168.1.30", old["body"], "the old claim is kept as it was")
+        with self.assertRaisesRegex(ValueError, "no other card"):
+            kb.save_card(self.dir, "x-card", supersedes="missing", **self.new)
+
+
+class McpTools(unittest.TestCase):
+    def setUp(self):
+        self.demo = DemoHome()
+        self.demo.activate()
+        self.dir = os.path.join(self.demo.root, "kb")
+        self.idx = Index(self.demo.db)
+        self.idx.sync()
+
+    def tearDown(self):
+        self.demo.deactivate()
+        self.demo.cleanup()
+
+    def call(self, name, args):
+        from mnemo import mcp_server
+        out = mcp_server.handle_call(name, args, self.idx)
+        return json.loads(out["content"][0]["text"])
+
+    def test_tools_only_while_on(self):
+        from mnemo import mcp_server
+        names = lambda: {t["name"] for t in mcp_server.build_tools()}
+        self.assertFalse(set(mcp_server.KB_TOOLS) & names())
+        with patch.dict(os.environ, {"MNEMO_KB": "on"}):
+            self.assertTrue(set(mcp_server.KB_TOOLS) <= names())
+            for t in mcp_server.build_tools():
+                if t["name"] in ("save_card", "mark_distilled"):
+                    self.assertFalse(t["annotations"]["readOnlyHint"])
+        with self.assertRaisesRegex(ValueError, "knowledge base is off"):
+            self.call("list_cards", {})
+
+    def test_distill_loop_over_mcp(self):
+        with patch.dict(os.environ, {"MNEMO_KB": "on", "MNEMO_KB_DIR": self.dir}):
+            listed = self.call("list_undistilled_sessions", {"since": "3650d", "min_user": 1})
+            self.assertIn("## Loop", listed["guide"])
+            s = listed["sessions"][0]
+            digest = self.call("get_digest", {"path": s["path"]})
+            turn = digest["turns"][0]
+            src = "%s@%s:%s#%d" % (s["source"], listed["host"], s["path"], turn["lineno"])
+            saved = self.call("save_card", {"id": "demo-claim", "title": "A claim", "type": "fact",
+                                            "scope": ["global"], "sources": [src], "verified": turn["date"]})
+            self.assertTrue(saved["created"])
+            self.assertEqual(self.call("list_cards", {"id": "demo-claim"})["sources"], [src])
+            self.call("mark_distilled", {"path": s["path"], "upto": digest["session"]["to"], "cards": ["demo-claim"]})
+            again = self.call("list_undistilled_sessions", {"since": "3650d", "min_user": 1})["sessions"]
+            self.assertNotIn(s["path"], [x["path"] for x in again])
+            from mnemo import mcp_server
+            with self.assertRaisesRegex(ValueError, "no such card"):
+                mcp_server.handle_call("mark_distilled", {"path": s["path"], "upto": 1, "cards": ["nope"]}, self.idx)
+
+
+class DistillingSessions(unittest.TestCase):
+    def test_recording_a_distillation_marks_the_session(self):
+        made = [
+            'mcp__mnemo__mark_distilled({"path": "/s.jsonl", "upto": 9})',
+            'mnemo/mark_distilled({"path": "/s.jsonl", "upto": 9})',
+            'call_mcp_tool({"Arguments":{"path":"/s"},"ServerName":"mnemo","ToolName":"mark_distilled"})',
+            'Bash({"command": "cd ~/.mnemo/kb && MNEMO_KB=on mnemo digest done /Users/a/s.jsonl --upto 9"})',
+            'Bash({"command": "d(){ mnemo digest done \\"$@\\"; }\\nd /Users/a/s.jsonl"})',  # as indexed: one backslash
+        ]
+        talked_about = [
+            'Write({"file_path": "/repo/distill.md", "content": "5. `mnemo digest done <path> --upto N`"})',
+            'Bash({"command": "grep -n mark_distilled mnemo/mcp_server.py"})',
+            'read_file({"Path":"/Users/a/.gemini/antigravity-cli/mcp/mnemo/mark_distilled.json"})',
+        ]
+        for t in made:
+            self.assertTrue(kb._RECORDS_DISTILL.search(t), t)
+        for t in talked_about:
+            self.assertFalse(kb._RECORDS_DISTILL.search(t), t)
