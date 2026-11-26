@@ -70,7 +70,7 @@ verified: 2026-11-26
 | `scope` | 必填 | 列表，元素为 `global`、`host:<设备名>`、`cwd:<绝对路径>` | 这条知识在哪里成立 |
 | `sources` | 必填，至少一项 | 列表，元素为来源引用 | 卡片依据的会话消息 |
 | `created` | 必填 | `YYYY-MM-DD` | 第一次写入的日期 |
-| `verified` | 必填 | `YYYY-MM-DD` | 最近一次证实这条知识的会话轮次的日期，只往后推，与提炼发生在哪天无关 |
+| `verified` | 必填 | `YYYY-MM-DD` | 最近一次证实这条知识的会话轮次的日期（提炼所在设备的本地日期），只往后推，与提炼发生在哪天无关 |
 | `expires` | 可选 | `YYYY-MM-DD` | 到期后知识自然失效，只用于有时效的事实 |
 | `superseded_by` | 可选 | 另一张卡片的 id | 这条知识已被那张卡片取代 |
 
@@ -192,7 +192,7 @@ CREATE INDEX IF NOT EXISTS kb_cards_id ON kb_cards(id);
 {
   "session": {"host": "laptop", "source": "codex", "path": "…/rollout-2026-11-17T01-11-56-….jsonl", "cwd": "/Users/alex", "title": "我最近装了 docker", "from": 1, "to": 584, "started_ts": "2026-11-16T17:12:11Z", "last_ts": "2026-11-25T17:04:03Z"},
   "turns": [
-    {"lineno": 456, "ts": "2026-11-25T16:56:24Z", "user": "帮我看一下怎么连到我的NAS上。",
+    {"lineno": 456, "ts": "2026-11-25T16:56:24Z", "date": "2026-11-26", "user": "帮我看一下怎么连到我的NAS上。",
      "tools": [{"lineno": 470, "call": "exec_command(…smbutil view…)", "result": "…"}], "tools_dropped": 20,
      "answer": {"lineno": 548, "text": "找到了：你的 NAS 是 **nas-home**，地址 **192.168.1.30** …"}}
   ],
@@ -205,7 +205,7 @@ CREATE INDEX IF NOT EXISTS kb_cards_id ON kb_cards(id);
 | 字段 | 内容 | 截断规则 |
 |---|---|---|
 | `session` | 会话元数据，`from`/`to` 是这份素材覆盖的行号范围 | 不截断 |
-| `turns[].user` / `ts` | 一条 `role=user, kind=text` 的消息及其时间，每条开启一轮 | 500 字符 |
+| `turns[].user` / `ts` / `date` | 一条 `role=user, kind=text` 的消息、它的 UTC 时间和本机日期，每条开启一轮 | 500 字符 |
 | `turns[].tools` | 本轮最后几次 `tool_call` 及紧随其后的 `tool_result` 开头 | 每轮最多 4 组；调用 200 字符，结果 160 字符 |
 | `turns[].answer` | 本轮最后一条 assistant 文本 | 800 字符，最后一轮 2000 字符 |
 | `cards` | 已经引用这个会话的卡片 id | 不截断 |

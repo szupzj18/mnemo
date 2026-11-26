@@ -283,6 +283,15 @@ ANSWER_CHARS = 800
 LAST_ANSWER_CHARS = 2000
 
 
+def local_date(ts):
+    """This device's calendar date of a UTC 'YYYY-MM-DDTHH:MM:SSZ', the date cards are written in."""
+    try:
+        utc = datetime.datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
+    except (TypeError, ValueError):
+        return (ts or "")[:10]
+    return utc.astimezone().strftime("%Y-%m-%d")
+
+
 def _cut(text, n):
     text = (text or "").strip()
     return text if len(text) <= n else text[:n] + " …[%d chars]" % len(text)
@@ -453,8 +462,8 @@ def material(index, directory, host, path, start=None):
         if r["role"] == "user" and r["kind"] == "text":
             if not text.strip():
                 continue
-            turn = {"lineno": r["lineno"], "ts": r["ts"], "user": _cut(text, USER_CHARS), "tools": [],
-                    "tools_dropped": 0, "answer": None}
+            turn = {"lineno": r["lineno"], "ts": r["ts"], "date": local_date(r["ts"]),
+                    "user": _cut(text, USER_CHARS), "tools": [], "tools_dropped": 0, "answer": None}
             turns.append(turn)
             call = None
             continue

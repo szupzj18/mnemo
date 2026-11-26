@@ -12,7 +12,7 @@ Run from the kb dir (`~/.mnemo/kb`, or `$MNEMO_KB_DIR`), so this session is not 
 3. Decide what in it is worth keeping (below). For each candidate card, look for one that already covers it:
    `cards` and `related` in the material first, then `mnemo search <one or two distinctive words> --kind knowledge
    --json`. Search ANDs every word, so a long query finds nothing; search for `IPQoS`, not "ssh mac mini hangs".
-   - Same knowledge, still true: add the source, and move `verified` to that turn's date if it is later. Do not
+   - Same knowledge, still true: add the source, and move `verified` to that turn's `date` if it is later. Do not
      create a card. When the session adds a detail to the same claim, fold it into the body; when the detail would
      be looked up on its own (another port, another device), it is a new card.
    - The session shows a card is now wrong (an address changed, a decision was reversed) and its turn is later than
@@ -30,7 +30,10 @@ only the last 4 tool calls of a turn (`tools_dropped` counts the rest). Before c
 card, read the exact line: `mnemo context <path> <lineno> --before 0 --after 0 --max-chars 0`. Do not write a card
 from a guess, and do not write one from an agent relaying another session's output when you can read the original.
 
-Each turn has a `ts`. Sessions can run for days, so a later turn wins over an earlier one when they disagree.
+Each turn has a `ts` (UTC) and a `date` (this device's calendar date, the one cards use). Sessions can run for
+days, so a later turn wins over an earlier one when they disagree. Write cards from what a session observed
+itself (a command's output, a file it read); a claim it only relays from another session is not evidence, read
+that session instead.
 
 ## What is worth a card
 
@@ -77,8 +80,9 @@ The NAS is `192.168.1.30`. ...
   places gets two entries.
 - `expires`: only for facts with a known end, e.g. a deadline or an exam in progress. A snapshot without one
   ("not mounted as of 2026-11-17") states its date in the body instead.
-- `verified`: the date of the latest turn that showed the claim true (the turn's `ts`), not the day you distill.
-  It only moves forward. `created` is the day the card was written.
+- `verified`: the `date` of the latest turn that showed the claim true, not the day you distill. When a card
+  holds details from several turns, the latest turn that showed it still holds. It only moves forward. `created`
+  is the day the card was written.
 - Body: a `# title` stating the claim, then the few lines a future agent needs to act on it. Commands verbatim.
   It states what is true now; do not append dated "checked again" lines, `sources` keeps that history. Put the
   distinctive names (hosts, paths, options, addresses) in backticks: `related` matches cards by them.

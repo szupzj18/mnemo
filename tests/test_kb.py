@@ -186,6 +186,7 @@ class Digest(unittest.TestCase):
         self.assertEqual(m["session"]["from"], 1)
         self.assertTrue(m["turns"])
         self.assertTrue(m["turns"][0]["user"])
+        self.assertRegex(m["turns"][0]["date"], r"^\d{4}-\d{2}-\d{2}$")
         self.assertEqual(m["cards"], ["cites-it"])
         self.assertEqual([c["id"] for c in m["related"]], ["scoped-here"])
         json.dumps(m)  # what `mnemo digest show` prints
