@@ -6,6 +6,7 @@ from . import __version__
 from .index import Index, IndexTooNew
 from . import remote as remote_mod
 from .remote import LOCAL, fan_out_search, remote_context, remote_session
+from . import kb as kb_mod
 from .search import since_start
 from .search import (CONTEXT_MAX_CHARS, DEFAULT_KINDS, caller_session_ids, clip_bodies, context_max_chars,
                      get_context, get_session, raw_context, raw_session, recent, split_ids)
@@ -225,7 +226,7 @@ def handle_call(name, args, index):
             index,
             query,
             sources=sources.split(",") if sources else None,
-            kinds=kinds.split(",") if kinds else list(DEFAULT_KINDS),
+            kinds=kinds.split(",") if kinds else kb_mod.default_kinds(DEFAULT_KINDS),
             cwd=args.get("cwd"),
             since=_since(args.get("since")),
             limit=min(int(args.get("limit", 20)), 100),

@@ -12,6 +12,7 @@ from . import __version__
 from . import remote as remote_mod
 from .index import DEFAULT_DB_PATH, Index, IndexTooNew
 from .remote import LOCAL, RemoteError
+from . import kb as kb_mod
 from .search import DEFAULT_KINDS, get_session, raw_session
 from .sources import SOURCES
 from .sources.base import SourceUnavailable
@@ -98,7 +99,7 @@ def diagnose_search(query, hosts, limit):
                 and (wanted is not None or remote_mod._link_up(r))]
     include_local = wanted is None or LOCAL in wanted
     covered = {node["id"]} | {r["node_id"] for r in selected if r.get("node_id")}
-    kinds = list(DEFAULT_KINDS)
+    kinds = kb_mod.default_kinds(DEFAULT_KINDS)
     per_host, warnings, payload, coverage = [], [], [], []
 
     jobs = {}

@@ -587,6 +587,8 @@ def fan_out_search(
         # "devbox-109" selects that device; "devbox-109/x" selects x behind it.
         per_host = [(h, [x for x in rows if x["host"] in wanted]) for h, rows in per_host]
     hits = _rrf(per_host, limit)
+    # Knowledge cards first on every device's list, and still first once merged.
+    hits.sort(key=lambda h: h.get("kind") != "knowledge")
     return hits, warnings
 
 
