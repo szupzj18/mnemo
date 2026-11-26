@@ -564,6 +564,15 @@ def cmd_search(args):
         return 1
     color = color_enabled()
     for i, h in enumerate(hits, 1):
+        card = h.get("card")
+        if card:
+            print("%s%d.%s %s[%s/kb]%s card %s%s%s  %s, %s, verified %s%s" % (
+                BOLD, i, RESET, BOLD, h.get("host", LOCAL), RESET, BOLD, card["id"], RESET,
+                card.get("type") or "?", card.get("status") or "?", card.get("verified") or "?",
+                ", expires %s" % card["expires"] if card.get("expires") else ""))
+            print("   " + _hl(" ".join(h["snippet"].split()), color))
+            print("   %s→ %s%s" % (DIM, h["path"], RESET))
+            continue
         print(
             "%s%d.%s %s[%s/%s%s]%s %s/%s  %s%s%s  %s%s%s"
             % (
@@ -574,7 +583,7 @@ def cmd_search(args):
                 DIM, h["cwd"], RESET,
             )
         )
-        print("   " + _hl(h["snippet"], color))
+        print("   " + _hl(" ".join(h["snippet"].split()), color))
         print("   %s→ %s:%d%s%s" % (DIM, h["path"], h["lineno"], "  (archived)" if h.get("archived") else "", RESET))
     return 0
 
@@ -1062,6 +1071,9 @@ def cmd_status(args):
         return 0
     for name in sorted(SOURCES):
         c = counts.get(name, {"files": 0, "messages": 0})
+        if name == "kb":
+            print("%-8s %5d cards     %s" % (name, c["files"], "" if kb_mod.enabled() else "(knowledge base off)"))
+            continue
         print("%-8s %5d sessions  %8d messages" % (name, c["files"], c["messages"]))
     if last:
         print("last sync:", datetime.datetime.fromtimestamp(last).strftime("%Y-%m-%d %H:%M:%S"))
