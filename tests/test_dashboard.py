@@ -8,6 +8,7 @@ import threading
 import unittest
 from http.client import HTTPConnection
 from http.server import ThreadingHTTPServer
+from unittest.mock import patch
 
 from helpers import DemoHome
 
@@ -141,6 +142,7 @@ class DashboardServerTest(unittest.TestCase):
         self.assertEqual(res.status, 200)
         status = json.loads(body)
         self.assertEqual(sum(v["files"] for v in status["sources"].values()), 6)
+        self.assertNotIn("kb", status["sources"])
         self.assertEqual(status["version"], mnemo.__version__)
 
         res, body = self.request("POST", "/api/search", {"query": "backoff", "limit": 20}, token=TOKEN)
@@ -148,6 +150,12 @@ class DashboardServerTest(unittest.TestCase):
         result = json.loads(body)
         self.assertEqual(result["per_host"][0]["host"], "local")
         self.assertEqual(len(result["merged"]), 17)
+
+    def test_status_lists_kb_when_enabled_even_without_cards(self):
+        with patch.dict(os.environ, {"MNEMO_KB": "on"}):
+            res, body = self.request("GET", "/api/status", token=TOKEN)
+        self.assertEqual(res.status, 200)
+        self.assertEqual(json.loads(body)["sources"]["kb"], {"files": 0, "messages": 0})
 
     def test_session_roundtrip(self):
         _, body = self.request("POST", "/api/search", {"query": "budget", "limit": 1}, token=TOKEN)

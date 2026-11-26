@@ -14,7 +14,7 @@ from .index import DEFAULT_DB_PATH, Index, IndexTooNew
 from .remote import LOCAL, RemoteError
 from . import kb as kb_mod
 from .search import DEFAULT_KINDS, get_session, raw_session
-from .sources import SOURCES
+from .sources import status_source_counts
 from .sources.base import SourceUnavailable
 
 DEFAULT_PORT = 7787
@@ -39,9 +39,7 @@ def local_status():
         "version": __version__,
         "db": DEFAULT_DB_PATH,
         "last_sync": last,
-        "sources": {
-            name: counts.get(name, {"files": 0, "messages": 0}) for name in sorted(SOURCES)
-        },
+        "sources": status_source_counts(counts),
         "remotes": remote_mod.load_remotes(),
     }
 

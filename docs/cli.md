@@ -351,3 +351,5 @@ Starts the web UI on `127.0.0.1`. If the port is busy, the next free port up to 
 | Session | Chat-style transcript with highlighted matches, prev/next match navigation, collapsible reasoning and tool blocks, timeline rail (turns, idle gaps, day dividers, tool durations), raw mode |
 | Devices | Add / test / sync / update / remove remotes |
 | Logs | Operation log for the current dashboard session |
+
+A device's source counts in the dashboard and in `mnemo status --json` include `kb` only when its experimental knowledge base is enabled.

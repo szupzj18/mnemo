@@ -17,7 +17,7 @@ from .search import since_start
 from .search import (CONTEXT_MAX_CHARS, DEFAULT_KINDS, archived_count, caller_session_ids, clip_bodies,
                      context_max_chars, get_context, get_session, origin, raw_context, raw_session, recent,
                      split_ids)
-from .sources import SOURCES
+from .sources import SOURCES, status_source_counts
 from .sources.base import SourceUnavailable
 
 BOLD = "\033[1m"
@@ -1061,9 +1061,7 @@ def cmd_status(args):
         print(json.dumps({
             "db": args.db,
             "last_sync": last,
-            "sources": {
-                name: counts.get(name, {"files": 0, "messages": 0}) for name in sorted(SOURCES)
-            },
+            "sources": status_source_counts(counts),
             "archive": archive,
             "backup": bstat,
             "remotes": remotes,
